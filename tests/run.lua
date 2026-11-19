@@ -215,7 +215,7 @@ test("bug report lists errors once with a count", function()
 	eq(#c.env.IwTDB.errors, 1)
 	eq(c.env.IwTDB.errors[1].count, 2)
 	local report = c.ns.Diagnostics.BuildReport()
-	assert(report:find("[x2] boom", 1, true), "report has the error")
+	assert(report:find("%[x2, last [^%]]+%] boom"), "report has the error")
 	assert(report:find("interface 16010", 1, true), "report has the client")
 end)
 
@@ -395,7 +395,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Play(Groups|Layers)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Play(Groups|Layers),Guild life(Calendar|Polls|Donations)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -756,6 +756,101 @@ test("guild kills: each character shares its kills and Home adds them up", funct
 	eq(mem.ns.Kills.Format(1234567), "1,234,567"); eq(mem.ns.Kills.Format(999), "999")
 	assert(mem.ns.GeneralTab.Facts().kills.mobs == 1500)
 	assert(mem.ns.Diagnostics.BuildReport():find("Kills: 12 honorable, 1500 creatures (stat)", 1, true))
+end)
+
+test("donations: officers set and edit the goal, deposits are noted, a new goal starts from zero", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Alt", 4, true } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	local D = mem.ns.Donations
+	eq(D.Goal().title, "Guild bank", "the first goal is the guild bank")
+	eq(D.SetGoal("Raid fund", 100), false, "members can't set the goal")
+	assert(gm.ns.Donations.SetGoal("", 500))
+	eq(D.Goal().title, "Guild bank"); eq(D.Goal().target, 500 * 10000)
+	assert(D.Add(123456)) -- 12g 34s 56c
+	assert(gm.ns.Donations.Add(50000))
+	local p = gm.ns.Donations.Progress()
+	eq(p.total, 173456); eq(p.givers, 2)
+	eq(gm.ns.Donations.Givers()[1].who, "Mem")
+	eq(mem.ns.UI.Money(123456), "12g 34s"); eq(mem.ns.UI.Money(305), "3s 5c"); eq(mem.ns.UI.Money(12345678), "1,234g 56s")
+	assert(D.ProgressText():find("of 500g", 1, true))
+	-- editing keeps the progress; a new goal starts from zero
+	assert(gm.ns.Donations.SetGoal("Guild bank tab 2", 800))
+	eq(D.Progress().total, 173456); eq(D.Goal().title, "Guild bank tab 2")
+	W.now = W.now + 5
+	assert(gm.ns.Donations.SetGoal("Mounts", 1000, true))
+	eq(D.Progress().total, 0); eq(D.Mine(), 0)
+	assert(D.Add(10000)); eq(gm.ns.Donations.Progress().total, 10000)
+	-- the guild bank deposit hook
+	assert(mem.ns.Donations.Add(0) == false)
+	mem.ns.UI.Open("Donations")
+	eq(D.panel:IsShown(), true)
+	eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("polls: officers ask, one vote per player (alts once), votes can change, closed polls stop voting", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Other", 3, true } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	local other = W.NewClient(base, "Other", g)
+	eq((mem.ns.Polls.Ask("Raid night?", "Fri, Sat")), false, "members can't ask")
+	eq(select(2, gm.ns.Polls.Ask("x", "only one")), "Give at least two answers.")
+	assert(gm.ns.Polls.Ask("Raid night?", "Friday, Saturday / Sunday", 3))
+	local poll = mem.ns.Polls.List()[1]
+	eq(poll.question, "Raid night?"); eq(#poll.answers, 3); eq(poll.open, true)
+	assert(mem.ns.Polls.Vote(poll.id, 1))
+	assert(other.ns.Polls.Vote(poll.id, 2))
+	assert(mem.ns.Polls.Vote(poll.id, 3)) -- changed mind
+	local counts, total = gm.ns.Polls.Results(poll.id)
+	eq(total, 2); eq(counts[1], 0); eq(counts[2], 1); eq(counts[3], 1)
+	eq(mem.ns.Polls.List()[1].mine, 3)
+	eq(mem.ns.Polls.OpenCount(), 1)
+	assert(gm.ns.Polls.Close(poll.id))
+	eq(mem.ns.Polls.Vote(poll.id, 1), false, "closed")
+	eq(mem.ns.Polls.List()[1].open, false)
+	eq(mem.ns.Polls.OpenCount(), 0)
+	assert(gm.ns.Polls.Remove(poll.id))
+	eq(#mem.ns.Polls.List(), 0)
+	mem.ns.UI.Open("Polls")
+	eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("calendar: officers add events, everyone signs up with a role, Home shows what's on", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	for _, c in ipairs({ mem, gm }) do
+		c.env.time = function(t) if t then return os.time(t) end return W.now end
+	end
+	local C = gm.ns.Calendar
+	local when = C.TimeOf(1, "20:00")
+	assert(when and when > W.now)
+	eq(C.TimeOf(0, "25:00"), nil); eq(C.TimeOf(0, "soon"), nil)
+	eq((mem.ns.Calendar.Add("Deadmines", when)), false, "members can't add events")
+	eq(select(2, C.Add("", when)), "Give the event a name.")
+	assert(C.Add("Deadmines run", when, "bring potions"))
+	assert(C.Add("Old event", W.now - 4 * 3600))
+	local list = mem.ns.Calendar.Upcoming()
+	eq(#list, 1, "past events drop off"); eq(list[1].title, "Deadmines run"); eq(list[1].note, "bring potions")
+	assert(mem.ns.Calendar.SignUp(list[1].id, "T"))
+	assert(gm.ns.Calendar.SignUp(list[1].id, "M"))
+	local s = gm.ns.Calendar.Signups(list[1].id)
+	eq(s.count, 1); eq(s.T[1], "Mem"); eq(s.M[1], "Gm")
+	eq(gm.ns.Calendar.RoleSummary(s), "1 tank, 1 maybe")
+	eq(mem.ns.Calendar.SignUp(list[1].id, "X"), false)
+	assert(mem.ns.Calendar.SignUp(list[1].id, nil))
+	eq(gm.ns.Calendar.Signups(list[1].id).count, 0)
+	eq(mem.ns.Calendar.When(when):sub(1, 8), "Tomorrow")
+	-- Home: What's on
+	assert(gm.ns.Polls.Ask("Raid night?", "Fri, Sat"))
+	local f = mem.ns.GeneralTab.Facts()
+	eq(f.nextEvent.title, "Deadmines run"); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
+	mem.ns.UI.Toggle()
+	mem.ns.GeneralTab.Refresh()
+	mem.ns.UI.Open("Calendar")
+	eq(mem.ns.Calendar.panel:IsShown(), true)
+	eq(mem.ns.UI.tabs[4].title, "Guild life")
+	eq(#mem.env.IwTDB.errors, 0)
 end)
 
 test("crafters board: search shows crafters online first, empty search lists by profession", function()

@@ -23,3 +23,6 @@ LFG.lua
 CraftersTab.lua
 Layers.lua
 Kills.lua
+Calendar.lua
+Polls.lua
+Donations.lua

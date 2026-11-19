@@ -61,6 +61,10 @@ function General.Facts()
 	for _ in pairs(crafters) do c = c + 1 end
 	f.guildCrafters, f.guildRecipes = c, recipes
 	f.kills = ns.Kills.Totals()
+	-- What's on (Guild life)
+	f.nextEvent = ns.Calendar.Upcoming()[1]
+	f.openPolls, f.firstPoll = ns.Polls.OpenCount()
+	f.donations = ns.Donations.Progress()
 	-- Honorable kills are of the other faction.
 	local faction = UnitFactionGroup and UnitFactionGroup("player")
 	f.enemyFaction = faction == "Alliance" and "Horde" or faction == "Horde" and "Alliance" or "Enemy player"
@@ -128,6 +132,13 @@ function General.Refresh()
 		mainButton:Enable()
 	end
 
+	local e = f.nextEvent
+	texts.event:SetText(e and (e.title .. "\n|cff999999" .. ns.Calendar.When(e.time) .. ", " .. e.signups.count .. " coming|r")
+		or "|cff999999Nothing planned|r")
+	texts.polls:SetText(f.openPolls > 0 and (f.firstPoll.question .. (f.openPolls > 1 and
+		("\n|cff999999and " .. (f.openPolls - 1) .. " more|r") or "")) or "|cff999999No open polls|r")
+	texts.donations:SetText(f.donations.title .. "\n|cff999999" .. ns.Donations.ProgressText(f.donations) .. "|r")
+
 	local pl = {}
 	for _, p in ipairs(f.profs) do
 		local recipes
@@ -177,6 +188,27 @@ local function Build(panel)
 	scanHint:SetJustifyH("LEFT")
 	scanHint:SetText(HINT)
 
+	-- What's on: the next event, open polls and the donation goal (Guild life tab).
+	ns.UI.Card(panel, 0, -334, 616, 100)
+	Section(panel, 12, -342, "What's on")
+	local function Column(x, title)
+		local t = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		t:SetPoint("TOPLEFT", x, -362)
+		t:SetText(title)
+		t:SetTextColor(0.65, 0.61, 0.54)
+		local body = Body(panel, x, -376, 184)
+		local open = CreateFrame("Button", nil, panel)
+		open:SetPoint("TOPLEFT", x - 4, -358)
+		open:SetSize(196, 70)
+		open:SetScript("OnClick", function() ns.UI.Open(title == "Next event" and "Calendar" or title == "Open polls" and "Polls" or "Donations") end)
+		local hl = ns.UI.Fill(open:CreateTexture(nil, "HIGHLIGHT"), ns.UI.COLORS.hover)
+		hl:SetAllPoints()
+		return body
+	end
+	texts.event = Column(12, "Next event")
+	texts.polls = Column(212, "Open polls")
+	texts.donations = Column(412, "Donation goal")
+
 	panel:SetScript("OnShow", General.Refresh)
 	General.Refresh()
 end
@@ -187,3 +219,4 @@ ns.Listen("ROSTER_UPDATED", function() General.Refresh() end)
 ns.Listen("SYNC_CHANGED", function() General.Refresh() end)
 ns.Listen("SCAN_CHANGED", function() General.Refresh() end)
 ns.Listen("VERSION_SEEN", function() General.Refresh() end)
+ns.Listen("GUILD_LIFE_CHANGED", function() General.Refresh() end)

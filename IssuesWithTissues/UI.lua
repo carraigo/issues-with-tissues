@@ -570,6 +570,21 @@ function UI.ClassColor(token)
 	return 1, 1, 1
 end
 
+-- 1234567 -> "1,234,567"
+function UI.Number(n)
+	local s = tostring(math.floor(n or 0))
+	return (s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", ""))
+end
+
+-- Copper -> "12g 34s" (or "34s 5c" under a gold).
+function UI.Money(copper)
+	copper = math.floor(copper or 0)
+	local g, s, c = math.floor(copper / 10000), math.floor(copper % 10000 / 100), copper % 100
+	if g > 0 then return UI.Number(g) .. "g" .. (s > 0 and (" " .. s .. "s") or "") end
+	if s > 0 then return s .. "s" .. (c > 0 and (" " .. c .. "c") or "") end
+	return c .. "c"
+end
+
 -- "5m", "2h"
 function UI.Ago(seconds)
 	seconds = math.max(0, seconds or 0)
