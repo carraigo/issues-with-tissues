@@ -55,6 +55,18 @@ if geterrorhandler and seterrorhandler then
 	end)
 end
 
+-- The game blocks some calls from addons (protected functions). It reports those as events,
+-- not errors, so the handler above never sees them.
+local blocked = CreateFrame and CreateFrame("Frame")
+if blocked then
+	for _, e in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do pcall(blocked.RegisterEvent, blocked, e) end
+	blocked:SetScript("OnEvent", function(_, event, addon, func)
+		if addon == "IssuesWithTissues" then
+			ns.ReportError(string.format("%s: the game blocked %s()", event, tostring(func)))
+		end
+	end)
+end
+
 function Diag.BuildReport()
 	local db = ns.db or { errors = {}, log = {}, settings = {} }
 	local lines = {}
@@ -67,6 +79,60 @@ function Diag.BuildReport()
 	end
 	add("Locale: " .. (GetLocale and GetLocale() or "?"))
 	add("Time: " .. date("%Y-%m-%d %H:%M:%S"))
+	add("")
+	add("Identity:")
+	add("  UnitName: " .. tostring(UnitName and UnitName("player")) .. ", realm: " .. tostring(GetNormalizedRealmName and GetNormalizedRealmName()))
+	if ns.Roster then
+		local me = ns.PlayerName and ns.PlayerName()
+		local m = me and ns.Roster.Get(me)
+		add(string.format("  Key: %s, in roster: %s, rank: %s, officer: %s", tostring(me), tostring(m ~= nil),
+			tostring(m and m.rankIndex), tostring(ns.Roster.IsOfficer(me))))
+		add(string.format("  Roster: %d members, %d online", ns.Roster.count or 0, ns.Roster.online or 0))
+		add("  Found self by: " .. tostring(ns.Roster.meHow) .. ", UnitGUID: " .. tostring(UnitGUID and UnitGUID("player") ~= nil)
+			.. ", UnitFullName: " .. tostring(UnitFullName and select(2, UnitFullName("player"))))
+		local shared = {}
+		for first, list in pairs(ns.Roster.byFirst or {}) do
+			if #list > 1 then shared[#shared + 1] = table.concat(list, "/") end
+		end
+		table.sort(shared)
+		add("  Shared first names: " .. (#shared > 0 and table.concat(shared, ", ") or "none"))
+		add("  Last addon sender seen: " .. tostring(ns.Comm and ns.Comm.lastSender))
+		local n = 0
+		for key, mm in pairs(ns.Roster.members) do
+			if n >= 3 then break end
+			n = n + 1
+			add(string.format("  Roster name sample: %q -> %s", tostring(mm.rosterName), key))
+		end
+	end
+	if ns.UI then
+		local tabs = {}
+		for i, t in ipairs(ns.UI.tabs) do
+			local b = t.button
+			local shown = b and b.IsShown and b:IsShown()
+			local where = ""
+			if b and b.GetLeft then
+				where = string.format(" x=%s w=%s", tostring(b:GetLeft() and math.floor(b:GetLeft())), tostring(b.GetWidth and math.floor(b:GetWidth() or 0)))
+			end
+			tabs[#tabs + 1] = string.format("%d %s (button %s%s%s)", i, t.title, b and "yes" or "no",
+				b and (shown and ", shown" or ", hidden") or "", where)
+		end
+		add("Tabs: " .. table.concat(tabs, "; "))
+	end
+	add("Profession window: last read " .. tostring(ns.Professions and ns.Professions.lastRead)
+		.. ", ToggleProfessionsBook=" .. type(ToggleProfessionsBook))
+	add("APIs: GetProfessions=" .. type(GetProfessions) .. " GetSkillLineInfo=" .. type(GetSkillLineInfo)
+		.. " C_TradeSkillUI=" .. type(C_TradeSkillUI)
+		.. " GetBaseProfessionInfo=" .. type(C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo))
+	if ns.Sync and ns.db then
+		local counts = {}
+		for name, set in pairs(ns.db.sync) do
+			local c = 0
+			for _ in pairs(set.records or {}) do c = c + 1 end
+			counts[#counts + 1] = name .. "=" .. c
+		end
+		table.sort(counts)
+		add("Shared data: " .. table.concat(counts, " "))
+	end
 	add("")
 	add("Settings:")
 	local keys = {}

@@ -39,7 +39,7 @@ function W.Deliver(fromClient, prefix, msg, distribution, target)
 		if distribution == "GUILD" then
 			deliver = c.guild == fromClient.guild
 		elseif distribution == "WHISPER" then
-			deliver = c.fullName == target or c.name == target
+			deliver = c.name == target -- a whisper needs the whole "First Surname"
 		end
 		if deliver and c.registered[prefix] then
 			c.env.__fire("CHAT_MSG_ADDON", prefix, msg, distribution, fromClient.fullName)
@@ -48,8 +48,12 @@ function W.Deliver(fromClient, prefix, msg, distribution, target)
 end
 
 -- guild = { name = "Issues with Tissues", members = { {name, rankIndex, online}, ... } }
-function W.NewClient(baseDir, name, guild)
-	local c = { name = name, fullName = name .. "-Realm", guild = guild, registered = {} }
+function W.NewClient(baseDir, name, guild, opts)
+	-- Forever: the game stamps addon messages and UnitName with the first name only.
+	local first = name:match("^(%S+)")
+	-- opts.fullSender: stamp "First Surname" instead, as the 1.60.1 client was seen to do.
+	local c = { name = name, first = first, fullName = first .. "-Realm", guild = guild, registered = {} }
+	if opts and opts.fullSender then c.fullName = name end
 	local env = {}
 	setmetatable(env, { __index = _G })
 	env._G = env
@@ -82,14 +86,65 @@ function W.NewClient(baseDir, name, guild)
 	env.debugprofilestop = function() return os.clock() * 1000 end
 	env.GetBuildInfo = function() return "1.60.1", "70000", "Nov 2026", 16010 end
 	env.GetLocale = function() return "enGB" end
-	env.UnitName = function(unit) if unit == "player" then return name end end
+	env.UnitName = function(unit) if unit == "player" then return first end end
+	env.UnitGUID = function(unit) if unit == "player" then return "Player-" .. name end end
 	env.GetNormalizedRealmName = function() return "Realm" end
 	env.IsInGuild = function() return guild ~= nil end
 	env.GetNumGuildMembers = function() return guild and #guild.members or 0 end
 	env.GetGuildRosterInfo = function(i)
 		local m = guild.members[i]
-		return m[1] .. "-Realm", "Rank" .. m[2], m[2], 60, "Warrior", "Stormwind City", "", "", m[3], 0, "WARRIOR"
+		return m[1] .. "-Realm", "Rank" .. m[2], m[2], m[5] or 60, "Warrior", "Stormwind City", "", "", m[3], 0, "WARRIOR",
+			0, 0, false, false, 0, "Player-" .. m[1]
 	end
+	env.GetGuildRosterLastOnline = function(i)
+		local m = guild.members[i]
+		if m[3] then return nil end
+		return 0, 0, m[4] or 0, 0
+	end
+	-- Skills: c.skills = { {name, rank, max}, ... } (modern GetProfessions API)
+	c.skills = {}
+	env.GetProfessions = function()
+		local ids = {}
+		for i = 1, #c.skills do ids[i] = i end
+		return unpack(ids)
+	end
+	env.GetProfessionInfo = function(id)
+		local s = c.skills[id]
+		return s[1], 0, s[2], s[3], 0, 0, s[4] -- 7th: skillLine
+	end
+	env.GetGuildInfo = function() if guild then return guild.name or "Issues with Tissues", "Member", 3 end end
+	-- An open profession window: c.tradeSkill = { name = "Tailoring", recipes = { {id, name, itemID, learned} } }
+	-- Opening by skill line: c.tradeSkills[skillLine] = { name, recipes }; c.blockOpen refuses.
+	c.tradeSkills = {}
+	env.C_TradeSkillUI = {
+		OpenTradeSkill = function(line)
+			if c.blockOpen then error("blocked: needs a hardware click") end
+			c.tradeSkill = c.tradeSkills[line]
+			c.opened = (c.opened or 0) + 1
+		end,
+		CloseTradeSkill = function() c.tradeSkill = nil end,
+		GetBaseProfessionInfo = function()
+			return c.tradeSkill and { professionID = 197, professionName = c.tradeSkill.name } or {}
+		end,
+		GetAllRecipeIDs = function()
+			local ids = {}
+			for i, r in ipairs(c.tradeSkill and c.tradeSkill.recipes or {}) do ids[i] = r[1] end
+			return ids
+		end,
+		GetRecipeInfo = function(id)
+			for _, r in ipairs(c.tradeSkill.recipes) do
+				if r[1] == id then return { name = r[2], learned = r[4] ~= false } end
+			end
+		end,
+		GetRecipeOutputItemData = function(id)
+			for _, r in ipairs(c.tradeSkill.recipes) do
+				if r[1] == id then return { itemID = r[3] } end
+			end
+		end,
+	}
+	c.popups = {}
+	env.StaticPopupDialogs = {}
+	env.StaticPopup_Show = function(which, a) table.insert(c.popups, { which = which, arg = a }) end
 	env.GuildControlGetNumRanks = function() return 5 end
 	env.GuildControlGetRankName = function(i)
 		return ({ "Guild Master", "Officer", "Veteran", "Member", "Initiate" })[i]
@@ -101,7 +156,18 @@ function W.NewClient(baseDir, name, guild)
 	}
 	env.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) c.printed = c.printed or {}; table.insert(c.printed, m) end }
 	env.SlashCmdList = {}
+	-- Timers wait until the test calls c.flush(), which runs the short ones (1s or less) once.
+	c.timers = {}
+	env.C_Timer = { After = function(sec, fn) table.insert(c.timers, { sec = sec, fn = fn }) end }
+	function c.flush()
+		local due = c.timers
+		c.timers = {}
+		for _, t in ipairs(due) do
+			if t.sec <= 1 then t.fn() else table.insert(c.timers, t) end
+		end
+	end
 	c.env = env
+	if opts and opts.account then env.IwTDB = opts.account.env.IwTDB end
 
 	local ns = {}
 	for _, file in ipairs(W.TOC_FILES) do

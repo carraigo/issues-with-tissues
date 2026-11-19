@@ -21,8 +21,17 @@ end
 function UI.AddTab(title, build)
 	local tab = { title = title, build = build }
 	UI.tabs[#UI.tabs + 1] = tab
-	if window then UI.BuildTabButton(#UI.tabs) end
+	if window then UI.BuildTabButton(#UI.tabs); UI.CountTabs() end
 	return tab
+end
+
+-- Each step is guarded: a template that behaves differently on this client must not stop the
+-- other tabs from being drawn (and the error goes in /iwt bug, which a Blizzard file's error
+-- would otherwise miss).
+local function Try(what, fn, ...)
+	local ok, err = pcall(fn, ...)
+	if not ok then ns.ReportError("tab button " .. what .. ": " .. tostring(err)) end
+	return ok
 end
 
 function UI.BuildTabButton(i)
@@ -36,18 +45,37 @@ function UI.BuildTabButton(i)
 			break
 		end
 	end
-	b:SetID(i)
-	b:SetText(tab.title)
-	if i == 1 then
-		b:SetPoint("TOPLEFT", window, "BOTTOMLEFT", 8, 2)
-	else
-		b:SetPoint("LEFT", UI.tabs[i - 1].button, "RIGHT", -14, 0)
+	if not b then
+		ns.ReportError("tab button " .. tab.title .. ": no template worked")
+		return
 	end
-	b:SetScript("OnClick", function() UI.SelectTab(i) end)
-	if PanelTemplates_TabResize then PanelTemplates_TabResize(b, 0) end
 	tab.button = b
+	Try(tab.title .. " SetID", b.SetID, b, i)
+	Try(tab.title .. " SetText", b.SetText, b, tab.title)
+	b:ClearAllPoints()
+	local prev = UI.tabs[i - 1] and UI.tabs[i - 1].button
+	if prev then
+		b:SetPoint("LEFT", prev, "RIGHT", -14, 0)
+	else
+		b:SetPoint("TOPLEFT", window, "BOTTOMLEFT", 8, 2)
+	end
+	-- Size from the text instead of PanelTemplates_TabResize, whose arguments vary by client.
+	Try(tab.title .. " size", function()
+		local fs = b.GetFontString and b:GetFontString()
+		local w = fs and fs.GetStringWidth and fs:GetStringWidth() or 0
+		b:SetWidth(math.max(80, w + 40))
+	end)
+	b:SetScript("OnClick", function() UI.SelectTab(i) end)
+	b:Show()
+end
+
+-- Tell Blizzard's tab code about the buttons once they all exist: it walks every tab up to
+-- the count, so counting a tab before its button is made fails ("thisTab" is nil).
+function UI.CountTabs()
+	window.Tabs = {}
+	for i, t in ipairs(UI.tabs) do window.Tabs[i] = t.button end
 	window.numTabs = #UI.tabs
-	if PanelTemplates_SetNumTabs then PanelTemplates_SetNumTabs(window, #UI.tabs) end
+	if PanelTemplates_SetNumTabs then Try("count", PanelTemplates_SetNumTabs, window, #UI.tabs) end
 end
 
 function UI.SelectTab(i)
@@ -66,7 +94,7 @@ function UI.SelectTab(i)
 	end
 	tab.panel:Show()
 	if tab.OnShow then tab.OnShow(tab.panel) end
-	if PanelTemplates_SetTab then PanelTemplates_SetTab(window, i) end
+	if PanelTemplates_SetTab then Try("select", PanelTemplates_SetTab, window, i) end
 	UI.current = i
 end
 
@@ -94,7 +122,8 @@ function UI.Create()
 	tinsert(UISpecialFrames, "IwTMainWindow") -- Escape closes it
 	window = f
 	UI.window = f
-	for i = 1, #UI.tabs do UI.BuildTabButton(i) end
+	for i = 1, #UI.tabs do Try(UI.tabs[i].title, UI.BuildTabButton, i) end
+	UI.CountTabs()
 	return f
 end
 
