@@ -7,21 +7,83 @@ local _, ns = ...
 local Roster = ns.RegisterModule("Roster", {})
 ns.Roster = Roster
 
-Roster.members = {} -- full name ("Name-Realm") -> { rankIndex, rank, level, class, zone, online, note }
+Roster.members = {} -- character name (see ns.FullName) -> { rankIndex, rank, level, class, classFile, zone, online, note, offlineDays, rosterName }
 Roster.count, Roster.online = 0, 0
 Roster.updated = 0
 
--- "Name" or "Name-Realm" -> "Name-Realm"
-function ns.FullName(name)
-	if type(name) ~= "string" or name == "" then return nil end
-	if name:find("-", 1, true) then return name end
+-- One spelling for a character everywhere: "First Surname" (no realm).
+-- WoW: Forever characters have a first name and a surname. The roster writes a name as
+-- "First Surname-Realm" or "First-Surname"; UnitName and addon senders give only the first
+-- name, and the realm part is an internal id ("CAMWOWEU5Realm6PvP"). Guildmates can share a
+-- first name ("Sara Exe", "Sara Best"), so the key is the whole name; a bare first name is
+-- resolved through the roster when only one guildmate has it.
+local function IsRealm(s)
 	local realm = GetNormalizedRealmName and GetNormalizedRealmName()
-	if not realm or realm == "" then return name end
-	return name .. "-" .. realm
+	return s == realm or s:find("Realm", 1, true) ~= nil
 end
 
+-- Spelling only, no roster: "First Surname-Realm", "First-Surname", "First-Surname-Realm",
+-- "First-Realm", "First Surname", "First" -> "First Surname" / "First"
+function Roster.ParseName(raw)
+	if type(raw) ~= "string" then return nil end
+	raw = raw:match("^%s*(.-)%s*$")
+	if raw == "" then return nil end
+	local base, suffix = raw:match("^(.-)%-(.+)$")
+	if not base or base == "" then return raw end
+	if base:find(" ", 1, true) then return base end
+	local surname = suffix:match("^([^%-]+)%-") or suffix
+	if IsRealm(surname) then return base end
+	return base .. " " .. surname
+end
+
+function Roster.FirstName(name)
+	local key = Roster.ParseName(name)
+	return key and key:match("^(%S+)")
+end
+
+Roster.byFirst = {} -- first name -> { key, ... }
+
+function ns.FullName(name)
+	local key = Roster.ParseName(name)
+	if not key or key:find(" ", 1, true) then return key end
+	local list = Roster.byFirst[key]
+	if list and #list == 1 then return list[1] end
+	return key
+end
+
+-- This character's key. Found in the roster by GUID (exact), else by UnitFullName's surname,
+-- else as the only guildmate with our first name; remembered for the next login.
+Roster.me, Roster.meHow = nil, "not yet"
 function ns.PlayerName()
+	if Roster.me then return Roster.me end
+	if ns.char and ns.char.me and Roster.FirstName(ns.char.me) == UnitName("player") then return ns.char.me end
 	return ns.FullName(UnitName("player"))
+end
+
+local function FindMe(guids)
+	local first = UnitName and UnitName("player")
+	if not first then return end
+	local guid = UnitGUID and UnitGUID("player")
+	if guid and guids[guid] then return guids[guid], "guid" end
+	if UnitFullName then
+		local f, second = UnitFullName("player")
+		if f == first and type(second) == "string" and second ~= "" and not IsRealm(second) then
+			local key = first .. " " .. second
+			if Roster.members[key] then return key, "surname" end
+		end
+	end
+	local list = Roster.byFirst[first]
+	if list and #list == 1 then return list[1], "only one " .. first end
+	if list then return nil, #list .. " guildmates named " .. first end
+	return nil, "not in roster"
+end
+
+-- Whole days since the member was last online (0 while online or unknown).
+function Roster.OfflineDays(i, isOnline)
+	if isOnline or not GetGuildRosterLastOnline then return 0 end
+	local y, m, d, h = GetGuildRosterLastOnline(i)
+	if not y then return 0 end
+	return (y or 0) * 365 + (m or 0) * 30 + (d or 0)
 end
 
 function Roster.Scan()
@@ -32,21 +94,41 @@ function Roster.Scan()
 	end
 	local n = GetNumGuildMembers() or 0
 	if n == 0 then return end -- roster not loaded yet; keep the old copy
-	local fresh, online = {}, 0
+	local fresh, online, byFirst, guids = {}, 0, {}, {}
 	for i = 1, n do
-		local name, rank, rankIndex, level, _, zone, note, _, isOnline, _, class = GetGuildRosterInfo(i)
-		local full = ns.FullName(name)
+		local name, rank, rankIndex, level, classLocal, zone, note, _, isOnline, _, classFile,
+			_, _, _, _, _, guid = GetGuildRosterInfo(i)
+		local full = Roster.ParseName(name)
 		if full then
+			local first = full:match("^(%S+)")
+			byFirst[first] = byFirst[first] or {}
+			table.insert(byFirst[first], full)
+			if guid then guids[guid] = full end
 			fresh[full] = {
-				rankIndex = rankIndex, rank = rank, level = level, class = class,
+				rankIndex = rankIndex, rank = rank, level = level, class = classLocal, classFile = classFile,
 				zone = zone, online = isOnline and true or false, note = note,
+				offlineDays = Roster.OfflineDays(i, isOnline), rosterName = name,
 			}
 			if isOnline then online = online + 1 end
 		end
 	end
-	Roster.members, Roster.count, Roster.online = fresh, n, online
+	Roster.members, Roster.count, Roster.online, Roster.byFirst = fresh, n, online, byFirst
+	local me, how = FindMe(guids)
+	Roster.me, Roster.meHow = me, how
+	if me and ns.char then ns.char.me = me end
 	Roster.updated = ns.Now()
 	ns.Send("ROSTER_UPDATED")
+end
+
+-- The name to show: the key is already "First Surname".
+function Roster.DisplayName(key)
+	return ns.FullName(key) or key or ""
+end
+
+-- Everyone with this character's first name ("Sara" -> "Sara Exe", "Sara Best").
+function Roster.SameFirstName(name)
+	local first = Roster.FirstName(name)
+	return first and Roster.byFirst[first] or {}
 end
 
 function Roster.Get(name)
@@ -59,10 +141,18 @@ function Roster.IsMember(name)
 end
 
 -- Officers: rankIndex 0 (Guild Master) through settings.officerMaxRank (1 = Officer).
-function Roster.IsOfficer(name)
+-- strict (used for anything that arrives over comms): the game cannot tell guildmates with the
+-- same first name apart, so every one of them must be an officer.
+function Roster.IsOfficer(name, strict)
 	local m = Roster.Get(name)
 	if not m then return false end
 	local max = ns.db and ns.db.settings.officerMaxRank or 1
+	if strict then
+		for _, other in ipairs(Roster.SameFirstName(name)) do
+			local o = Roster.members[other]
+			if not o or o.rankIndex == nil or o.rankIndex > max then return false end
+		end
+	end
 	return m.rankIndex ~= nil and m.rankIndex <= max
 end
 

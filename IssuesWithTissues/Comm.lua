@@ -1,8 +1,10 @@
 -- Guild comms: hidden addon messages between guildmates' addons.
 --
--- Wire format (prefix "IWT"):
---   S<type>\t<payload>                 a whole message that fits in one packet
---   M<id>:<index>:<total>:<data>       one piece of a longer message ("<type>\t<payload>" split)
+-- Wire format (prefix "IWT"). A message body is "<sender>\t<type>\t<payload>", where sender is
+-- the sender's own "First Surname": the game only stamps the first name, and guildmates can
+-- share one. The claim is only taken when its first name matches the game's.
+--   S<body>                            a whole message that fits in one packet
+--   M<id>:<index>:<total>:<data>       one piece of a longer body
 -- Only GUILD and WHISPER are used. Every handler declares who may send it:
 --   "member"  the sender is in our guild roster (the default)
 --   "officer" the sender's rank in OUR roster is GM or Officer (ns.Roster.IsOfficer)
@@ -24,7 +26,8 @@ Comm.handlers = {}
 Comm.queue = {}
 Comm.partial = {}              -- sender .. "\1" .. id -> { total, got, parts, started }
 Comm.sendHook = nil            -- tests replace the real send with this
-local nextId = 0
+local nextId = math.random(0, 9998) -- two guildmates with one first name rarely pick the same ids
+Comm.sent = {}                 -- body -> time, to tell our own echo from someone posing as us
 
 local function RawSend(packet, distribution, target)
 	if Comm.sendHook then return Comm.sendHook(Comm.PREFIX, packet, distribution, target) end
@@ -35,9 +38,10 @@ local function RawSend(packet, distribution, target)
 	end
 end
 
--- Split "<type>\t<payload>" into packets.
+-- Split "<sender>\t<type>\t<payload>" into packets.
 function Comm.Encode(msgType, payload)
-	local body = msgType .. "\t" .. (payload or "")
+	local body = (ns.PlayerName() or "") .. "\t" .. msgType .. "\t" .. (payload or "")
+	Comm.sent[body] = ns.Now()
 	if #body + 1 <= Comm.MAX_PACKET then return { "S" .. body } end
 	nextId = (nextId % 9999) + 1
 	local id = tostring(nextId)
@@ -92,28 +96,49 @@ function Comm.Register(msgType, fn, who)
 	Comm.handlers[msgType] = { fn = fn, who = who or "member" }
 end
 
-function Comm.Allowed(who, sender, distribution)
+function Comm.Allowed(who, sender, distribution, verified)
 	if who == "any" then return true end
-	if who == "officer" then return ns.Roster.IsOfficer(sender) end
+	if who == "officer" then return ns.Roster.IsOfficer(sender, not verified) end
 	return ns.Roster.IsMember(sender)
 end
 
-local function Dispatch(sender, body, distribution)
-	local msgType, payload = body:match("^([^\t]+)\t(.*)$")
+-- Who sent it. The Forever client stamps "First Surname" (seen in game, 1.60.1): then that is
+-- the sender, whatever the message claims (verified). If the game only gave a first name, the
+-- claimed "First Surname" is taken when its first name matches (not verified).
+function Comm.Identify(rawSender, claimed)
+	local stamped = ns.Roster.ParseName(rawSender)
+	if stamped and stamped:find(" ", 1, true) then return stamped, true end
+	local first = ns.Roster.FirstName(rawSender)
+	local who = ns.Roster.ParseName(claimed)
+	if not who or ns.Roster.FirstName(who) ~= first then who = ns.FullName(rawSender) end
+	return who, false
+end
+
+local function Dispatch(rawSender, body, distribution)
+	local claimed, msgType, payload = body:match("^([^\t]*)\t([^\t]+)\t(.*)$")
 	if not msgType then return end
+	local sender, verified = Comm.Identify(rawSender, claimed)
+	if not sender then return end
+	local forged = false
+	if sender == ns.PlayerName() then
+		if Comm.sent[body] and not Comm.hearSelf then return end -- our own message coming back
+		if not Comm.sent[body] then
+			forged = true
+			ns.ReportError(string.format("comm: a %s message arrived in your name that this addon did not send", msgType))
+		end
+	end
 	local h = Comm.handlers[msgType]
 	if not h then return end
-	if not Comm.Allowed(h.who, sender, distribution) then
+	if not Comm.Allowed(h.who, sender, distribution, verified) then
 		ns.Log("comm: dropped %s from %s (not allowed)", msgType, tostring(sender))
 		return
 	end
-	ns.Measure("comm " .. msgType, h.fn, sender, payload, distribution)
+	ns.Measure("comm " .. msgType, h.fn, sender, payload, distribution, forged, verified)
 end
 
 function Comm.Receive(prefix, packet, distribution, sender)
 	if prefix ~= Comm.PREFIX or type(packet) ~= "string" then return end
-	sender = ns.FullName(sender)
-	if not sender or (sender == ns.PlayerName() and not Comm.hearSelf) then return end
+	if type(sender) ~= "string" or sender == "" then return end
 	local kind = packet:sub(1, 1)
 	if kind == "S" then
 		Dispatch(sender, packet:sub(2), distribution)
@@ -145,6 +170,9 @@ function Comm.Sweep()
 	for key, p in pairs(Comm.partial) do
 		if now - p.started > Comm.PARTIAL_TIMEOUT then Comm.partial[key] = nil end
 	end
+	for body, t in pairs(Comm.sent) do
+		if now - t > 120 then Comm.sent[body] = nil end
+	end
 end
 
 function Comm:OnLoad()
@@ -156,7 +184,14 @@ function Comm:OnLoad()
 	if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(60, Comm.Sweep) end
 end
 
-ns.On("CHAT_MSG_ADDON", function(_, prefix, packet, distribution, sender)
+ns.On("CHAT_MSG_ADDON", function(_, prefix, packet, distribution, sender, ...)
+	if prefix == Comm.PREFIX then
+		-- For the bug report: everything the game says about a sender (does Forever give more
+		-- than the first name anywhere?)
+		local extra = {}
+		for i = 1, select("#", ...) do extra[i] = tostring((select(i, ...))) end
+		Comm.lastSender = tostring(sender) .. " | " .. table.concat(extra, ", ")
+	end
 	Comm.Receive(prefix, packet, distribution, sender)
 end)
 

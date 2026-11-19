@@ -46,6 +46,17 @@ function Sync.CanWrite(name, key, by)
 	return ns.Roster.IsOfficer(by)
 end
 
+-- Records in our own name that this character never wrote: someone posed as us (or relayed a
+-- made-up record). Only records newer than this character's write log are judged, so a client
+-- whose saved data was wiped still takes its own old records back from guildmates.
+function Sync.IsForged(name, key, rec)
+	local c = ns.char
+	if not c or not c.writeLogSince or rec.by ~= ns.PlayerName() then return false end
+	if rec.rev <= c.writeLogSince then return false end
+	local mine = c.written and c.written[name .. "\1" .. key]
+	return not mine or rec.rev > mine
+end
+
 local function Serialize(name, key, r)
 	return ns.Comm.Pack(name, key, r.rev, r.by, r.deleted and "1" or "", r.data or "")
 end
@@ -61,9 +72,14 @@ end
 function Sync.Accept(name, key, rec)
 	if not Sync.sets[name] or not Sync.CanWrite(name, key, rec.by) then return false end
 	if rec.data and (rec.data:find(RS, 1, true) or rec.data:find(Comm.SEP, 1, true)) then return false end
+	if rec.rev > ns.Now() + 300 then return false end -- from the future: never let it win for good
 	local store = Store(name)
 	local old = store[key]
 	if old and old.rev >= rec.rev then return false end
+	if Sync.IsForged(name, key, rec) then
+		Sync.Heal(name, key, rec.rev)
+		return false
+	end
 	store[key] = rec
 	Sync.Trim(name)
 	ns.Send("SYNC_CHANGED", name, key, rec)
@@ -82,15 +98,24 @@ function Sync.Trim(name)
 	for i = def.max + 1, #list do store[list[i].k] = nil end
 end
 
-local function Write(name, key, data, deleted)
+local function Write(name, key, data, deleted, minRev)
 	local me = ns.PlayerName()
-	if not Sync.CanWrite(name, key, me) then return false, "not allowed" end
+	if not Sync.CanWrite(name, key, me) then
+		ns.Log("sync: %s may not write %s/%s (in roster: %s, officer: %s)", tostring(me), name, tostring(key),
+			tostring(ns.Roster.IsMember(me)), tostring(ns.Roster.IsOfficer(me)))
+		return false, "not allowed"
+	end
 	data = tostring(data or ""):gsub("[\30\31]", "")
 	local store = Store(name)
 	local old = store[key]
 	local rev = ns.Now()
 	if old and old.rev >= rev then rev = old.rev + 1 end
+	if minRev and rev <= minRev then rev = minRev + 1 end
 	local rec = { rev = rev, by = me, deleted = deleted or nil, data = deleted and "" or data }
+	if ns.char then
+		ns.char.written = ns.char.written or {}
+		ns.char.written[name .. "\1" .. key] = rev
+	end
 	store[key] = rec
 	ns.Send("SYNC_CHANGED", name, key, rec)
 	Comm.Send("SU", Serialize(name, key, rec))
@@ -98,6 +123,14 @@ local function Write(name, key, data, deleted)
 end
 
 function Sync.Set(name, key, data) return Write(name, key, data, false) end
+
+-- Put our own version back out, newer than the record someone wrote in our name.
+function Sync.Heal(name, key, theirRev)
+	local cur = Store(name)[key]
+	ns.ReportError(string.format("sync: someone wrote %s/%s in your name; your version was sent back", name, key))
+	if cur and not cur.deleted then return Write(name, key, cur.data, false, theirRev) end
+	return Write(name, key, "", true, theirRev)
+end
 function Sync.Delete(name, key) return Write(name, key, "", true) end
 
 function Sync.Get(name, key)
@@ -163,9 +196,12 @@ end
 
 Comm = ns.Comm
 
-Comm.Register("SU", function(sender, payload)
+Comm.Register("SU", function(sender, payload, _, _, verified)
 	local name, key, rec = Deserialize(payload)
 	if not name or ns.FullName(rec.by) ~= sender then return end -- a live change is the sender's own
+	-- Sender known only by first name: officer data needs every guildmate with it to be an officer.
+	local def = Sync.sets[name]
+	if not verified and def and def.writer == "officer" and not ns.Roster.IsOfficer(sender, true) then return end
 	Sync.Accept(name, key, rec)
 end)
 
@@ -214,8 +250,52 @@ Comm.Register("SR", function(sender, payload)
 end)
 
 function Sync:OnLoad()
+	ns.char.writeLogSince = ns.char.writeLogSince or ns.Now()
 	Sync.Prune()
 end
+
+-- Version 0.2 saved characters by first name alone ("Large"); now they are "Large Joseph".
+-- Once the roster is in, rename what it can resolve (a first name only one guildmate has).
+local function Up(name)
+	if type(name) ~= "string" or name == "" or name:find(" ", 1, true) then return name end
+	return ns.FullName(name)
+end
+Sync.renameKey = {
+	recipes = function(key)
+		local who, prof = key:match("^(.-)#(.*)$")
+		if who then return Up(who) .. "#" .. prof end
+		return key
+	end,
+}
+Sync.renameData = { alts = Up } -- an alt record's data is its main
+
+function Sync.MigrateNames()
+	local changed = 0
+	for name, set in pairs(ns.db.sync) do
+		local fresh = {}
+		local rk = Sync.renameKey[name] or (Sync.sets[name] and Sync.sets[name].writer == "owner" and Up)
+		local rd = Sync.renameData[name]
+		for key, rec in pairs(set.records or {}) do
+			local k = rk and rk(key) or key
+			local by = Up(rec.by)
+			local data = rd and not rec.deleted and rd(rec.data) or rec.data
+			if k ~= key or by ~= rec.by or data ~= rec.data then changed = changed + 1 end
+			rec.by, rec.data = by, data
+			if not fresh[k] or fresh[k].rev < rec.rev then fresh[k] = rec end
+		end
+		set.records = fresh
+	end
+	if changed > 0 then ns.Log("names: %d saved records now use first name and surname", changed) end
+	return changed
+end
+
+local migrated = false
+ns.Listen("ROSTER_UPDATED", function()
+	if migrated or ns.Roster.count == 0 then return end
+	migrated = true
+	Sync.MigrateNames()
+	ns.Send("SYNC_CHANGED")
+end)
 
 function Sync:OnLogin()
 	ns.After(8, Sync.Ask) -- after the roster has loaded, so rank checks work
