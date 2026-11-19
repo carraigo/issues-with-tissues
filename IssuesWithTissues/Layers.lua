@@ -271,6 +271,7 @@ local SAME_TEXT = {
 }
 
 function Layers.Refresh()
+	ns.UI.RefreshInfo()
 	if not Layers.panel or not Layers.panel:IsShown() then return end
 	local m = Layers.mine
 	if m then
@@ -323,7 +324,13 @@ local function Build(panel)
 	Layers.Refresh()
 end
 
-ns.UI.AddTabBeforeSettings("Layers", Build)
+ns.UI.AddPage("Play", "Layers", Build, { order = 20 })
+-- Your layer, at the right of Play's sub-tab row.
+ns.UI.SetInfo("Play", function()
+	local m = Layers.mine
+	if not m then return "|cff999999Your layer: target any NPC|r" end
+	return string.format("You: %s, %s", m.zone ~= "" and m.zone or "here", Layers.Label(m.map, m.id))
+end)
 ns.Settings.AddToggle("hopRequests", "Let guildmates ask me for a layer-hop invite")
 ns.Listen("ROSTER_UPDATED", function() Layers.Refresh() end)
 

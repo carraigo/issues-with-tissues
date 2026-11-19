@@ -1,4 +1,4 @@
--- The General tab (first): a short overview of the guild, this character and its main, and
+-- The Home tab (first): a short overview of the guild, this character and its main, and
 -- this character's professions with a button that scans their recipe lists.
 
 local _, ns = ...
@@ -60,6 +60,14 @@ function General.Facts()
 	local c = 0
 	for _ in pairs(crafters) do c = c + 1 end
 	f.guildCrafters, f.guildRecipes = c, recipes
+	f.kills = ns.Kills.Totals()
+	-- What's on (Guild life)
+	f.nextEvent = ns.Calendar.Upcoming()[1]
+	f.openPolls, f.firstPoll = ns.Polls.OpenCount()
+	f.donations = ns.Donations.Progress()
+	-- Honorable kills are of the other faction.
+	local faction = UnitFactionGroup and UnitFactionGroup("player")
+	f.enemyFaction = faction == "Alliance" and "Horde" or faction == "Horde" and "Alliance" or "Enemy player"
 	return f
 end
 
@@ -95,13 +103,15 @@ end
 function General.Refresh()
 	if not General.panel or not General.panel:IsShown() then return end
 	local f = General.Facts()
+	texts.guildTitle:SetText(f.guild or "No guild")
 	texts.guild:SetText(table.concat({
-		(f.guild or "No guild"),
 		string.format("%d characters, %d players (alts counted once)", f.members, f.players),
 		string.format("|cff40ff40%d online now|r", f.online),
 		string.format("%d away 30 days or more", f.away30),
 		string.format("%d using Issues with Tissues this session", f.addonUsers),
-		string.format("%d recipes shared by %d crafters", f.guildRecipes, f.guildCrafters),
+		string.format("|cffff9050Enemy Kills: %s|r", ns.Kills.Format(f.kills.mobs)),
+		string.format("|cffff9050%s Kills: %s|r", f.enemyFaction, ns.Kills.Format(f.kills.hk)),
+		string.format("|cff999999(added up from %d characters using the addon)|r", f.kills.chars),
 	}, "\n"))
 
 	local lines = { f.me .. (f.rank and ("  |cff999999" .. f.rank .. "|r") or "") }
@@ -121,6 +131,13 @@ function General.Refresh()
 		mainButton:SetText("Set as my main")
 		mainButton:Enable()
 	end
+
+	local e = f.nextEvent
+	texts.event:SetText(e and (e.title .. "\n|cff999999" .. ns.Calendar.When(e.time) .. ", " .. e.signups.count .. " coming|r")
+		or "|cff999999Nothing planned|r")
+	texts.polls:SetText(f.openPolls > 0 and (f.firstPoll.question .. (f.openPolls > 1 and
+		("\n|cff999999and " .. (f.openPolls - 1) .. " more|r") or "")) or "|cff999999No open polls|r")
+	texts.donations:SetText(f.donations.title .. "\n|cff999999" .. ns.Donations.ProgressText(f.donations) .. "|r")
 
 	local pl = {}
 	for _, p in ipairs(f.profs) do
@@ -144,36 +161,62 @@ end
 
 local function Build(panel)
 	General.panel = panel
-	Section(panel, 4, -4, "The guild")
-	texts.guild = Body(panel, 4, -24, 290)
+	-- Three cards, as in the layout mock-up.
+	ns.UI.Card(panel, 0, 0, 300, 146)
+	ns.UI.Card(panel, 308, 0, 308, 146)
+	ns.UI.Card(panel, 0, -156, 616, 170)
 
-	Section(panel, 310, -4, "This character")
-	texts.me = Body(panel, 310, -24, 290)
-	mainButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	texts.guildTitle = Section(panel, 12, -10, "Issues with Tissues")
+	texts.guild = Body(panel, 12, -30, 280)
+
+	Section(panel, 320, -10, "This character")
+	texts.me = Body(panel, 320, -30, 284)
+	mainButton = ns.UI.Button(panel)
 	mainButton:SetSize(140, 24)
-	mainButton:SetPoint("TOPLEFT", 310, -96)
+	mainButton:SetPoint("TOPLEFT", 320, -108)
 	mainButton:SetScript("OnClick", function() ns.Alts.SetMain(); General.Refresh() end)
 
-	Section(panel, 4, -150, "Your professions")
-	texts.profs = Body(panel, 4, -170, 400)
-	scanButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	scanButton:SetSize(180, 24)
+	Section(panel, 12, -166, "Your professions")
+	texts.profs = Body(panel, 12, -186, 390)
+	scanButton = ns.UI.Button(panel, nil, nil, nil, "primary")
+	scanButton:SetSize(180, 26)
 	scanButton:SetPoint("TOPLEFT", 420, -166)
 	scanButton:SetScript("OnClick", function() ns.Professions.Scan(); General.Refresh() end)
 	scanHint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	scanHint:SetPoint("TOPLEFT", 420, -196)
-	scanHint:SetWidth(190)
+	scanHint:SetPoint("TOPLEFT", 420, -200)
+	scanHint:SetWidth(184)
 	scanHint:SetJustifyH("LEFT")
 	scanHint:SetText(HINT)
+
+	-- What's on: the next event, open polls and the donation goal (Guild life tab).
+	ns.UI.Card(panel, 0, -334, 616, 100)
+	Section(panel, 12, -342, "What's on")
+	local function Column(x, title)
+		local t = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		t:SetPoint("TOPLEFT", x, -362)
+		t:SetText(title)
+		t:SetTextColor(0.65, 0.61, 0.54)
+		local body = Body(panel, x, -376, 184)
+		local open = CreateFrame("Button", nil, panel)
+		open:SetPoint("TOPLEFT", x - 4, -358)
+		open:SetSize(196, 70)
+		open:SetScript("OnClick", function() ns.UI.Open(title == "Next event" and "Calendar" or title == "Open polls" and "Polls" or "Donations") end)
+		local hl = ns.UI.Fill(open:CreateTexture(nil, "HIGHLIGHT"), ns.UI.COLORS.hover)
+		hl:SetAllPoints()
+		return body
+	end
+	texts.event = Column(12, "Next event")
+	texts.polls = Column(212, "Open polls")
+	texts.donations = Column(412, "Donation goal")
 
 	panel:SetScript("OnShow", General.Refresh)
 	General.Refresh()
 end
 
--- First tab.
-table.insert(ns.UI.tabs, 1, { title = "General", build = Build })
+ns.UI.AddPage("Home", "Home", Build)
 
 ns.Listen("ROSTER_UPDATED", function() General.Refresh() end)
 ns.Listen("SYNC_CHANGED", function() General.Refresh() end)
 ns.Listen("SCAN_CHANGED", function() General.Refresh() end)
 ns.Listen("VERSION_SEEN", function() General.Refresh() end)
+ns.Listen("GUILD_LIFE_CHANGED", function() General.Refresh() end)

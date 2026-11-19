@@ -62,7 +62,8 @@ if blocked then
 	for _, e in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do pcall(blocked.RegisterEvent, blocked, e) end
 	blocked:SetScript("OnEvent", function(_, event, addon, func)
 		if addon == "IssuesWithTissues" then
-			ns.ReportError(string.format("%s: the game blocked %s()", event, tostring(func)))
+			local extra = ns.registering and (" while registering " .. ns.registering) or ""
+			ns.ReportError(string.format("%s: the game blocked %s()%s", event, tostring(func), extra))
 		end
 	end)
 end
@@ -122,7 +123,13 @@ function Diag.BuildReport()
 		.. ", ToggleProfessionsBook=" .. type(ToggleProfessionsBook))
 	add("APIs: GetProfessions=" .. type(GetProfessions) .. " GetSkillLineInfo=" .. type(GetSkillLineInfo)
 		.. " C_TradeSkillUI=" .. type(C_TradeSkillUI)
-		.. " GetBaseProfessionInfo=" .. type(C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo))
+		.. " GetBaseProfessionInfo=" .. type(C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo)
+		.. " GetPVPLifetimeStats=" .. type(GetPVPLifetimeStats) .. " GetStatistic=" .. type(GetStatistic)
+		.. " DepositGuildBankMoney=" .. type(DepositGuildBankMoney) .. " GetGuildBankMoney=" .. type(GetGuildBankMoney))
+	if ns.Kills then
+		local mobs, source = ns.Kills.Creatures()
+		add(string.format("Kills: %d honorable, %d creatures (%s)", ns.Kills.Honor(), mobs, source))
+	end
 	if ns.Sync and ns.db then
 		local counts = {}
 		for name, set in pairs(ns.db.sync) do
@@ -142,7 +149,8 @@ function Diag.BuildReport()
 	add("")
 	add(string.format("Errors (%d):", #db.errors))
 	for i, e in ipairs(db.errors) do
-		add(string.format("%d. [x%d] %s", i, e.count or 1, e.text))
+		local when = e.last and date("%Y-%m-%d %H:%M", e.last) or "?"
+		add(string.format("%d. [x%d, last %s] %s", i, e.count or 1, when, e.text))
 		if e.stack and e.stack ~= "" then add(e.stack) end
 	end
 	add("")

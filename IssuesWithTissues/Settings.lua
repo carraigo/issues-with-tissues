@@ -62,7 +62,7 @@ local function Build(panel)
 	}
 	local x = 0
 	for _, t in ipairs(tools) do
-		local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		local b = ns.UI.Button(panel)
 		b:SetSize(130, 24)
 		b:SetPoint("TOPLEFT", x, y)
 		b:SetText(t[1])
@@ -75,6 +75,6 @@ local function Build(panel)
 	version:SetText("Issues with Tissues " .. ns.VERSION)
 end
 
-ns.UI.AddTab("Settings", Build)
+ns.UI.SetSettings(Build)
 
 ns.RegisterCommand("settings", "open the settings", function() ns.UI.Open("Settings") end)

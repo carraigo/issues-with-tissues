@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "0.3.0"
+ns.VERSION = "0.4.0"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
@@ -62,7 +62,9 @@ ns.eventFrame = frame
 function ns.On(event, fn)
 	if not listeners[event] then
 		listeners[event] = {}
+		ns.registering = event -- named in /iwt bug if the game blocks it
 		frame:RegisterEvent(event)
+		ns.registering = nil
 	end
 	table.insert(listeners[event], fn)
 end
