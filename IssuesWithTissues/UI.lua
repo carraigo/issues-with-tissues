@@ -146,6 +146,151 @@ function UI.Open(title)
 	UI.SelectTab(UI.current or 1)
 end
 
+-- A tab that goes before Settings (which stays last).
+function UI.AddTabBeforeSettings(title, build)
+	local at = #UI.tabs + 1
+	for i, t in ipairs(UI.tabs) do if t.title == "Settings" then at = i end end
+	local tab = { title = title, build = build }
+	table.insert(UI.tabs, at, tab)
+	return tab
+end
+
+---------------------------------------------------------------------------
+-- A scrolling list with column titles, shared by the boards.
+--   local list = UI.CreateList(panel, { top = -60, rows = 15, columns = { {key, label, width}, ... },
+--       onClick = fn(row, button), onEnter = fn(line, row) })
+--   list:SetRows(rows, function(row, key) return text, r, g, b end)
+---------------------------------------------------------------------------
+function UI.CreateList(panel, opts)
+	local list = { rows = {}, offset = 0, lines = {}, titles = {} }
+	local ROW_H = opts.rowHeight or 18
+	local x = 4
+	for c, col in ipairs(opts.columns) do
+		local t = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		t:SetPoint("TOPLEFT", x, opts.top)
+		t:SetText(col.label)
+		list.titles[c] = t
+		x = x + col.width
+	end
+	for i = 1, opts.rows do
+		local line = CreateFrame("Button", nil, panel)
+		line:SetSize(606, ROW_H)
+		line:SetPoint("TOPLEFT", 4, opts.top - 18 - (i - 1) * ROW_H)
+		line.cells = {}
+		local cx = 0
+		for c, col in ipairs(opts.columns) do
+			local fs = line:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			fs:SetPoint("LEFT", cx, 0)
+			fs:SetWidth(col.width - 4)
+			fs:SetJustifyH("LEFT")
+			fs:SetWordWrap(false)
+			line.cells[c] = fs
+			cx = cx + col.width
+		end
+		line:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+		line:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		line:SetScript("OnClick", function(self, button)
+			if self.row and opts.onClick then opts.onClick(self.row, button) end
+		end)
+		line:SetScript("OnEnter", function(self)
+			if not self.row or not opts.onEnter then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			opts.onEnter(self, self.row)
+			GameTooltip:Show()
+		end)
+		line:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		line:Hide()
+		list.lines[i] = line
+	end
+	panel:EnableMouseWheel(true)
+	panel:SetScript("OnMouseWheel", function(_, delta)
+		list.offset = math.max(0, list.offset - delta * 3)
+		list:Draw()
+	end)
+	function list:SetRows(rows, cell)
+		self.rows, self.cell = rows, cell
+		self:Draw()
+	end
+	function list:Draw()
+		local maxOffset = math.max(0, #self.rows - opts.rows)
+		if self.offset > maxOffset then self.offset = maxOffset end
+		for i, line in ipairs(self.lines) do
+			local row = self.rows[i + self.offset]
+			line.row = row
+			if row then
+				for c, col in ipairs(opts.columns) do
+					local text, r, g, b = self.cell(row, col.key)
+					line.cells[c]:SetText(text or "")
+					line.cells[c]:SetTextColor(r or 1, g or 1, b or 1)
+				end
+				line:Show()
+			else
+				line:Hide()
+			end
+		end
+	end
+	return list
+end
+
+-- A one-line text box with a grey hint while empty.
+function UI.CreateInput(panel, width, hint)
+	local box = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+	box:SetSize(width, 20)
+	box:SetAutoFocus(false)
+	box:SetMaxLetters(80)
+	local h = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	h:SetPoint("LEFT", 4, 0)
+	h:SetText(hint or "")
+	local function Update() h:SetShown((box:GetText() or "") == "" and not box:HasFocus()) end
+	box:SetScript("OnEditFocusGained", Update)
+	box:SetScript("OnEditFocusLost", Update)
+	box:SetScript("OnTextChanged", function(self, user)
+		Update()
+		if self.onChange then self.onChange(self:GetText() or "", user) end
+	end)
+	box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	box:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+		if self.onEnter then self.onEnter(self:GetText() or "") end
+	end)
+	return box
+end
+
+-- Open a whisper to a guildmate ("First Surname").
+function UI.Whisper(key)
+	local target = ns.Roster.DisplayName(key)
+	if not target or target == "" then return end
+	if ChatFrame_SendTell then
+		ChatFrame_SendTell(target)
+	elseif ChatFrame_OpenChat then
+		ChatFrame_OpenChat("/w " .. target .. " ")
+	end
+	return target
+end
+
+-- Invite a guildmate to your group.
+function UI.Invite(key)
+	local target = ns.Roster.DisplayName(key)
+	if not target or target == "" then return end
+	local fn = (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
+	if fn then pcall(fn, target) end
+	return target
+end
+
+function UI.ClassColor(token)
+	local c = RAID_CLASS_COLORS and token and RAID_CLASS_COLORS[token]
+	if c then return c.r, c.g, c.b end
+	return 1, 1, 1
+end
+
+-- "5m", "2h"
+function UI.Ago(seconds)
+	seconds = math.max(0, seconds or 0)
+	if seconds < 60 then return "now" end
+	if seconds < 3600 then return math.floor(seconds / 60) .. "m" end
+	return math.floor(seconds / 3600) .. "h"
+end
+
 ---------------------------------------------------------------------------
 -- Copy box: a scrolling, selectable text for reports.
 ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "0.2.0"
+ns.VERSION = "0.3.0"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
@@ -15,6 +15,8 @@ ns.DEFAULTS = {
 		sounds = true,
 		officerMaxRank = 1,    -- rankIndex 0 = Guild Master, 1 = Officer (game ranks 1 and 2)
 		debug = false,
+		lfgAlerts = true,      -- chat line (and sound) when a guildmate posts on the Groups board
+		hopRequests = true,    -- let guildmates ask you for a layer-hop invite
 	},
 	minimapAngle = 220,
 	errors = {},               -- Diagnostics
