@@ -17,12 +17,17 @@ Copy the `IssuesWithTissues` folder into your game's `Interface\AddOns` folder, 
 | `/iwt roster` | open the roster |
 | `/iwt inactive 7\|14\|30` | members away that many days or more (alts counted once) |
 | `/iwt alt add Name` · `/iwt alt remove Name` · `/iwt alt` | link an alt (then log on to it and say yes), unlink it, or list your links |
-| `/iwt craft <name>` | who in the guild can make an item |
+| `/iwt craft <name>` | who in the guild can make an item (the Crafters tab does the same) |
+| `/iwt lfg note` · `/iwt lfg off` | post on the Groups board ("need a group", dungeon, 1 hour), or take it down |
+| `/iwt layer` | your layer and the guildmates' layers the addon knows |
+| `/iwt hop Name` | ask a guildmate for a layer-hop invite |
 | `/iwt version` | the addon version |
 
 The minimap button opens the window (right-click opens the settings), and there's a **Tissues** button on the guild window.
 
 The window opens on the General tab: a short overview of the guild, this character and its main (with a "Set as my main" button), and your professions.
+
+Tabs: **General**, **Roster**, **Groups** (post what you're looking for; right-click a post to whisper, Shift-click to invite), **Crafters** (search who can make an item), **Layers** (your layer from any NPC you target or mouse over, guildmates' layers, click one to ask for a hop invite), **Settings**.
 
 Professions: your skill levels are shared at login. Recipes are read whenever a profession window is shown. Press "Scan my recipes" on the General tab, open your professions and click each profession tab on the right of that window; the General tab ticks them off. The game does not let addons open the profession window themselves.
 
@@ -46,8 +51,8 @@ GitHub Actions runs them on every push and pull request.
 ## Roadmap
 
 1. Foundation: window, settings, guild comms, sync, bug report, profiler
-2. Roster: roster tab, inactive filters, alt links, professions (this release)
-3. Groups: LFG board, crafters board, layer hop
+2. Roster: roster tab, inactive filters, alt links, professions, General tab
+3. Groups: LFG board, crafters board, layer hop (this release)
 4. Guild life: calendar, polls, donations
 5. Loot notes, self-test, CurseForge release
 

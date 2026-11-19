@@ -388,8 +388,9 @@ end)
 
 test("roster tab shows in the window before Settings", function()
 	local c = W.NewClient(base, "Mem", Guild2())
-	eq(c.ns.UI.tabs[1].title, "General")
-	eq(c.ns.UI.tabs[2].title, "Roster")
+	local order = {}
+	for i, t in ipairs(c.ns.UI.tabs) do order[i] = t.title end
+	eq(table.concat(order, ","), "General,Roster,Groups,Crafters,Layers,Settings")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -705,6 +706,110 @@ test("same first name: when the game stamps the surname, that is the sender", fu
 	-- a verified officer is an officer, even with a non-officer namesake
 	eq(gm.ns.Comm.Allowed("officer", "Sara Exe", "GUILD", true), true)
 	eq(gm.ns.Comm.Allowed("officer", "Sara Exe", "GUILD", false), false)
+end)
+
+test("groups board: a post reaches the guild, ends on time and can be taken down", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Away", 3, false, 2 } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	assert(mem.ns.LFG.Post("need", "Dungeon", 60, "Deadmines, tank |cffff0000red|r"))
+	local posts = gm.ns.LFG.Posts()
+	eq(#posts, 1); eq(posts[1].who, "Mem"); eq(posts[1].activity, "Dungeon")
+	eq(posts[1].note, "Deadmines, tank cffff0000redr", "no colour codes from others")
+	local said = table.concat(gm.printed or {}, "\n")
+	assert(said:find("Deadmines", 1, true), "a chat line about the new post")
+	W.now = W.now + 61 * 60
+	eq(#gm.ns.LFG.Posts(), 0, "expired")
+	W.now = W.now - 61 * 60
+	assert(mem.ns.LFG.Clear())
+	eq(#gm.ns.LFG.Posts(), 0, "taken down")
+	-- an offline guildmate's post is hidden; nobody can post for someone else
+	gm.ns.Sync.Accept("lfg", "Away", { rev = W.now, by = "Away", data = gm.ns.LFG.Encode("need", "Raid", W.now + 600, "x") })
+	eq(#gm.ns.LFG.Posts(), 0)
+	mem.ns.Comm.Send("SU", mem.ns.Comm.Pack("lfg", "Gm", W.now, "Mem", "", gm.ns.LFG.Encode("need", "Raid", W.now + 600, "fake")))
+	eq(gm.ns.Sync.Get("lfg", "Gm"), nil)
+	mem.ns.HandleSlash("lfg Stockades")
+	eq(gm.ns.LFG.Posts()[1].note, "Stockades")
+	mem.ns.HandleSlash("lfg off")
+	eq(#gm.ns.LFG.Posts(), 0)
+end)
+
+test("crafters board: search shows crafters online first, empty search lists by profession", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Off", 3, false, 1 } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local off = W.NewClient(base, "Off", g)
+	local gm = W.NewClient(base, "Gm", g)
+	mem.skills = { { "Tailoring", 120, 150 } }; mem.ns.Professions.UpdateSkills()
+	off.skills = { { "Tailoring", 200, 225 } }; off.ns.Professions.UpdateSkills()
+	mem.tradeSkill = { name = "Tailoring", recipes = { { 1, "Bolt of Linen Cloth", 2996 } } }
+	mem.ns.Professions.ReadOpenWindow(false)
+	off.tradeSkill = { name = "Tailoring", recipes = { { 1, "Bolt of Linen Cloth", 2996 }, { 2, "Linen Bag", 4238 } } }
+	off.ns.Professions.ReadOpenWindow(false)
+	local C = gm.ns.CraftersTab
+	local rows = C.Search("linen")
+	eq(#rows, 3)
+	eq(rows[1].name, "Bolt of Linen Cloth"); eq(rows[1].who, "Mem", "online crafter first"); eq(rows[1].rank, 120)
+	eq(rows[2].who, "Off")
+	eq(#C.Search("linen", true), 1, "online only")
+	local byProf = C.ByProfession()
+	eq(byProf[1].who, "Off", "highest skill first"); eq(byProf[1].recipes, 2)
+	gm.ns.UI.Open("Crafters")
+	eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("layers: an NPC's GUID gives the layer, guildmates share it and get numbered", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	local L = mem.ns.Layers
+	eq(L.FromGUID("Creature-0-5250-0-1458-6491-00001A2B3C"), 1458)
+	eq(L.FromGUID("Player-5250-0ABCDEF0"), nil)
+	eq(L.FromGUID("Pet-0-5250-0-1458-416-0100A2B3C4"), nil)
+	mem.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1458-6491-00001A2B3C" end end
+	mem.env.__fire("PLAYER_TARGET_CHANGED")
+	eq(L.mine.id, 1458)
+	gm.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1012-6491-00001A2B3C" end end
+	gm.env.__fire("PLAYER_TARGET_CHANGED")
+	local rows = L.Guildmates()
+	eq(#rows, 1); eq(rows[1].who, "Gm"); eq(rows[1].same, "other")
+	eq(rows[1].label, "Layer 1", "1012 sorts before 1458"); eq(L.Label(0, 1458), "Layer 2")
+	-- a guildmate logging in later asks and hears back
+	local late = W.NewClient(base, "Vet", g)
+	late.ns.Comm.Send("LAYERQ", "")
+	eq(#late.ns.Layers.Guildmates(), 2)
+end)
+
+test("layer hop: ask, the guildmate invites, and after the hop you can leave", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	local invited, left
+	gm.env.C_PartyInfo = { InviteUnit = function(n) invited = n end }
+	mem.env.C_PartyInfo = { LeaveParty = function() left = true end }
+	mem.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1458-6491-00001A2B3C" end end
+	mem.env.__fire("PLAYER_TARGET_CHANGED")
+	assert(mem.ns.Layers.AskHop("Gm"))
+	eq(gm.popups[#gm.popups].which, "IWT_HOP"); eq(gm.popups[#gm.popups].arg, "Mem")
+	assert(gm.ns.Layers.AnswerHop(true))
+	eq(invited, "Mem")
+	-- the hop happens: a new id on the same map
+	mem.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1012-6491-00001A2B3C" end end
+	mem.env.__fire("PLAYER_TARGET_CHANGED")
+	eq(mem.popups[#mem.popups].which, "IWT_HOP_DONE")
+	mem.env.StaticPopupDialogs.IWT_HOP_DONE.OnAccept()
+	eq(left, true)
+	-- requests can be turned off
+	gm.env.IwTDB.settings.hopRequests = false
+	local before = #gm.popups
+	mem.ns.Layers.AskHop("Gm")
+	eq(#gm.popups, before)
+	eq(mem.ns.Layers.hop, nil, "told it is off")
+end)
+
+test("every tab builds without errors", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	for _, t in ipairs(c.ns.UI.tabs) do c.ns.UI.Open(t.title) end
+	eq(#c.env.IwTDB.errors, 0)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))
