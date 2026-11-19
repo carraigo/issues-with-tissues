@@ -1,0 +1,28 @@
+# Changelog
+
+## 0.5.0
+
+- Guild life > Loot notes: officers note who received which item (shift-click the item in), with a note. Everyone can read and search them. Notes only: no points or priorities.
+- `/iwt selftest` (and a Self-test button in Settings): checks the addon works on this client and shows a copyable list.
+- Crafters: with no search, professions are a list you open and close, with their crafters underneath.
+- Release packaging: a tagged push builds the addon zip and attaches it to a GitHub release.
+
+## 0.4.0
+
+- Four tabs: Home, Members (Roster, Crafters), Play (Groups, Layers), Guild life. Settings moved behind the cog.
+- New flat, dark look with gold edges.
+- Guild kill totals on Home (Enemy Kills and honorable kills, from everyone running the addon).
+- Guild life: Calendar (events and sign-ups), Polls (one vote per player), Donations (officer-set goal, guild bank deposits noted automatically).
+- Home: "What's on" box.
+
+## 0.3.0
+
+- Groups board (LFG), Crafters board, layers and layer-hop requests.
+
+## 0.2.0
+
+- Roster tab with filters, alt links, professions and recipe sharing, General (now Home) tab.
+
+## 0.1.0
+
+- Window, settings, guild comms, shared data sync, bug report and profiler.

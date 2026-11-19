@@ -69,6 +69,33 @@ function Crafters.ByProfession(onlineOnly)
 	return rows
 end
 
+-- No search, as a tree: a row per profession (click to open or close it), and under an open
+-- one its crafters. Which professions are open is remembered.
+function Crafters.IsOpen(profession)
+	local open = ns.db.window and ns.db.window.craftersOpen
+	return open and open[profession] or false
+end
+
+function Crafters.Toggle(profession)
+	ns.db.window = ns.db.window or {}
+	ns.db.window.craftersOpen = ns.db.window.craftersOpen or {}
+	ns.db.window.craftersOpen[profession] = not Crafters.IsOpen(profession) or nil
+end
+
+function Crafters.Tree(onlineOnly)
+	local rows, header = {}, nil
+	for _, r in ipairs(Crafters.ByProfession(onlineOnly)) do
+		if not header or header.profession ~= r.profession then
+			header = { header = true, profession = r.profession, crafters = 0, online = 0, open = Crafters.IsOpen(r.profession) }
+			rows[#rows + 1] = header
+		end
+		header.crafters = header.crafters + 1
+		if r.online then header.online = header.online + 1 end
+		if header.open then rows[#rows + 1] = r end
+	end
+	return rows
+end
+
 ---------------------------------------------------------------------------
 -- The tab
 ---------------------------------------------------------------------------
@@ -87,11 +114,25 @@ function Crafters.Refresh()
 	if not Crafters.panel or not Crafters.panel:IsShown() then return end
 	local s = Crafters.state
 	local searching = s.search ~= ""
-	local rows = searching and Crafters.Search(s.search, s.onlineOnly) or Crafters.ByProfession(s.onlineOnly)
-	local titles = searching and { "Item", "Crafter", "Profession", "Skill" } or { "Profession", "Crafter", "Skill", "Recipes shared" }
+	local rows = searching and Crafters.Search(s.search, s.onlineOnly) or Crafters.Tree(s.onlineOnly)
+	local titles = searching and { "Item", "Crafter", "Profession", "Skill" } or { "Profession", "", "Skill", "Recipes shared" }
 	for i, t in ipairs(titles) do list.titles[i]:SetText(t) end
 	list:SetRows(rows, function(r, key)
+		if r.header then
+			if key == "c1" then return (r.open and "[-] " or "[+] ") .. r.profession, 0.96, 0.82, 0.48 end
+			if key == "who" then
+				return string.format("%d crafter%s, %d online", r.crafters, r.crafters == 1 and "" or "s", r.online), 0.7, 0.7, 0.7
+			end
+			return ""
+		end
 		local shade = r.online and 1 or GREY
+		if not searching and key == "c1" then
+			local m = ns.Roster.Get(r.who)
+			local cr, cg, cb = ns.UI.ClassColor(m and m.classFile)
+			if not r.online then cr, cg, cb = cr * GREY, cg * GREY, cb * GREY end
+			return "      " .. ns.Roster.DisplayName(r.who), cr, cg, cb
+		end
+		if not searching and key == "who" then return r.online and "online" or "offline", shade, shade, shade end
 		if key == "who" then
 			local m = ns.Roster.Get(r.who)
 			local cr, cg, cb = ns.UI.ClassColor(m and m.classFile)
@@ -103,18 +144,17 @@ function Crafters.Refresh()
 			if key == "c3" then return r.profession, shade, shade, shade end
 			if key == "c4" then return r.rank and tostring(r.rank) or "", shade, shade, shade end
 		else
-			if key == "c1" then return r.profession, shade, shade, shade end
 			if key == "c3" then return string.format("%d/%d", r.rank, r.max), shade, shade, shade end
 			if key == "c4" then return r.recipes and tostring(r.recipes) or "not scanned", shade, shade, shade end
 		end
 	end)
 	local online = 0
-	for _, r in ipairs(rows) do if r.online then online = online + 1 end end
+	for _, r in ipairs(rows) do if r.online == true then online = online + 1 end end
 	if searching then
 		status:SetText(#rows == 0 and ("Nobody has shared a recipe matching \"" .. s.search .. "\".")
 			or string.format("%d matches, %d with the crafter online. Right-click to whisper.", #rows, online))
 	else
-		status:SetText("Type part of an item name to search. Recipes come from guildmates' Scan my recipes. Right-click to whisper.")
+		status:SetText("Click a profession to open it. Type part of an item name to search. Right-click a crafter to whisper.")
 	end
 end
 
@@ -139,8 +179,20 @@ local function Build(panel)
 
 	list = ns.UI.CreateList(panel, {
 		top = -30, rows = 16, columns = COLUMNS,
-		onClick = function(r, button) if button == "RightButton" then ns.UI.Whisper(r.who) end end,
+		onClick = function(r, button)
+			if r.header then
+				Crafters.Toggle(r.profession)
+				Crafters.Refresh()
+			elseif button == "RightButton" then
+				ns.UI.Whisper(r.who)
+			end
+		end,
 		onEnter = function(line, r)
+			if r.header then
+				GameTooltip:AddLine(r.profession)
+				GameTooltip:AddLine(r.open and "Click to close" or "Click to see its crafters", 0.7, 0.7, 0.7)
+				return
+			end
 			if r.item and r.item > 0 and GameTooltip.SetItemByID then
 				if pcall(GameTooltip.SetItemByID, GameTooltip, r.item) then
 					GameTooltip:AddLine(" ")

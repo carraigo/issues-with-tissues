@@ -21,6 +21,7 @@ Copy the `IssuesWithTissues` folder into your game's `Interface\AddOns` folder, 
 | `/iwt lfg note` · `/iwt lfg off` | post on the Groups board ("need a group", dungeon, 1 hour), or take it down |
 | `/iwt layer` | your layer and the guildmates' layers the addon knows |
 | `/iwt hop Name` | ask a guildmate for a layer-hop invite |
+| `/iwt selftest` | check the addon works on this client (also a button in Settings) |
 | `/iwt version` | the addon version |
 
 The minimap button opens the window (right-click opens the settings), and there's a **Tissues** button on the guild window.
@@ -30,7 +31,7 @@ The window has four tabs along the bottom, each with sub-tabs at the top, and Se
 - **Home**: the guild at a glance (including the guild's total Enemy Kills and honorable kills, added up from everyone running the addon), this character and its main (with a "Set as my main" button), and your professions.
 - **Members**: **Roster** (filters, alts grouped under their main) and **Crafters** (search who can make an item).
 - **Play**: **Groups** (post what you're looking for; right-click a post to whisper, Shift-click to invite) and **Layers** (your layer from any NPC you target or mouse over, guildmates' layers, click one to ask for a hop invite). Your layer shows at the right of the sub-tabs.
-- **Guild life**: **Calendar** (officers add events; everyone signs up as tank, healer, damage, maybe or can't come), **Polls** (officers ask; one vote per player, alts counted once; votes can be changed until the poll closes) and **Donations** (a goal officers set and can edit, starting with the guild bank; gold you put into the guild bank is noted automatically). Home's "What's on" box shows the next event, open polls and the donation goal; click one to jump there.
+- **Guild life**: **Calendar** (officers add events; everyone signs up as tank, healer, damage, maybe or can't come), **Polls** (officers ask; one vote per player, alts counted once; votes can be changed until the poll closes) and **Donations** (a goal officers set and can edit, starting with the guild bank; gold you put into the guild bank is noted automatically). **Loot notes** (officers note who got which item: shift-click the item into the box; everyone can search; notes only, no points). Home's "What's on" box shows the next event, open polls and the donation goal; click one to jump there.
 
 Professions: your skill levels are shared at login. Recipes are read whenever a profession window is shown. Press "Scan my recipes" on the Home tab, open your professions and click each profession tab on the right of that window; the Home tab ticks them off. The game does not let addons open the profession window themselves.
 
@@ -51,13 +52,21 @@ luajit tests/run.lua
 
 GitHub Actions runs them on every push and pull request.
 
+## Releasing
+
+1. Put the new version in `IssuesWithTissues/IssuesWithTissues.toc` (`## Version:`) and `IssuesWithTissues/Core.lua` (`ns.VERSION`), and add a section to `CHANGELOG.md`.
+2. Tag the commit (`v0.5.0`) and push the tag. The release workflow runs the tests, checks the version matches the tag, zips the `IssuesWithTissues` folder and attaches it to a GitHub release with that version's changelog.
+3. To publish on CurseForge, upload that zip on the project's page.
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## Roadmap
 
 1. Foundation: window, settings, guild comms, sync, bug report, profiler
 2. Roster: roster tab, inactive filters, alt links, professions, General tab
 3. Groups: LFG board, crafters board, layer hop
-4. Four-tab layout; Guild life: calendar, polls, donations (this release)
-5. Loot notes, self-test, CurseForge release
+4. Four-tab layout; Guild life: calendar, polls, donations
+5. Loot notes, self-test, release packaging (this release)
 
 ## Names
 

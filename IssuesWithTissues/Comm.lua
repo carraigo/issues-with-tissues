@@ -28,6 +28,7 @@ Comm.partial = {}              -- sender .. "\1" .. id -> { total, got, parts, s
 Comm.sendHook = nil            -- tests replace the real send with this
 local nextId = math.random(0, 9998) -- two guildmates with one first name rarely pick the same ids
 Comm.sent = {}                 -- body -> time, to tell our own echo from someone posing as us
+Comm.echoes = {}               -- message type -> when our own copy last came back
 
 local function RawSend(packet, distribution, target)
 	if Comm.sendHook then return Comm.sendHook(Comm.PREFIX, packet, distribution, target) end
@@ -121,6 +122,7 @@ local function Dispatch(rawSender, body, distribution)
 	if not sender then return end
 	local forged = false
 	if sender == ns.PlayerName() then
+		if Comm.sent[body] then Comm.echoes[msgType] = ns.Now() end -- the self-test looks for these
 		if Comm.sent[body] and not Comm.hearSelf then return end -- our own message coming back
 		if not Comm.sent[body] then
 			forged = true
