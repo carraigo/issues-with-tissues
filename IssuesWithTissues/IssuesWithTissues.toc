@@ -1,0 +1,16 @@
+## Interface: 16001, 16002, 16003, 16004, 16005, 16010, 16100
+## Title: |cff7fd4ffIssues with Tissues|r
+## Notes: Guild tools for Issues with Tissues on WoW: Forever.
+## Author: Issues with Tissues
+## Version: 0.1.0
+## SavedVariables: IwTDB
+## SavedVariablesPerCharacter: IwTCharDB
+
+Core.lua
+Diagnostics.lua
+Perf.lua
+Roster.lua
+Comm.lua
+Sync.lua
+UI.lua
+Settings.lua
