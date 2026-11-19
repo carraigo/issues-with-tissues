@@ -1,10 +1,16 @@
 # Issues with Tissues
 
+[![Tests](https://github.com/carraigo/issues-with-tissues/actions/workflows/tests.yml/badge.svg)](https://github.com/carraigo/issues-with-tissues/actions/workflows/tests.yml)
+[![Latest release](https://img.shields.io/github/v/release/carraigo/issues-with-tissues?label=release)](https://github.com/carraigo/issues-with-tissues/releases/latest)
+![WoW: Forever](https://img.shields.io/badge/WoW-Forever%201.60-c79a3c)
+
 A guild addon for the Issues with Tissues guild on WoW: Forever. It puts the guild's roster, crafters, groups, events and polls in one window, and shares everything between guildmates who run it.
 
 ## Install
 
-Copy the `IssuesWithTissues` folder into your game's `Interface\AddOns` folder, then restart the game.
+1. Download `IssuesWithTissues-vX.Y.Z.zip` from the [latest release](https://github.com/carraigo/issues-with-tissues/releases/latest) (not the "Source code" zips).
+2. Unzip it into your game's `Interface\AddOns` folder, so you have `Interface\AddOns\IssuesWithTissues`.
+3. Restart the game.
 
 Open it with `/iwt`, the minimap button, or the **Tissues** button on the guild window.
 
@@ -48,3 +54,7 @@ The addon only talks to guildmates, over hidden guild addon messages.
 ## Changes
 
 See [CHANGELOG.md](CHANGELOG.md) for what's new in each version.
+
+## Licence
+
+© 2026 Issues with Tissues. All rights reserved. You may install and use the addon; please ask before reusing the code.
