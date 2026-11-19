@@ -526,6 +526,7 @@ function UI.CreateInput(panel, width, hint)
 	h:SetText(hint or "")
 	local function Update()
 		local focus = box:HasFocus()
+		if not focus and GetTime then box.focusLostAt = GetTime() end
 		h:SetShown((box:GetText() or "") == "" and not focus)
 		UI.Skin(box, C.input, focus and C.edge or C.dim)
 	end

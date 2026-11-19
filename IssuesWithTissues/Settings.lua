@@ -59,6 +59,7 @@ local function Build(panel)
 	local tools = {
 		{ "Bug report", function() ns.HandleSlash("bug") end },
 		{ "Profiler report", function() ns.HandleSlash("perf") end },
+		{ "Self-test", function() ns.HandleSlash("selftest") end },
 	}
 	local x = 0
 	for _, t in ipairs(tools) do

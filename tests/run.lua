@@ -395,7 +395,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Play(Groups|Layers),Guild life(Calendar|Polls|Donations)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Play(Groups|Layers),Guild life(Calendar|Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -853,6 +853,77 @@ test("calendar: officers add events, everyone signs up with a role, Home shows w
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
+test("loot notes: officers note who got what, everyone can search, notes only", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Sara Exe", 3, true }, { "Sara Best", 3, true } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	local L = gm.ns.LootNotes
+	eq(L.ParseItem("|cffa335ee|Hitem:19019::::::::60:::::|h[Thunderfury]|h|r"), 19019)
+	eq(select(2, L.ParseItem("[Onyxia Scale Cloak]")), "Onyxia Scale Cloak")
+	eq((mem.ns.LootNotes.Add("Mem", "Thunderfury", "")), false, "members can't add notes")
+	eq(select(2, L.Add("Nobody", "Thunderfury")), "Give the name of a guildmate.")
+	eq((L.Add("Sara", "Thunderfury")), false, "two Saras: the full name is needed")
+	eq(select(2, L.Add("Mem", "")), "Give the item (shift-click it into the box, or type its name).")
+	assert(L.Add("Mem", "|cffa335ee|Hitem:19019::::::::60:::::|h[Thunderfury]|h|r", "main spec; MC"))
+	W.now = W.now + 1
+	assert(L.Add("Sara Exe", "Onyxia Scale Cloak", "for the Nef fight"))
+	local list = mem.ns.LootNotes.List()
+	eq(#list, 2); eq(list[1].player, "Sara Exe"); eq(list[2].itemID, 19019); eq(list[2].item, "Thunderfury")
+	eq(list[2].note, "main spec MC", "no separators in notes")
+	eq(#mem.ns.LootNotes.List("thunder"), 1); eq(#mem.ns.LootNotes.List("sara exe"), 1); eq(#mem.ns.LootNotes.List("nef"), 1)
+	eq(mem.ns.LootNotes.CountFor("Mem"), 1)
+	assert(gm.ns.LootNotes.Remove(list[1].key))
+	eq(#mem.ns.LootNotes.List(), 1)
+	gm.ns.UI.Open("Loot notes")
+	eq(gm.ns.LootNotes.panel:IsShown(), true)
+	-- shift-click: taken only while the item box has (or just had) focus
+	local box = gm.ns.LootNotes.itemBox
+	local got
+	box.IsVisible = function() return true end
+	box.HasFocus = function() return false end
+	box.SetText = function(_, t) got = t end
+	eq(L.TakeLink("|cff1eff00|Hitem:2589::|h[Linen Cloth]|h|r"), nil, "box not in focus")
+	box.HasFocus = function() return true end
+	eq(L.TakeLink("|cff1eff00|Hitem:2589::|h[Linen Cloth]|h|r"), true)
+	assert(got:find("Linen Cloth", 1, true))
+	eq(L.TakeLink("|Hspell:123|h[Fireball]|h"), nil, "only items")
+	mem.ns.UI.Open("Loot notes")
+	eq(mem.ns.LootNotes.panel:IsShown(), true)
+	eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("self-test: checks pass offline, the guild echo is seen, and the report is copyable", function()
+	local mem = W.NewClient(base, "Mem", Guild2())
+	for _, api in ipairs({ "GetStatistic", "GetPVPLifetimeStats", "DepositGuildBankMoney", "hooksecurefunc" }) do
+		mem.env[api] = mem.env[api] or function() end
+	end
+	mem.ns.LootNotes.hooks = { "ChatEdit_InsertLink" }
+	local done
+	mem.ns.SelfTest.ECHO_WAIT = 1
+	mem.ns.SelfTest.Run(function(text, passed, failed) done = { text = text, passed = passed, failed = failed } end)
+	mem.flush()
+	assert(done, "finished")
+	eq(done.failed, 0, done.text)
+	assert(done.text:find("PASS  Guild addon messages go out", 1, true), done.text)
+	assert(done.text:find("PASS  Every page opens", 1, true))
+	eq(mem.ns.UI.window:IsShown(), false, "the window is left as it was")
+	mem.ns.HandleSlash("selftest")
+	mem.flush()
+	eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("every Lua file in the addon folder is listed in the TOC", function()
+	local toc = io.open(base .. "/IssuesWithTissues/IssuesWithTissues.toc"):read("*a")
+	local listed = {}
+	for line in toc:gmatch("[^\r\n]+") do if line:match("%.lua$") then listed[line] = true end end
+	local ok, p = pcall(io.popen, 'ls "' .. base .. '/IssuesWithTissues"')
+	if not ok or not p then return end -- this Lua can't list folders
+	for f in p:lines() do
+		if f:match("%.lua$") then assert(listed[f], f .. " is not in the TOC") end
+	end
+	p:close()
+end)
+
 test("crafters board: search shows crafters online first, empty search lists by profession", function()
 	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Off", 3, false, 1 } } }
 	local mem = W.NewClient(base, "Mem", g)
@@ -872,6 +943,16 @@ test("crafters board: search shows crafters online first, empty search lists by 
 	eq(#C.Search("linen", true), 1, "online only")
 	local byProf = C.ByProfession()
 	eq(byProf[1].who, "Off", "highest skill first"); eq(byProf[1].recipes, 2)
+	-- the tree: professions closed until clicked, then their crafters underneath
+	local tree = C.Tree()
+	eq(tree[1].header, true); eq(tree[1].profession, "Tailoring"); eq(tree[1].crafters, 2); eq(tree[1].online, 1)
+	for _, r in ipairs(tree) do eq(r.header, true, "all closed at first") end
+	C.Toggle("Tailoring")
+	tree = C.Tree()
+	eq(tree[2].who, "Off"); eq(tree[3].who, "Mem"); eq(tree[3].header, nil)
+	eq(#C.Tree(true), 2, "online only: Tailoring and its online crafter")
+	C.Toggle("Tailoring")
+	eq(C.Tree()[2] == nil or C.Tree()[2].header, true, "closed again")
 	gm.ns.UI.Open("Crafters")
 	eq(#gm.env.IwTDB.errors, 0)
 end)
