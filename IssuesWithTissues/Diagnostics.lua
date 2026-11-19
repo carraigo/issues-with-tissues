@@ -122,7 +122,12 @@ function Diag.BuildReport()
 		.. ", ToggleProfessionsBook=" .. type(ToggleProfessionsBook))
 	add("APIs: GetProfessions=" .. type(GetProfessions) .. " GetSkillLineInfo=" .. type(GetSkillLineInfo)
 		.. " C_TradeSkillUI=" .. type(C_TradeSkillUI)
-		.. " GetBaseProfessionInfo=" .. type(C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo))
+		.. " GetBaseProfessionInfo=" .. type(C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo)
+		.. " GetPVPLifetimeStats=" .. type(GetPVPLifetimeStats) .. " GetStatistic=" .. type(GetStatistic))
+	if ns.Kills then
+		local mobs, source = ns.Kills.Creatures()
+		add(string.format("Kills: %d honorable, %d creatures (%s)", ns.Kills.Honor(), mobs, source))
+	end
 	if ns.Sync and ns.db then
 		local counts = {}
 		for name, set in pairs(ns.db.sync) do

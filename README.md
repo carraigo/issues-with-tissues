@@ -25,11 +25,14 @@ Copy the `IssuesWithTissues` folder into your game's `Interface\AddOns` folder, 
 
 The minimap button opens the window (right-click opens the settings), and there's a **Tissues** button on the guild window.
 
-The window opens on the General tab: a short overview of the guild, this character and its main (with a "Set as my main" button), and your professions.
+The window has four tabs along the bottom, each with sub-tabs at the top, and Settings behind the cog in the title bar (right-clicking the minimap button opens it too). Each tab reopens on the sub-tab you last used.
 
-Tabs: **General**, **Roster**, **Groups** (post what you're looking for; right-click a post to whisper, Shift-click to invite), **Crafters** (search who can make an item), **Layers** (your layer from any NPC you target or mouse over, guildmates' layers, click one to ask for a hop invite), **Settings**.
+- **Home**: the guild at a glance (including the guild's total Enemy Kills and honorable kills, added up from everyone running the addon), this character and its main (with a "Set as my main" button), and your professions.
+- **Members**: **Roster** (filters, alts grouped under their main) and **Crafters** (search who can make an item).
+- **Play**: **Groups** (post what you're looking for; right-click a post to whisper, Shift-click to invite) and **Layers** (your layer from any NPC you target or mouse over, guildmates' layers, click one to ask for a hop invite). Your layer shows at the right of the sub-tabs.
+- **Guild life** (milestone 4): calendar, polls, donations, and later loot notes. Hidden until it has pages.
 
-Professions: your skill levels are shared at login. Recipes are read whenever a profession window is shown. Press "Scan my recipes" on the General tab, open your professions and click each profession tab on the right of that window; the General tab ticks them off. The game does not let addons open the profession window themselves.
+Professions: your skill levels are shared at login. Recipes are read whenever a profession window is shown. Press "Scan my recipes" on the Home tab, open your professions and click each profession tab on the right of that window; the Home tab ticks them off. The game does not let addons open the profession window themselves.
 
 ## How it works
 
@@ -52,8 +55,8 @@ GitHub Actions runs them on every push and pull request.
 
 1. Foundation: window, settings, guild comms, sync, bug report, profiler
 2. Roster: roster tab, inactive filters, alt links, professions, General tab
-3. Groups: LFG board, crafters board, layer hop (this release)
-4. Guild life: calendar, polls, donations
+3. Groups: LFG board, crafters board, layer hop
+4. Four-tab layout; Guild life: calendar, polls, donations (this release)
 5. Loot notes, self-test, CurseForge release
 
 ## Names

@@ -121,18 +121,18 @@ local function Cycle(n, max) return n % max + 1 end
 local function Build(panel)
 	LFG.panel = panel
 	local f = LFG.form
-	kindButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	kindButton = ns.UI.Button(panel)
 	kindButton:SetSize(150, 22)
 	kindButton:SetPoint("TOPLEFT", 0, 0)
 	kindButton:SetScript("OnClick", function()
 		f.kind = f.kind == "need" and "lfm" or "need"
 		LFG.Refresh()
 	end)
-	activityButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	activityButton = ns.UI.Button(panel)
 	activityButton:SetSize(90, 22)
 	activityButton:SetPoint("LEFT", kindButton, "RIGHT", 4, 0)
 	activityButton:SetScript("OnClick", function() f.activity = Cycle(f.activity, #LFG.ACTIVITIES); LFG.Refresh() end)
-	durationButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	durationButton = ns.UI.Button(panel)
 	durationButton:SetSize(70, 22)
 	durationButton:SetPoint("LEFT", activityButton, "RIGHT", 4, 0)
 	durationButton:SetScript("OnClick", function() f.duration = Cycle(f.duration, #LFG.DURATIONS); LFG.Refresh() end)
@@ -145,11 +145,11 @@ local function Build(panel)
 		LFG.Refresh()
 	end
 	noteBox.onEnter = DoPost
-	postButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	postButton = ns.UI.Button(panel, nil, nil, nil, "primary")
 	postButton:SetSize(90, 22)
 	postButton:SetPoint("LEFT", noteBox, "RIGHT", 8, 0)
 	postButton:SetScript("OnClick", DoPost)
-	clearButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	clearButton = ns.UI.Button(panel)
 	clearButton:SetSize(110, 22)
 	clearButton:SetPoint("LEFT", postButton, "RIGHT", 4, 0)
 	clearButton:SetText("Take mine down")
@@ -175,7 +175,7 @@ local function Build(panel)
 	LFG.Refresh()
 end
 
-ns.UI.AddTabBeforeSettings("Groups", Build)
+ns.UI.AddPage("Play", "Groups", Build, { order = 10 })
 ns.Settings.AddToggle("lfgAlerts", "Tell me when a guildmate posts on the Groups board")
 ns.Listen("ROSTER_UPDATED", function() LFG.Refresh() end)
 -- Refresh the time left once a minute while the tab is open.

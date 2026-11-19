@@ -388,9 +388,14 @@ end)
 
 test("roster tab shows in the window before Settings", function()
 	local c = W.NewClient(base, "Mem", Guild2())
+	c.ns.UI.Create()
 	local order = {}
-	for i, t in ipairs(c.ns.UI.tabs) do order[i] = t.title end
-	eq(table.concat(order, ","), "General,Roster,Groups,Crafters,Layers,Settings")
+	for i, t in ipairs(c.ns.UI.tabs) do
+		local pages = {}
+		for j, p in ipairs(t.pages) do pages[j] = p.title end
+		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
+	end
+	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Play(Groups|Layers)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -578,23 +583,18 @@ test("general tab: guild overview, this character and its professions", function
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
-test("a failing tab helper still leaves every tab button, and the error is recorded", function()
+test("the window draws its own tabs: Blizzard's tab code is not used, and the current tab is marked", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	c.env.PanelTemplates_SetNumTabs = function() error("Blizzard_SharedXML: bad tab") end
+	c.env.PanelTemplates_SetTab = function() error("Blizzard_SharedXML: bad tab") end
 	c.ns.UI.Toggle()
 	for i, t in ipairs(c.ns.UI.tabs) do assert(t.button, "button " .. i) eq(t.button:IsShown(), true) end
-	assert(#c.env.IwTDB.errors >= 1)
+	eq(c.ns.UI.tabs[1].button.selected, true)
 	c.ns.UI.SelectTab(2)
 	eq(c.ns.RosterTab.panel:IsShown(), true)
-end)
-
-test("tab count is given to the game only after every button exists", function()
-	local c = W.NewClient(base, "Mem", Guild2())
-	-- Like Blizzard's PanelTemplates_SetNumTabs: indexes every tab button up to the count
-	c.env.PanelTemplates_SetNumTabs = function(frame, n)
-		for i = 1, n do assert(c.env["IwTMainWindowTab" .. i] or frame.Tabs[i], "thisTab is nil") end
-	end
-	c.ns.UI.Toggle()
+	eq(c.ns.UI.tabs[1].button.selected, false); eq(c.ns.UI.tabs[2].button.selected, true)
+	c.ns.UI.Open("Settings")
+	eq(c.ns.UI.cog.selected, true); eq(c.ns.UI.tabs[2].button.selected, false)
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
@@ -734,6 +734,30 @@ test("groups board: a post reaches the guild, ends on time and can be taken down
 	eq(#gm.ns.LFG.Posts(), 0)
 end)
 
+test("guild kills: each character shares its kills and Home adds them up", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Gone", 3, true } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	-- Mem's client has the game's statistics; Gm's doesn't (its creature kills count as 0).
+	mem.env.GetPVPLifetimeStats = function() return 12, 0, 0 end
+	mem.env.GetStatistic = function(id) if id == 1197 then return "1500" end return "--" end
+	gm.env.GetPVPLifetimeStats = function() return 3, 0 end
+	-- No addon may register for the combat log on this client.
+	assert(not mem.ns.eventFrame.events.COMBAT_LOG_EVENT_UNFILTERED)
+	assert(mem.ns.Kills.Share())
+	eq(mem.ns.Kills.Share(), false, "nothing new to share")
+	assert(gm.ns.Kills.Share())
+	local t = mem.ns.Kills.Totals()
+	eq(t.hk, 15); eq(t.mobs, 1500); eq(t.chars, 2)
+	-- a character who left the guild no longer counts; nobody can post kills for someone else
+	gm.ns.Sync.Accept("kills", "Left", { rev = W.now, by = "Left", data = "9999;9999;s" })
+	mem.ns.Comm.Send("SU", mem.ns.Comm.Pack("kills", "Gm", W.now + 1, "Mem", "", "100000;1;c"))
+	eq(gm.ns.Kills.Totals().hk, 15)
+	eq(mem.ns.Kills.Format(1234567), "1,234,567"); eq(mem.ns.Kills.Format(999), "999")
+	assert(mem.ns.GeneralTab.Facts().kills.mobs == 1500)
+	assert(mem.ns.Diagnostics.BuildReport():find("Kills: 12 honorable, 1500 creatures (stat)", 1, true))
+end)
+
 test("crafters board: search shows crafters online first, empty search lists by profession", function()
 	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Off", 3, false, 1 } } }
 	local mem = W.NewClient(base, "Mem", g)
@@ -809,6 +833,27 @@ end)
 test("every tab builds without errors", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	for _, t in ipairs(c.ns.UI.tabs) do c.ns.UI.Open(t.title) end
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("layout: pages open by name, tabs remember their sub-tab, Settings is behind the cog", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	UI.Open("Crafters")
+	eq(c.ns.CraftersTab.panel:IsShown(), true)
+	eq(UI.tabs[UI.current].title, "Members")
+	UI.Open("Home")
+	UI.SelectTab(2) -- Members again: back on Crafters
+	eq(UI.tabs[2].pages[UI.tabs[2].current].title, "Crafters")
+	eq(c.env.IwTDB.window.pages.Members, "Crafters", "remembered across sessions")
+	UI.Open("Settings")
+	eq(UI.settings.panel:IsShown(), true)
+	eq(UI.tabs[2].frame:IsShown(), false)
+	UI.cog:GetScript("OnClick")()
+	c.env.UnitGUID = function(u) if u == "target" then return "Creature-0-1-0-77-6491-00001A2B3C" end end
+	c.env.__fire("PLAYER_TARGET_CHANGED")
+	UI.Open("Layers")
+	eq(UI.tabs[3].info():find("Layer 1", 1, true) ~= nil, true, "your layer beside Play's sub-tabs")
 	eq(#c.env.IwTDB.errors, 0)
 end)
 

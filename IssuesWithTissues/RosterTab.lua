@@ -175,7 +175,7 @@ function Tab.Refresh()
 		end
 	end
 	for _, b in ipairs(filterButtons) do
-		if b.key == Tab.state.filter then b:LockHighlight() else b:UnlockHighlight() end
+		ns.UI.SetSelected(b, b.key == Tab.state.filter)
 	end
 	local online = 0
 	for _, r in ipairs(rows) do if r.online then online = online + 1 end end
@@ -201,7 +201,7 @@ local function Build(panel)
 	-- Filters
 	local x = 0
 	for _, f in ipairs(Tab.FILTERS) do
-		local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		local b = ns.UI.Button(panel)
 		b:SetSize(84, 22)
 		b:SetPoint("TOPLEFT", x, 0)
 		b:SetText(f.label)
@@ -236,11 +236,17 @@ local function Build(panel)
 		x = x + col.width
 	end
 
+	local rule = ns.UI.Fill(panel:CreateTexture(nil, "BORDER"), ns.UI.COLORS.dim)
+	rule:SetPoint("TOPLEFT", 0, -47)
+	rule:SetPoint("TOPRIGHT", 0, -47)
+	rule:SetHeight(1)
+
 	-- Rows
 	for i = 1, ROWS do
 		local line = CreateFrame("Button", nil, panel)
 		line:SetSize(606, ROW_H)
 		line:SetPoint("TOPLEFT", 4, -50 - (i - 1) * ROW_H)
+		ns.UI.StyleRow(line, i)
 		line.cells = {}
 		local cx = 0
 		for c, col in ipairs(Tab.COLUMNS) do
@@ -252,7 +258,6 @@ local function Build(panel)
 			line.cells[c] = fs
 			cx = cx + col.width
 		end
-		line:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
 		line:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 		line:SetScript("OnClick", function(self, button)
 			if not self.row then return end
@@ -289,8 +294,7 @@ local function Build(panel)
 	Tab.Refresh()
 end
 
--- The Roster tab goes first, before Settings.
-table.insert(ns.UI.tabs, 1, { title = "Roster", build = Build })
+ns.UI.AddPage("Members", "Roster", Build, { order = 10 })
 
 ns.Listen("ROSTER_UPDATED", function() Tab.Refresh() end)
 ns.Listen("SYNC_CHANGED", function(set) if set == "alts" or set == "profs" then Tab.Refresh() end end)

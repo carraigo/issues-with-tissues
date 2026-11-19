@@ -1,4 +1,4 @@
--- The General tab (first): a short overview of the guild, this character and its main, and
+-- The Home tab (first): a short overview of the guild, this character and its main, and
 -- this character's professions with a button that scans their recipe lists.
 
 local _, ns = ...
@@ -60,6 +60,10 @@ function General.Facts()
 	local c = 0
 	for _ in pairs(crafters) do c = c + 1 end
 	f.guildCrafters, f.guildRecipes = c, recipes
+	f.kills = ns.Kills.Totals()
+	-- Honorable kills are of the other faction.
+	local faction = UnitFactionGroup and UnitFactionGroup("player")
+	f.enemyFaction = faction == "Alliance" and "Horde" or faction == "Horde" and "Alliance" or "Enemy player"
 	return f
 end
 
@@ -95,13 +99,15 @@ end
 function General.Refresh()
 	if not General.panel or not General.panel:IsShown() then return end
 	local f = General.Facts()
+	texts.guildTitle:SetText(f.guild or "No guild")
 	texts.guild:SetText(table.concat({
-		(f.guild or "No guild"),
 		string.format("%d characters, %d players (alts counted once)", f.members, f.players),
 		string.format("|cff40ff40%d online now|r", f.online),
 		string.format("%d away 30 days or more", f.away30),
 		string.format("%d using Issues with Tissues this session", f.addonUsers),
-		string.format("%d recipes shared by %d crafters", f.guildRecipes, f.guildCrafters),
+		string.format("|cffff9050Enemy Kills: %s|r", ns.Kills.Format(f.kills.mobs)),
+		string.format("|cffff9050%s Kills: %s|r", f.enemyFaction, ns.Kills.Format(f.kills.hk)),
+		string.format("|cff999999(added up from %d characters using the addon)|r", f.kills.chars),
 	}, "\n"))
 
 	local lines = { f.me .. (f.rank and ("  |cff999999" .. f.rank .. "|r") or "") }
@@ -144,25 +150,30 @@ end
 
 local function Build(panel)
 	General.panel = panel
-	Section(panel, 4, -4, "The guild")
-	texts.guild = Body(panel, 4, -24, 290)
+	-- Three cards, as in the layout mock-up.
+	ns.UI.Card(panel, 0, 0, 300, 146)
+	ns.UI.Card(panel, 308, 0, 308, 146)
+	ns.UI.Card(panel, 0, -156, 616, 170)
 
-	Section(panel, 310, -4, "This character")
-	texts.me = Body(panel, 310, -24, 290)
-	mainButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	texts.guildTitle = Section(panel, 12, -10, "Issues with Tissues")
+	texts.guild = Body(panel, 12, -30, 280)
+
+	Section(panel, 320, -10, "This character")
+	texts.me = Body(panel, 320, -30, 284)
+	mainButton = ns.UI.Button(panel)
 	mainButton:SetSize(140, 24)
-	mainButton:SetPoint("TOPLEFT", 310, -96)
+	mainButton:SetPoint("TOPLEFT", 320, -108)
 	mainButton:SetScript("OnClick", function() ns.Alts.SetMain(); General.Refresh() end)
 
-	Section(panel, 4, -150, "Your professions")
-	texts.profs = Body(panel, 4, -170, 400)
-	scanButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	scanButton:SetSize(180, 24)
+	Section(panel, 12, -166, "Your professions")
+	texts.profs = Body(panel, 12, -186, 390)
+	scanButton = ns.UI.Button(panel, nil, nil, nil, "primary")
+	scanButton:SetSize(180, 26)
 	scanButton:SetPoint("TOPLEFT", 420, -166)
 	scanButton:SetScript("OnClick", function() ns.Professions.Scan(); General.Refresh() end)
 	scanHint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	scanHint:SetPoint("TOPLEFT", 420, -196)
-	scanHint:SetWidth(190)
+	scanHint:SetPoint("TOPLEFT", 420, -200)
+	scanHint:SetWidth(184)
 	scanHint:SetJustifyH("LEFT")
 	scanHint:SetText(HINT)
 
@@ -170,8 +181,7 @@ local function Build(panel)
 	General.Refresh()
 end
 
--- First tab.
-table.insert(ns.UI.tabs, 1, { title = "General", build = Build })
+ns.UI.AddPage("Home", "Home", Build)
 
 ns.Listen("ROSTER_UPDATED", function() General.Refresh() end)
 ns.Listen("SYNC_CHANGED", function() General.Refresh() end)

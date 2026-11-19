@@ -161,6 +161,6 @@ local function Build(panel)
 	Crafters.Refresh()
 end
 
-ns.UI.AddTabBeforeSettings("Crafters", Build)
+ns.UI.AddPage("Members", "Crafters", Build, { order = 20 })
 ns.Listen("SYNC_CHANGED", function(set) if set == "recipes" or set == "profs" then Crafters.Refresh() end end)
 ns.Listen("ROSTER_UPDATED", function() Crafters.Refresh() end)
