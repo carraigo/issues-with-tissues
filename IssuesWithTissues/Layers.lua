@@ -25,9 +25,13 @@ Layers.SHARE_EVERY = 20   -- seconds between our own layer messages at most
 Layers.STALE = 30 * 60    -- a guildmate's layer older than this is not shown
 
 -- The layer id in an NPC's GUID (nil for players, pets and objects).
+-- The game can hand out "secret" GUIDs (in combat, on this client) that addons may not read;
+-- those are skipped, as reading one is an error.
 function Layers.FromGUID(guid)
+	if issecretvalue and issecretvalue(guid) then return nil end
 	if type(guid) ~= "string" then return nil end
-	local kind, zoneUID = guid:match("^(%a+)%-%d+%-%d+%-%d+%-(%d+)%-%d+%-%x+$")
+	local ok, kind, zoneUID = pcall(string.match, guid, "^(%a+)%-%d+%-%d+%-%d+%-(%d+)%-%d+%-%x+$")
+	if not ok then return nil end
 	if kind ~= "Creature" and kind ~= "Vehicle" then return nil end
 	return tonumber(zoneUID)
 end

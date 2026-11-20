@@ -170,19 +170,42 @@ end
 ---------------------------------------------------------------------------
 -- Catch-up
 ---------------------------------------------------------------------------
-local answered = {}  -- nonce -> true once someone answered it (us or another guildmate)
+local answered = {}  -- nonce -> { [set .. "=" .. digest] = true } for answers already heard
+
+-- A fingerprint of everything held in a set (deletion marks included): two clients with the
+-- same fingerprint hold the same records. Comparing only the newest revision missed records:
+-- one fresh change from someone would hide every older record the asker never had.
+local function Hash(str)
+	local h = 5381
+	for i = 1, #str do h = (h * 33 + str:byte(i)) % 2147483647 end
+	return h
+end
+
+function Sync.Digest(name)
+	local n, sum = 0, 0
+	for key, r in pairs(Store(name)) do
+		n = n + 1
+		sum = (sum + Hash(key .. "\1" .. r.rev .. (r.deleted and "d" or ""))) % 2147483647
+	end
+	return n .. "." .. sum
+end
 
 function Sync.Ask()
 	local parts = { tostring(math.random(1, 2 ^ 30)) }
-	for name in pairs(Sync.sets) do parts[#parts + 1] = name .. "=" .. Sync.MaxRev(name) end
+	for name in pairs(Sync.sets) do parts[#parts + 1] = name .. "=" .. Sync.MaxRev(name) .. ":" .. Sync.Digest(name) end
 	Comm.Send("SQ", table.concat(parts, ","))
 end
 
--- Records newer than the asker's revisions, newest first.
-function Sync.BuildAnswer(wants)
+-- What to send an asker: for a set whose fingerprint differs from theirs, every record we
+-- hold (they may lack old ones); without a fingerprint, records newer than their newest.
+-- wants = { set = { since = rev, digest = "n.h" or nil } }; skip = { set = true }.
+function Sync.BuildAnswer(wants, skip)
 	local out = {}
-	for name, since in pairs(wants) do
-		if Sync.sets[name] then
+	for name, want in pairs(wants) do
+		if type(want) == "number" then want = { since = want } end
+		local def = Sync.sets[name]
+		if def and not (skip and skip[name]) and want.digest ~= Sync.Digest(name) then
+			local since = want.digest and -1 or want.since
 			for key, r in pairs(Store(name)) do
 				if r.rev > since then out[#out + 1] = { rev = r.rev, s = Serialize(name, key, r) } end
 			end
@@ -212,18 +235,31 @@ Comm.Register("SQ", function(sender, payload)
 	if not nonce or nonce == "" then return end
 	local wants = {}
 	for i = 2, #fields do
-		local name, rev = fields[i]:match("^(.-)=(%d+)$")
-		if name then wants[name] = tonumber(rev) end
+		local name, rev, digest = fields[i]:match("^(.-)=(%d+):?([%d%.]*)$")
+		if name then wants[name] = { since = tonumber(rev), digest = digest ~= "" and digest or nil } end
 	end
-	local records = Sync.BuildAnswer(wants)
-	if #records == 0 then return end
+	if #Sync.BuildAnswer(wants) == 0 then return end
+	-- Several guildmates may hold different records, so each one answers for the sets where
+	-- nobody with the same records has answered yet.
 	local function answer()
-		if answered[nonce] then return end
-		answered[nonce] = true
+		local heard = answered[nonce] or {}
+		answered[nonce] = heard
+		local skip, mine = {}, {}
+		for name in pairs(wants) do
+			local d = Sync.sets[name] and Sync.Digest(name)
+			if d then
+				if heard[name .. "=" .. d] then skip[name] = true end
+				mine[#mine + 1] = name .. "=" .. d
+			end
+		end
+		local records = Sync.BuildAnswer(wants, skip)
+		if #records == 0 then return end
+		for _, m in ipairs(mine) do heard[m] = true end
+		local head = nonce .. "\2" .. table.concat(mine, ",")
 		-- Split into answers of at most ~2,000 bytes so no single message gets too long.
 		local batch, size = {}, 0
 		local function flush()
-			if #batch > 0 then Comm.Send("SR", nonce .. RS .. table.concat(batch, RS)) end
+			if #batch > 0 then Comm.Send("SR", head .. RS .. table.concat(batch, RS)) end
 			batch, size = {}, 0
 		end
 		for _, s in ipairs(records) do
@@ -237,11 +273,14 @@ Comm.Register("SQ", function(sender, payload)
 end)
 
 Comm.Register("SR", function(sender, payload)
-	local nonce
+	local first = true
 	for piece in (payload .. RS):gmatch("(.-)" .. RS) do
-		if not nonce then
-			nonce = piece
-			answered[nonce] = true -- someone answered; we stay quiet
+		if first then
+			first = false
+			local nonce, digests = piece:match("^([^\2]*)\2?(.*)$")
+			local heard = answered[nonce] or {}
+			answered[nonce] = heard
+			for d in digests:gmatch("[^,]+") do heard[d] = true end -- these sets are answered
 		else
 			local name, key, rec = Deserialize(piece)
 			if name then Sync.Accept(name, key, rec) end
@@ -299,4 +338,5 @@ end)
 
 function Sync:OnLogin()
 	ns.After(8, Sync.Ask) -- after the roster has loaded, so rank checks work
+	ns.After(600, Sync.Ask) -- and once more later, for anything a guildmate logging in since has
 end
