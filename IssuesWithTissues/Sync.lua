@@ -194,6 +194,7 @@ function Sync.Ask()
 	local parts = { tostring(math.random(1, 2 ^ 30)) }
 	for name in pairs(Sync.sets) do parts[#parts + 1] = name .. "=" .. Sync.MaxRev(name) .. ":" .. Sync.Digest(name) end
 	Comm.Send("SQ", table.concat(parts, ","))
+	Sync.lastAsk = ns.Now()
 end
 
 -- What to send an asker: for a set whose fingerprint differs from theirs, every record we
@@ -273,6 +274,7 @@ Comm.Register("SQ", function(sender, payload)
 end)
 
 Comm.Register("SR", function(sender, payload)
+	Sync.lastAnswer = ns.Now()
 	local first = true
 	for piece in (payload .. RS):gmatch("(.-)" .. RS) do
 		if first then

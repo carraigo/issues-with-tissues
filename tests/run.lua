@@ -1139,5 +1139,32 @@ test("logout saves a roster snapshot for the web page export", function()
 	for _, m in ipairs(snap.members) do assert(m.name and m.note == nil) end
 end)
 
+test("diagnostics report: one string with errors, timings and usage, no names unless asked", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local R = c.ns.Report
+	eq(R.Base64("Man"), "TWFu"); eq(R.Base64("Ma"), "TWE="); eq(R.Base64("M"), "TQ==")
+	eq(R.Adler32("Wikipedia"), "11e60398")
+	eq(R.Json({ a = 1, b = { 1, 2 }, c = "x\"y\n", d = true, e = 1.5 }), '{"a":1,"b":[1,2],"c":"x\\"y\\n","d":true,"e":1.5}')
+	c.ns.ReportError("Interface/AddOns/IssuesWithTissues/UI.lua:10: boom")
+	c.ns.HandleSlash("roster")
+	c.ns.UI.Open("Polls")
+	c.env.IwTDB.perf.on = true
+	c.ns.Measure("test thing", function() end)
+	local text = c.ns.HandleSlash("report") or R.Build()
+	local s, json = R.Encode(R.Data())
+	assert(s:match("^IWT1%.[A-Za-z0-9+/=]+%.%x%x%x%x%x%x%x%x$"), "format")
+	assert(json:find('"addon":"' .. c.ns.VERSION .. '"', 1, true))
+	assert(json:find("IssuesWithTissues/UI.lua:10: boom", 1, true), "error text, without the Interface/AddOns path")
+	assert(not json:find("Interface/AddOns", 1, true))
+	assert(json:find('"roster":1', 1, true), "roster command counted")
+	assert(json:find('"Polls":1', 1, true), "page open counted")
+	assert(json:find('"test thing"', 1, true), "profiler numbers")
+	assert(not json:find('"character"', 1, true), "no name by default")
+	assert(R.Encode(R.Data({ name = true })):len() > 0)
+	assert(select(2, R.Encode(R.Data({ name = true }))):find('"character":"Mem"', 1, true))
+	assert(#s < 6000, "short enough for a link: " .. #s)
+	eq(#c.env.IwTDB.errors, 1)
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

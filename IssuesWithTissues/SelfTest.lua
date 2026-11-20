@@ -104,6 +104,7 @@ function Test.Run(done)
 			Check(results, "Guild addon messages go out", back, back and nil or "the game did not echo our message back")
 		end
 		local text, passed, failed = Test.Format(results)
+		Test.last = { results = results, passed = passed, failed = failed, at = ns.Now() } -- for /iwt report
 		ns.Log("selftest: %d passed, %d failed", passed, failed)
 		if done then done(text, passed, failed) end
 	end)
