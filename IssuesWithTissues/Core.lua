@@ -167,8 +167,9 @@ function ns.HandleSlash(msg)
 end
 
 SLASH_ISSUESWITHTISSUES1, SLASH_ISSUESWITHTISSUES2 = "/iwt", "/tissues"
-SlashCmdList = SlashCmdList or {}
-SlashCmdList.ISSUESWITHTISSUES = function(msg) ns.HandleSlash(msg) end
+-- Never assign the SlashCmdList global itself: that taints it, and every macro (/target,
+-- /tm...) reads it, so the game blocks the macro's action and blames this addon.
+if SlashCmdList then SlashCmdList.ISSUESWITHTISSUES = function(msg) ns.HandleSlash(msg) end end
 
 ns.RegisterCommand("version", "show the addon version", function()
 	ns.Print("Issues with Tissues %s", ns.VERSION)
