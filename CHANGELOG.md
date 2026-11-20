@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+
+- Faster: when a lot of shared data arrives at once (logging in, a guildmate's catch-up), open pages redraw once afterwards instead of once per record. In a 500-member test guild this cut a 2-3 second freeze to a few milliseconds.
+- Roster scrolling no longer rebuilds the whole list on every wheel step.
+
 ## 0.6.1
 
 - Fixed: macros that target or mark (for example RestedXP's target button, or /tm) were blocked with "IssuesWithTissues has been blocked from an action". The addon tainted the game's slash command list when registering /iwt.

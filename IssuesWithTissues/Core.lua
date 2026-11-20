@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "0.6.1"
+ns.VERSION = "0.6.2"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
@@ -91,6 +91,31 @@ function ns.Send(name, ...)
 	for i = 1, #list do
 		local ok, err = pcall(list[i], ...)
 		if not ok and ns.ReportError then ns.ReportError(err) end
+	end
+end
+
+-- Text typed by a player, made safe to share: no colour/link codes ("|"), none of the
+-- separators shared data uses (";" and extra), no surrounding spaces, at most max letters.
+function ns.CleanText(text, max, extra)
+	local s = tostring(text or ""):gsub("[|;\30\31" .. (extra or "") .. "]", "")
+	s = s:gsub("^%s+", ""):gsub("%s+$", "")
+	return s:sub(1, max)
+end
+
+-- A function that runs fn once, a moment later, however often it is called in between. Pages
+-- redraw through this: a catch-up brings hundreds of records in a burst, and redrawing a page
+-- for each one froze the game for seconds. Runs at once where there are no timers.
+function ns.Coalesce(fn, delay)
+	local pending = false
+	return function()
+		if pending then return end
+		if not (C_Timer and C_Timer.After) then return fn() end
+		pending = true
+		C_Timer.After(delay or 0.1, function()
+			pending = false
+			local ok, err = pcall(fn)
+			if not ok and ns.ReportError then ns.ReportError(err) end
+		end)
 	end
 end
 

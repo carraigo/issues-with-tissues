@@ -331,7 +331,7 @@ end
 -- The Hop tab holds only this page, so it has no sub-tab row; your layer is the page's first line.
 ns.UI.AddPage("Hop", "Layers", Build, { order = 10 })
 ns.Settings.AddToggle("hopRequests", "Let guildmates ask me for a layer-hop invite")
-ns.Listen("ROSTER_UPDATED", function() Layers.Refresh() end)
+ns.Listen("ROSTER_UPDATED", ns.Coalesce(function() Layers.Refresh() end))
 
 ns.RegisterCommand("layer", "your layer and guildmates' layers", function()
 	local m = Layers.mine

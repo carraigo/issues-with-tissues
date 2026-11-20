@@ -17,9 +17,7 @@ ns.Sync.Define("donated", { writer = "owner" })
 
 Don.DEFAULT_TITLE = "Guild bank"
 
-local function Clean(text, max)
-	return (tostring(text or ""):gsub("[|;\30\31]", ""):gsub("^%s+", ""):gsub("%s+$", "")):sub(1, max)
-end
+local Clean = ns.CleanText
 
 function Don.Goal()
 	local data, rec = ns.Sync.Get("dgoal", "goal")
@@ -254,7 +252,8 @@ end
 
 ns.UI.AddPage("Guild life", "Donations", Build, { order = 30 })
 
+local Soon = ns.Coalesce(function() Don.Refresh() end)
 ns.Listen("SYNC_CHANGED", function(set)
-	if set == "dgoal" or set == "donated" then Don.Refresh(); ns.Send("GUILD_LIFE_CHANGED") end
+	if set == "dgoal" or set == "donated" then Soon(); ns.Send("GUILD_LIFE_CHANGED") end
 end)
-ns.Listen("ROSTER_UPDATED", function() Don.Refresh() end)
+ns.Listen("ROSTER_UPDATED", Soon)

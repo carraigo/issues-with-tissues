@@ -141,9 +141,13 @@ local function ClassColor(token)
 	return 1, 1, 1
 end
 
-function Tab.Refresh()
+-- rebuild: the data changed. Scrolling only repaints the rows already built; filters, sorting
+-- and opening the page rebuild them too.
+local cached
+function Tab.Refresh(rebuild)
 	if not Tab.panel or not Tab.panel:IsShown() then return end
-	local rows = Tab.Rows()
+	if rebuild ~= false or not cached then cached = Tab.Rows() end
+	local rows = cached
 	local maxOffset = math.max(0, #rows - ROWS)
 	if Tab.state.offset > maxOffset then Tab.state.offset = maxOffset end
 	for i = 1, ROWS do
@@ -289,7 +293,7 @@ local function Build(panel)
 	panel:EnableMouseWheel(true)
 	panel:SetScript("OnMouseWheel", function(_, delta)
 		Tab.state.offset = math.max(0, Tab.state.offset - delta * 3)
-		Tab.Refresh()
+		Tab.Refresh(false)
 	end)
 	countText = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	countText:SetPoint("BOTTOMLEFT", 4, 2)
@@ -299,8 +303,10 @@ end
 
 ns.UI.AddPage("Members", "Roster", Build, { order = 10 })
 
-ns.Listen("ROSTER_UPDATED", function() Tab.Refresh() end)
-ns.Listen("SYNC_CHANGED", function(set) if set == "alts" or set == "profs" or set == "kills" then Tab.Refresh() end end)
+-- New data: rebuild the rows (a moment later, once per burst).
+local Soon = ns.Coalesce(function() Tab.Refresh(true) end)
+ns.Listen("ROSTER_UPDATED", Soon)
+ns.Listen("SYNC_CHANGED", function(set) if set == "alts" or set == "profs" or set == "kills" then Soon() end end)
 
 ns.RegisterCommand("roster", "open the roster", function() ns.UI.Open("Roster") end)
 ns.RegisterCommand("inactive", "list members away: /iwt inactive 7|14|30", function(rest)
