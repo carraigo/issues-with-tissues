@@ -61,8 +61,8 @@ function General.Facts()
 	for _ in pairs(crafters) do c = c + 1 end
 	f.guildCrafters, f.guildRecipes = c, recipes
 	f.kills = ns.Kills.Totals()
+	f.elite = ns.Kills.EliteSoldier()
 	-- What's on (Guild life)
-	f.nextEvent = ns.Calendar.Upcoming()[1]
 	f.openPolls, f.firstPoll = ns.Polls.OpenCount()
 	f.donations = ns.Donations.Progress()
 	-- Honorable kills are of the other faction.
@@ -106,12 +106,13 @@ function General.Refresh()
 	texts.guildTitle:SetText(f.guild or "No guild")
 	texts.guild:SetText(table.concat({
 		string.format("%d characters, %d players (alts counted once)", f.members, f.players),
-		string.format("|cff40ff40%d online now|r", f.online),
-		string.format("%d away 30 days or more", f.away30),
+		string.format("|cff40ff40%d online now|r, %d away 30 days or more", f.online, f.away30),
 		string.format("%d using Issues with Tissues this session", f.addonUsers),
 		string.format("|cffff9050Enemy Kills: %s|r", ns.Kills.Format(f.kills.mobs)),
 		string.format("|cffff9050%s Kills: %s|r", f.enemyFaction, ns.Kills.Format(f.kills.hk)),
 		string.format("|cff999999(added up from %d characters using the addon)|r", f.kills.chars),
+		f.elite and string.format("|cffffd100Elite Soldier: %s|r |cff999999(%s)|r", ns.Roster.DisplayName(f.elite.who), ns.Kills.Format(f.elite.hk))
+			or "|cffffd100Elite Soldier:|r |cff999999nobody yet|r",
 	}, "\n"))
 
 	local lines = { f.me .. (f.rank and ("  |cff999999" .. f.rank .. "|r") or "") }
@@ -132,9 +133,6 @@ function General.Refresh()
 		mainButton:Enable()
 	end
 
-	local e = f.nextEvent
-	texts.event:SetText(e and (e.title .. "\n|cff999999" .. ns.Calendar.When(e.time) .. ", " .. e.signups.count .. " coming|r")
-		or "|cff999999Nothing planned|r")
 	texts.polls:SetText(f.openPolls > 0 and (f.firstPoll.question .. (f.openPolls > 1 and
 		("\n|cff999999and " .. (f.openPolls - 1) .. " more|r") or "")) or "|cff999999No open polls|r")
 	texts.donations:SetText(f.donations.title .. "\n|cff999999" .. ns.Donations.ProgressText(f.donations) .. "|r")
@@ -188,7 +186,7 @@ local function Build(panel)
 	scanHint:SetJustifyH("LEFT")
 	scanHint:SetText(HINT)
 
-	-- What's on: the next event, open polls and the donation goal (Guild life tab).
+	-- What's on: open polls and the donation goal (Guild life tab).
 	ns.UI.Card(panel, 0, -334, 616, 100)
 	Section(panel, 12, -342, "What's on")
 	local function Column(x, title)
@@ -196,18 +194,17 @@ local function Build(panel)
 		t:SetPoint("TOPLEFT", x, -362)
 		t:SetText(title)
 		t:SetTextColor(0.65, 0.61, 0.54)
-		local body = Body(panel, x, -376, 184)
+		local body = Body(panel, x, -376, 284)
 		local open = CreateFrame("Button", nil, panel)
 		open:SetPoint("TOPLEFT", x - 4, -358)
-		open:SetSize(196, 70)
-		open:SetScript("OnClick", function() ns.UI.Open(title == "Next event" and "Calendar" or title == "Open polls" and "Polls" or "Donations") end)
+		open:SetSize(296, 70)
+		open:SetScript("OnClick", function() ns.UI.Open(title == "Open polls" and "Polls" or "Donations") end)
 		local hl = ns.UI.Fill(open:CreateTexture(nil, "HIGHLIGHT"), ns.UI.COLORS.hover)
 		hl:SetAllPoints()
 		return body
 	end
-	texts.event = Column(12, "Next event")
-	texts.polls = Column(212, "Open polls")
-	texts.donations = Column(412, "Donation goal")
+	texts.polls = Column(12, "Open polls")
+	texts.donations = Column(312, "Donation goal")
 
 	panel:SetScript("OnShow", General.Refresh)
 	General.Refresh()

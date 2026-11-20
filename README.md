@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/carraigo/issues-with-tissues?label=release)](https://github.com/carraigo/issues-with-tissues/releases/latest)
 ![WoW: Forever](https://img.shields.io/badge/WoW-Forever%201.60-c79a3c)
 
-A guild addon for the Issues with Tissues guild on WoW: Forever. It puts the guild's roster, crafters, groups, events and polls in one window, and shares everything between guildmates who run it.
+A guild addon for the Issues with Tissues guild on WoW: Forever. It puts the guild's roster, crafters, layer hopping, polls and donations in one window, and shares everything between guildmates who run it.
 
 ## Install
 
@@ -16,21 +16,18 @@ Open it with `/iwt`, the minimap button, or the **Tissues** button on the guild 
 
 ## Features
 
-- **Home**: the guild at a glance (members online, players with alts counted once, guild kill totals), your character and its main, your professions, and a "What's on" box with the next event, open polls and the donation goal.
+- **Home**: the guild at a glance (members online, players with alts counted once, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
 - **Members**
-  - **Roster**: the whole guild with filters (online, away 7, 14 or 30 days) and alts grouped under their main.
+  - **Roster**: the whole guild with level, class, honourable kills and professions, filters (online, away 7, 14 or 30 days) and alts grouped under their main.
   - **Crafters**: search who can make an item, or browse by profession.
-- **Play**
-  - **Groups**: post what you're looking for (dungeon, raid, quest, PvP) and see who else is looking.
-  - **Layers**: see which layer you and guildmates are on, and ask a guildmate for a layer-hop invite.
+- **Hop**: see which layer you and guildmates are on, and ask a guildmate for a layer-hop invite.
 - **Guild life**
-  - **Calendar**: guild events with sign-ups (tank, healer, damage, maybe, can't come).
   - **Polls**: officers ask, everyone votes once.
-  - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically.
+  - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically. Only the officer who set a goal can change it, or allow another officer to.
   - **Loot notes**: a shared record of who received which item.
 - **Settings** (the cog): alerts, sounds, minimap button, bug report, profiler and self-test.
 
-Officers (Guild Master and Officer ranks) can add events, polls, donation goals and loot notes. Everyone else can read them and take part.
+Officers (Guild Master and Officer ranks) can add polls, donation goals and loot notes. Everyone else can read them and take part.
 
 The addon only talks to guildmates, over hidden guild addon messages.
 
@@ -44,7 +41,6 @@ The addon only talks to guildmates, over hidden guild addon messages.
 | `/iwt inactive 7\|14\|30` | members away that many days or more |
 | `/iwt alt add Name` · `/iwt alt remove Name` · `/iwt alt` | link an alt, unlink it, or list your links |
 | `/iwt craft <name>` | who in the guild can make an item |
-| `/iwt lfg note` · `/iwt lfg off` | post on the Groups board, or take your post down |
 | `/iwt layer` | your layer and guildmates' layers |
 | `/iwt hop Name` | ask a guildmate for a layer-hop invite |
 | `/iwt bug` | copyable bug report |

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+- Roster: the Rank and Zone / last on columns make way for Honourable kills, so guildmates can compare. Rank and last online are still in the tooltip, and the away filters still work.
+- Home: Elite Soldier, the guildmate with the most honourable kills.
+- The Play tab is now Hop, with layer hopping only. The Groups board is gone.
+- Guild life: the Calendar is gone (events live on Discord), and so is Next event on Home.
+- Loot notes: the Guildmate box suggests names as you type (first name, surname or part of either), like the mailbox. Click one, or use the arrow keys and Tab or Enter.
+- Donations: only the officer who set the goal can change it. Another officer's change asks the owner first, and if they allow it the goal becomes theirs.
+
 ## 0.5.1
 
 - Fixed: guildmates who installed the addon later could miss older shared data (for example someone's professions) when a newer change reached them first. Catch-up now compares everything each guildmate holds, and each guildmate with different data answers.

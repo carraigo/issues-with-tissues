@@ -1,5 +1,5 @@
--- The Roster tab: the guild roster with level, class, rank, zone or last online, and
--- professions. Filters: everyone, online now, away 7 / 14 / 30+ days. Click a column title to
+-- The Roster tab: the guild roster with level, class, honorable kills and professions (rank and
+-- last online are in the tooltip, and still drive the filters). Filters: everyone, online now, away 7 / 14 / 30+ days. Click a column title to
 -- sort. "Group alts" shows each player once, under their main, with their alts' names.
 
 local _, ns = ...
@@ -15,12 +15,11 @@ Tab.FILTERS = {
 	{ key = "away30", label = "Away 30d+", days = 30 },
 }
 Tab.COLUMNS = {
-	{ key = "name", label = "Name", width = 170 },
+	{ key = "name", label = "Name", width = 200 },
 	{ key = "level", label = "Lvl", width = 36 },
-	{ key = "class", label = "Class", width = 70 },
-	{ key = "rankIndex", label = "Rank", width = 80 },
-	{ key = "where", label = "Zone / last on", width = 120 },
-	{ key = "profs", label = "Professions", width = 130 },
+	{ key = "class", label = "Class", width = 80 },
+	{ key = "hk", label = "Honourable kills", width = 110 },
+	{ key = "profs", label = "Professions", width = 180 },
 }
 Tab.state = { filter = "all", sort = "rankIndex", desc = false, groupAlts = true, offset = 0 }
 
@@ -108,6 +107,9 @@ function Tab.Rows(state)
 			table.sort(row.otherAlts)
 			row.where = Where(row)
 			row.profs = ProfText(shown)
+			-- Honorable kills of the character shown; -1 (shown as "-") until it shares them.
+			local k = ns.Kills.Of(shown)
+			row.hk = k and k.hk or -1
 			rows[#rows + 1] = row
 		end
 	end
@@ -156,8 +158,8 @@ function Tab.Refresh()
 					else
 						text = row.name .. (#row.alts > 0 and (" |cff999999+" .. #row.alts .. "|r") or "")
 					end
-				elseif col.key == "rankIndex" then
-					text = row.rank
+				elseif col.key == "hk" then
+					text = row.hk >= 0 and ns.Kills.Format(row.hk) or "|cff666666-|r"
 				else
 					text = tostring(row[col.key] or "")
 				end
@@ -229,7 +231,7 @@ local function Build(panel)
 		t:SetText(col.label)
 		h:SetScript("OnClick", function()
 			if Tab.state.sort == col.key then Tab.state.desc = not Tab.state.desc
-			else Tab.state.sort, Tab.state.desc = col.key, (col.key == "level") end
+			else Tab.state.sort, Tab.state.desc = col.key, (col.key == "level" or col.key == "hk") end
 			Tab.Refresh()
 		end)
 		headerButtons[#headerButtons + 1] = h
@@ -271,6 +273,7 @@ local function Build(panel)
 			if r.mainName then GameTooltip:AddLine("Alt of " .. r.mainName .. " (" .. (r.mainRank or "") .. ")", 0.7, 0.7, 0.7) end
 			GameTooltip:AddLine(string.format("Level %d %s, %s", r.level, r.class, r.rank), 1, 1, 1)
 			GameTooltip:AddLine(r.online and ("Online: " .. (r.zone or "")) or ("Last online: " .. r.where), 1, 1, 1)
+			GameTooltip:AddLine(r.hk >= 0 and ("Honourable kills: " .. ns.Kills.Format(r.hk)) or "Honourable kills: not shared (no addon)", 1, 0.56, 0.31)
 			if #r.otherAlts > 0 then
 				GameTooltip:AddLine((r.mainName and "Other alts: " or "Alts: ") .. table.concat(r.otherAlts, ", "), 0.7, 0.7, 0.7, true)
 			end
@@ -297,7 +300,7 @@ end
 ns.UI.AddPage("Members", "Roster", Build, { order = 10 })
 
 ns.Listen("ROSTER_UPDATED", function() Tab.Refresh() end)
-ns.Listen("SYNC_CHANGED", function(set) if set == "alts" or set == "profs" then Tab.Refresh() end end)
+ns.Listen("SYNC_CHANGED", function(set) if set == "alts" or set == "profs" or set == "kills" then Tab.Refresh() end end)
 
 ns.RegisterCommand("roster", "open the roster", function() ns.UI.Open("Roster") end)
 ns.RegisterCommand("inactive", "list members away: /iwt inactive 7|14|30", function(rest)
