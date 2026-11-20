@@ -208,6 +208,40 @@ test("sync: only one guildmate answers an ask", function()
 	eq(answers, 1)
 end)
 
+test("sync: an older record isn't missed because a newer one arrived first", function()
+	local g = Guild()
+	local offi = W.NewClient(base, "Offi", g)
+	DefineSets(offi)
+	offi.ns.Sync.Set("notes", "old", "written before the others installed")
+	-- Two guildmates install later; the second hears only a fresh live change from the first.
+	W.now = W.now + 3600
+	local a = W.NewClient(base, "Gm", g)
+	DefineSets(a)
+	local b = W.NewClient(base, "Mem", g)
+	DefineSets(b)
+	local saved = offi.ns.Comm.handlers.SU.fn
+	offi.ns.Comm.handlers.SU.fn = function() end -- (offi misses it; doesn't matter)
+	a.ns.Sync.Set("notes", "new", "fresh")
+	offi.ns.Comm.handlers.SU.fn = saved
+	eq(b.ns.Sync.Get("notes", "new"), "fresh")
+	eq(b.ns.Sync.Get("notes", "old"), nil)
+	b.ns.Sync.Ask()
+	eq(b.ns.Sync.Get("notes", "old"), "written before the others installed", "the old record still arrives")
+end)
+
+test("sync: guildmates holding different records each answer, the same records only once", function()
+	local g = Guild()
+	local offi, vet = W.NewClient(base, "Offi", g), W.NewClient(base, "Vet", g)
+	DefineSets(offi, vet)
+	-- offi and vet each hold a record the other never got
+	offi.ns.Sync.Accept("notes", "x", { rev = W.now, by = "Offi", data = "only offi" })
+	vet.ns.Sync.Accept("notes", "y", { rev = W.now, by = "Offi", data = "only vet" })
+	local late = W.NewClient(base, "Mem", g)
+	DefineSets(late)
+	late.ns.Sync.Ask()
+	eq(late.ns.Sync.Get("notes", "x"), "only offi"); eq(late.ns.Sync.Get("notes", "y"), "only vet")
+end)
+
 test("bug report lists errors once with a count", function()
 	local c = W.NewClient(base, "Mem", Guild())
 	c.ns.ReportError("boom")
@@ -965,6 +999,10 @@ test("layers: an NPC's GUID gives the layer, guildmates share it and get numbere
 	eq(L.FromGUID("Creature-0-5250-0-1458-6491-00001A2B3C"), 1458)
 	eq(L.FromGUID("Player-5250-0ABCDEF0"), nil)
 	eq(L.FromGUID("Pet-0-5250-0-1458-416-0100A2B3C4"), nil)
+	-- secret GUIDs (in combat) are skipped without an error
+	mem.env.issecretvalue = function(v) return v == "Creature-0-5250-0-1458-6491-00001A2B3D" end
+	eq(L.FromGUID("Creature-0-5250-0-1458-6491-00001A2B3D"), nil)
+	mem.env.issecretvalue = nil
 	mem.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1458-6491-00001A2B3C" end end
 	mem.env.__fire("PLAYER_TARGET_CHANGED")
 	eq(L.mine.id, 1458)

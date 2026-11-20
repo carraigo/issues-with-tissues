@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Fixed: guildmates who installed the addon later could miss older shared data (for example someone's professions) when a newer change reached them first. Catch-up now compares everything each guildmate holds, and each guildmate with different data answers.
+- Fixed: an error on mouseover/target in combat (the game hides some unit IDs from addons there); the layer check now skips them.
+
 ## 0.5.0
 
 - Guild life > Loot notes: officers note who received which item (shift-click the item in), with a note. Everyone can read and search them. Notes only: no points or priorities.
