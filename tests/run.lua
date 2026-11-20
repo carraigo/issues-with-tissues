@@ -1099,5 +1099,14 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
+test("no file assigns a Blizzard global like SlashCmdList (that taints every macro)", function()
+	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua" }) do
+		local src = io.open(base .. "/IssuesWithTissues/" .. f):read("*a")
+		for _, g in ipairs({ "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames", "ChatFrame_OpenChat", "ChatEdit_InsertLink" }) do
+			assert(not src:find("\n%s*" .. g .. "%s*=[^=]"), f .. " assigns " .. g)
+		end
+	end
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
