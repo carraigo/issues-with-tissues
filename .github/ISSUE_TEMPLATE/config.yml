@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Send a diagnostics report
+    url: https://carraigo.github.io/iwt-stats/#report
+    about: Paste /iwt report here to check it and send it as an issue.

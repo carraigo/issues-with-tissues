@@ -1,0 +1,30 @@
+name: Bug report
+description: Something in the addon isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The quickest way to help: in game type `/iwt report`, press Ctrl+C,
+        and paste it at https://carraigo.github.io/iwt-stats/#report (page 888). It can send the
+        report as an issue for you, with errors and versions already filled in.
+  - type: input
+    id: version
+    attributes:
+      label: Addon version
+      description: Shown in Settings, or with /iwt version. "0.7.2" for example.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnostics report (optional)
+      description: Paste the text from /iwt report here.
+      render: text
