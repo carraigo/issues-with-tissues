@@ -212,8 +212,7 @@ end
 
 ns.UI.AddPage("Home", "Home", Build)
 
-ns.Listen("ROSTER_UPDATED", function() General.Refresh() end)
-ns.Listen("SYNC_CHANGED", function() General.Refresh() end)
-ns.Listen("SCAN_CHANGED", function() General.Refresh() end)
-ns.Listen("VERSION_SEEN", function() General.Refresh() end)
-ns.Listen("GUILD_LIFE_CHANGED", function() General.Refresh() end)
+local Soon = ns.Coalesce(function() General.Refresh() end)
+for _, msg in ipairs({ "ROSTER_UPDATED", "SYNC_CHANGED", "SCAN_CHANGED", "VERSION_SEEN", "GUILD_LIFE_CHANGED" }) do
+	ns.Listen(msg, Soon)
+end

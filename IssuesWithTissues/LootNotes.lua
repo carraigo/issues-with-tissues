@@ -11,9 +11,7 @@ ns.LootNotes = Loot
 
 ns.Sync.Define("loot", { writer = "officer", max = 800 })
 
-local function Clean(text, max)
-	return (tostring(text or ""):gsub("[|;\30\31]", ""):gsub("^%s+", ""):gsub("%s+$", "")):sub(1, max)
-end
+local Clean = ns.CleanText
 
 -- "|cffa335ee|Hitem:19019::...|h[Thunderfury]|h|r" -> 19019, "Thunderfury"; plain text -> nil, text
 function Loot.ParseItem(text)
@@ -199,5 +197,6 @@ if hooksecurefunc then
 	Watch(_G.ChatFrameUtil, "InsertLink")
 end
 
-ns.Listen("SYNC_CHANGED", function(set) if set == "loot" then Loot.Refresh() end end)
-ns.Listen("ROSTER_UPDATED", function() Loot.Refresh() end)
+local Soon = ns.Coalesce(function() Loot.Refresh() end)
+ns.Listen("SYNC_CHANGED", function(set) if set == "loot" then Soon() end end)
+ns.Listen("ROSTER_UPDATED", Soon)

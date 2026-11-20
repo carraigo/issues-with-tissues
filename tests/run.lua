@@ -1108,5 +1108,27 @@ test("no file assigns a Blizzard global like SlashCmdList (that taints every mac
 	end
 end)
 
+test("a burst of shared records redraws an open page once, not once per record", function()
+	local g = Guild2()
+	local c = W.NewClient(base, "Mem", g)
+	c.ns.UI.Open("Roster")
+	local T, builds = c.ns.RosterTab, 0
+	local rows = T.Rows
+	T.Rows = function(...) builds = builds + 1 return rows(...) end
+	c.flush()
+	builds = 0
+	for i = 1, 200 do
+		c.ns.Sync.Accept("kills", "Gm", { rev = W.now + i, by = "Gm", data = i .. ";0;s" })
+	end
+	eq(builds, 0, "nothing redrawn during the burst")
+	c.flush()
+	eq(builds, 1, "one redraw after it")
+	-- scrolling repaints without rebuilding
+	T.Refresh(false)
+	eq(builds, 1)
+	eq(c.ns.CleanText("  a|b;c  ", 3), "abc"); eq(c.ns.CleanText("x~y", nil, "~"), "xy")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

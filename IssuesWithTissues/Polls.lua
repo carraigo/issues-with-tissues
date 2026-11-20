@@ -16,9 +16,7 @@ Polls.MAX_ANSWERS = 6
 Polls.DAYS = { 1, 3, 7 }
 Polls.SHOW_CLOSED = 7 * 86400 -- closed polls stay listed this long
 
-local function Clean(text, max)
-	return (tostring(text or ""):gsub("[|;~=,\30\31]", ""):gsub("^%s+", ""):gsub("%s+$", "")):sub(1, max)
-end
+local function Clean(text, max) return ns.CleanText(text, max, "~=,") end
 
 function Polls.Decode(data)
 	local closes, answers, question = tostring(data or ""):match("^(%d+);([^;]*);(.*)$")
@@ -248,7 +246,8 @@ local function Build(panel)
 end
 
 ns.UI.AddPage("Guild life", "Polls", Build, { order = 20 })
+Polls.RefreshSoon = ns.Coalesce(function() Polls.Refresh() end)
 
 ns.Listen("SYNC_CHANGED", function(set)
-	if set == "polls" or set == "votes" then Polls.Refresh(); ns.Send("GUILD_LIFE_CHANGED") end
+	if set == "polls" or set == "votes" then Polls.RefreshSoon(); ns.Send("GUILD_LIFE_CHANGED") end
 end)
