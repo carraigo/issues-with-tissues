@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Logging out or /reload now saves a copy of the roster (name, level, class, rank, days away; no notes) with the addon's data, for the guild web page export.
+
 ## 0.6.2
 
 - Faster: when a lot of shared data arrives at once (logging in, a guildmate's catch-up), open pages redraw once afterwards instead of once per record. In a 500-member test guild this cut a 2-3 second freeze to a few milliseconds.
