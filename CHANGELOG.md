@@ -6,6 +6,7 @@
 - Home: Elite Soldier, the guildmate with the most honourable kills.
 - The Play tab is now Hop, with layer hopping only. The Groups board is gone.
 - Guild life: the Calendar is gone (events live on Discord), and so is Next event on Home.
+- Loot notes: the Guildmate box suggests names as you type (first name, surname or part of either), like the mailbox. Click one, or use the arrow keys and Tab or Enter.
 - Donations: only the officer who set the goal can change it. Another officer's change asks the owner first, and if they allow it the goal becomes theirs.
 
 ## 0.5.1

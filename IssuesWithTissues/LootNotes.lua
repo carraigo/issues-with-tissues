@@ -114,6 +114,8 @@ local function Build(panel)
 	officerRow:SetSize(616, 24)
 	playerBox = ns.UI.CreateInput(officerRow, 140, "Guildmate")
 	playerBox:SetPoint("TOPLEFT", 4, 0)
+	ns.UI.AttachNameSuggest(playerBox) -- type part of a name, pick the guildmate
+	playerBox.onPick = function() itemBox:SetFocus() end
 	itemBox = ns.UI.CreateInput(officerRow, 170, "Item (shift-click it here)")
 	itemBox:SetMaxLetters(255)
 	itemBox:SetPoint("LEFT", playerBox, "RIGHT", 6, 0)
@@ -130,7 +132,7 @@ local function Build(panel)
 		end
 		Loot.Refresh()
 	end)
-	Loot.itemBox = itemBox
+	Loot.itemBox, Loot.playerBox = itemBox, playerBox
 
 	searchBox = ns.UI.CreateInput(panel, 250, "Search player, item or note")
 	searchBox:SetPoint("TOPLEFT", 4, -30)

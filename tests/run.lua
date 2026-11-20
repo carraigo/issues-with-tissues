@@ -889,6 +889,31 @@ test("saved data of removed features is dropped at load", function()
 	eq(c.env.IwTDB.sync.events, nil); eq(c.env.IwTDB.sync.lfg, nil)
 end)
 
+test("loot notes: the name box suggests guildmates as you type, like the mailbox", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Sara Exe", 3, false, 2 }, { "Sara Best", 3, true }, { "Large Joseph", 3, true } } }
+	local gm = W.NewClient(base, "Gm", g)
+	local UI = gm.ns.UI
+	local function names(list) local o = {} for i, k in ipairs(list) do o[i] = gm.ns.Roster.DisplayName(k) end return table.concat(o, ",") end
+	eq(names(UI.NameMatches("sa")), "Sara Best,Sara Exe", "online first")
+	eq(names(UI.NameMatches("jos")), "Large Joseph", "surname works")
+	eq(names(UI.NameMatches("e")), "Sara Exe,Large Joseph,Mem,Sara Best", "starts-with words first, then contains")
+	eq(#UI.NameMatches(""), 0)
+	gm.ns.UI.Open("Loot notes")
+	local box = gm.ns.LootNotes.playerBox
+	local s = box.suggest
+	s.Update("sara")
+	eq(#s.keys, 2)
+	s.Move(1)
+	local picked
+	box.onPick = function(key) picked = key end
+	assert(s.Pick())
+	eq(gm.ns.Roster.DisplayName(picked), "Sara Exe")
+	eq(#s.keys, 0, "the list closes")
+	s.Update("Sara Exe")
+	eq(#s.keys, 0, "nothing to suggest for an exact full name")
+	eq(#gm.env.IwTDB.errors, 0)
+end)
+
 test("loot notes: officers note who got what, everyone can search, notes only", function()
 	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Sara Exe", 3, true }, { "Sara Best", 3, true } } }
 	local mem = W.NewClient(base, "Mem", g)

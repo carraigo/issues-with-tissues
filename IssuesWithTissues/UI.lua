@@ -544,6 +544,128 @@ function UI.CreateInput(panel, width, hint)
 	return box
 end
 
+-- Guildmates whose name matches what was typed, like the mailbox's To box: names (first name,
+-- surname or full name) that start with it come first, then names that merely contain it;
+-- online before offline, then alphabetical. Returns roster keys.
+function UI.NameMatches(text, max)
+	text = tostring(text or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+	if text == "" then return {} end
+	local hits = {}
+	for key, m in pairs(ns.Roster.members) do
+		local name = ns.Roster.DisplayName(key)
+		local low = name:lower()
+		local score
+		if low:sub(1, #text) == text then score = 0
+		else
+			for word in low:gmatch("%S+") do
+				if word:sub(1, #text) == text then score = 1 break end
+			end
+			if not score and low:find(text, 1, true) then score = 2 end
+		end
+		if score then hits[#hits + 1] = { key = key, name = name, score = score, online = m.online and 0 or 1 } end
+	end
+	table.sort(hits, function(a, b)
+		if a.score ~= b.score then return a.score < b.score end
+		if a.online ~= b.online then return a.online < b.online end
+		return a.name < b.name
+	end)
+	local out = {}
+	for i = 1, math.min(#hits, max or 8) do out[i] = hits[i].key end
+	return out
+end
+
+-- A dropdown of matching guildmates under an input box (see UI.NameMatches). Click a name, or
+-- use the arrow keys and Tab / Enter, to fill the box with the full name.
+local SUGGEST_ROWS = 8
+function UI.AttachNameSuggest(box)
+	local drop = CreateFrame("Frame", nil, box)
+	drop:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -2)
+	drop:SetSize((box:GetWidth() or 140) + 60, 10)
+	drop:SetFrameStrata("DIALOG")
+	UI.Skin(drop, C.bg, C.edge)
+	drop:Hide()
+	local state = { keys = {}, sel = 1 }
+	box.suggest = state
+	local rows = {}
+
+	local function Paint()
+		for i, b in ipairs(rows) do
+			local key = state.keys[i]
+			if key then
+				local m = ns.Roster.members[key] or {}
+				b.label:SetText(ns.Roster.DisplayName(key) .. (m.online and "" or " |cff808080(offline)|r"))
+				b.label:SetTextColor(UI.ClassColor(m.classFile))
+				b.sel:SetShown(i == state.sel)
+				b:Show()
+			else
+				b:Hide()
+			end
+		end
+		drop:SetHeight(#state.keys * 18 + 6)
+		drop:SetShown(#state.keys > 0)
+	end
+
+	function state.Pick(i)
+		local key = state.keys[i or state.sel]
+		if not key then return false end
+		state.keys = {}
+		box.picking = true
+		box:SetText(ns.Roster.DisplayName(key))
+		box.picking = nil
+		Paint()
+		if box.onPick then box.onPick(key) end
+		return true
+	end
+	function state.Update(text)
+		local keys = UI.NameMatches(text, SUGGEST_ROWS)
+		-- Nothing to suggest once the box holds exactly one guildmate's full name.
+		if #keys == 1 and ns.Roster.DisplayName(keys[1]):lower() == tostring(text):lower() then keys = {} end
+		state.keys, state.sel = keys, 1
+		Paint()
+	end
+	function state.Move(delta)
+		if #state.keys == 0 then return end
+		state.sel = (state.sel - 1 + delta) % #state.keys + 1
+		Paint()
+	end
+	function state.Hide() state.keys = {}; Paint() end
+
+	for i = 1, SUGGEST_ROWS do
+		local b = CreateFrame("Button", nil, drop)
+		b:SetPoint("TOPLEFT", 3, -3 - (i - 1) * 18)
+		b:SetPoint("RIGHT", drop, "RIGHT", -3, 0)
+		b:SetHeight(18)
+		b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		b.label:SetPoint("LEFT", 5, 0)
+		b.sel = UI.Fill(b:CreateTexture(nil, "BACKGROUND"), C.hover)
+		b.sel:SetAllPoints()
+		local hl = UI.Fill(b:CreateTexture(nil, "HIGHLIGHT"), C.hover)
+		hl:SetAllPoints()
+		b:SetScript("OnClick", function() state.Pick(i) end)
+		rows[i] = b
+	end
+
+	local onChange = box.onChange
+	box.onChange = function(text, user)
+		if onChange then onChange(text, user) end
+		if not box.picking and box:HasFocus() then state.Update(text) end
+	end
+	if box.SetAltArrowKeyMode then box:SetAltArrowKeyMode(false) end
+	box:SetScript("OnArrowPressed", function(_, key)
+		if key == "DOWN" then state.Move(1) elseif key == "UP" then state.Move(-1) end
+	end)
+	box:SetScript("OnTabPressed", function() state.Pick() end)
+	local onEnter = box.onEnter
+	box.onEnter = function(text)
+		if state.Pick() then return end
+		if onEnter then onEnter(text) end
+	end
+	-- Leaving the box closes the list, a moment later so a click on a name still lands.
+	box:HookScript("OnEditFocusLost", function() ns.After(0.2, function() if not box:HasFocus() then state.Hide() end end) end)
+	box:HookScript("OnEscapePressed", function() state.Hide() end)
+	return state
+end
+
 -- Open a whisper to a guildmate ("First Surname").
 function UI.Whisper(key)
 	local target = ns.Roster.DisplayName(key)
