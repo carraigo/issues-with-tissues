@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Diagnostics report: `/iwt report` (or Settings, Diagnostics report) packs version, client, errors, profiler numbers, the last self-test, shared-data counts, settings and usage counts (pages opened, commands used) into one string to copy. Paste it at carraigo.github.io/iwt-stats/#report to check it and send it as a GitHub issue. No chat, log lines or other players' names; your character's name only with `/iwt report name`.
+
 ## 0.6.3
 
 - Logging out or /reload now saves a copy of the roster (name, level, class, rank, days away; no notes) with the addon's data, for the guild web page export.

@@ -26,3 +26,4 @@ Polls.lua
 Donations.lua
 LootNotes.lua
 SelfTest.lua
+Report.lua
