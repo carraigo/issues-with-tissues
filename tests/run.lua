@@ -410,6 +410,14 @@ test("addon users: someone already online answers a new HELLO, so both see each 
 	gm.ns.Comm.sendHook = nil
 end)
 
+test("minimap button sits on the rim of a bigger or square minimap (Vatic's bug)", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local off = c.ns.UI.MinimapOffset
+	local x, y = off(0, 140, 140, "ROUND"); eq(math.floor(x + 0.5), 80); eq(math.floor(y + 0.5), 0)
+	x = off(0, 200, 200, "ROUND"); eq(math.floor(x + 0.5), 110, "bigger map, further out")
+	x, y = off(45, 140, 140, "SQUARE"); eq(math.floor(x + 0.5), 80); eq(math.floor(y + 0.5), 80)
+end)
+
 test("professions: recipes from an open window, and who can make it", function()
 	local g = Guild2()
 	local mem = W.NewClient(base, "Mem", g)

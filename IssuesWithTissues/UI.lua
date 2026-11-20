@@ -746,9 +746,25 @@ end
 -- Minimap button (no library: a round button that can be dragged around the edge).
 ---------------------------------------------------------------------------
 local mini
+-- On the rim, however big the minimap is: other addons (and some UI packs) make it larger or
+-- square, so the distance comes from its size (80 on the default 140-wide map).
+function UI.MinimapOffset(angleDeg, width, height, shape)
+	local a = math.rad(angleDeg or 220)
+	local x, y = math.cos(a), math.sin(a)
+	local rx, ry = (width or 140) / 2 + 10, (height or width or 140) / 2 + 10
+	if shape == "SQUARE" then
+		-- Out to the square's edge rather than a circle inside it.
+		local m = math.max(math.abs(x), math.abs(y))
+		if m > 0 then x, y = x / m, y / m end
+	end
+	return x * rx, y * ry
+end
+
 local function PlaceMini()
-	local angle = math.rad(ns.db.minimapAngle or 220)
-	mini:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * 80, math.sin(angle) * 80)
+	local shape = type(GetMinimapShape) == "function" and GetMinimapShape() or "ROUND"
+	local x, y = UI.MinimapOffset(ns.db.minimapAngle, Minimap:GetWidth(), Minimap:GetHeight(), shape)
+	mini:ClearAllPoints()
+	mini:SetPoint("CENTER", Minimap, "CENTER", x, y)
 end
 
 function UI.CreateMinimapButton()
@@ -789,6 +805,7 @@ function UI.CreateMinimapButton()
 		GameTooltip:Show()
 	end)
 	mini:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	if Minimap.HookScript then Minimap:HookScript("OnSizeChanged", PlaceMini) end
 	PlaceMini()
 end
 

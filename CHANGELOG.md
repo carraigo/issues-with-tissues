@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- The minimap button now sits on the rim of a bigger or square minimap (from other addons or UI packs), not inside the map.
+
 ## 0.7.1
 
 - Professions now reach the guild after a first login. Skills were only shared 12 seconds after logging in, and if the guild roster hadn't loaded by then, sharing was refused and never tried again. They are now shared again whenever the roster loads.
