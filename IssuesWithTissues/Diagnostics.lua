@@ -23,10 +23,11 @@ function ns.ReportError(err)
 		if e.text == text then
 			e.count = e.count + 1
 			e.last = ns.Now()
+			e.version = ns.VERSION -- the version it last happened on
 			return
 		end
 	end
-	table.insert(db.errors, 1, { text = text, stack = stack, count = 1, first = ns.Now(), last = ns.Now() })
+	table.insert(db.errors, 1, { text = text, stack = stack, count = 1, first = ns.Now(), last = ns.Now(), version = ns.VERSION })
 	while #db.errors > Diag.MAX_ERRORS do table.remove(db.errors) end
 	if db.settings and db.settings.debug then ns.Print("|cffff5555error:|r %s", text) end
 end
@@ -63,7 +64,7 @@ if blocked then
 	blocked:SetScript("OnEvent", function(_, event, addon, func)
 		if addon == "IssuesWithTissues" then
 			local extra = ns.registering and (" while registering " .. ns.registering) or ""
-			ns.ReportError(string.format("%s: the game blocked %s()%s", event, tostring(func), extra))
+			ns.ReportError(string.format("%s: the game blocked %s()%s", event, (tostring(func):gsub("%(%)$", "")), extra))
 		end
 	end)
 end
