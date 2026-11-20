@@ -1130,5 +1130,14 @@ test("a burst of shared records redraws an open page once, not once per record",
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
+test("logout saves a roster snapshot for the web page export", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.__fire("PLAYER_LOGOUT")
+	local snap = c.env.IwTDB.snapshot
+	assert(snap and #snap.members > 0, "snapshot written")
+	eq(snap.version, c.ns.VERSION)
+	for _, m in ipairs(snap.members) do assert(m.name and m.note == nil) end
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
