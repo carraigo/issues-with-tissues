@@ -328,13 +328,8 @@ local function Build(panel)
 	Layers.Refresh()
 end
 
-ns.UI.AddPage("Play", "Layers", Build, { order = 20 })
--- Your layer, at the right of Play's sub-tab row.
-ns.UI.SetInfo("Play", function()
-	local m = Layers.mine
-	if not m then return "|cff999999Your layer: target any NPC|r" end
-	return string.format("You: %s, %s", m.zone ~= "" and m.zone or "here", Layers.Label(m.map, m.id))
-end)
+-- The Hop tab holds only this page, so it has no sub-tab row; your layer is the page's first line.
+ns.UI.AddPage("Hop", "Layers", Build, { order = 10 })
 ns.Settings.AddToggle("hopRequests", "Let guildmates ask me for a layer-hop invite")
 ns.Listen("ROSTER_UPDATED", function() Layers.Refresh() end)
 

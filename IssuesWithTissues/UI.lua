@@ -1,4 +1,4 @@
--- The main window: four tabs along the bottom (Home, Members, Play, Guild life), each holding
+-- The main window: four tabs along the bottom (Home, Members, Hop, Guild life), each holding
 -- pages behind a row of sub-tabs, and Settings behind the cog in the title bar. Features add a
 -- page with ns.UI.AddPage("Members", "Roster", function(panel) ... end); the builder runs the
 -- first time the page is shown. A tab with no pages is not shown. Also the minimap button, the
@@ -11,7 +11,7 @@ ns.UI = UI
 
 -- The tabs, in order. UI.tabs is the ones with pages, set when the window is made.
 UI.groups = {}
-for _, title in ipairs({ "Home", "Members", "Play", "Guild life" }) do
+for _, title in ipairs({ "Home", "Members", "Hop", "Guild life" }) do
 	UI.groups[#UI.groups + 1] = { title = title, pages = {} }
 end
 UI.tabs = {}
@@ -222,7 +222,7 @@ function UI.SetSettings(build)
 	UI.settings = { title = "Settings", build = build }
 end
 
--- A line at the right of a tab's sub-tab row (Play: your layer).
+-- A line at the right of a tab's sub-tab row.
 function UI.SetInfo(groupTitle, fn)
 	local g = Group(groupTitle)
 	if g then g.info = fn end

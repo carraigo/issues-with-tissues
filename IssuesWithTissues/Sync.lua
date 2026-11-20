@@ -1,4 +1,4 @@
--- Shared data sets that every guildmate's addon keeps a copy of (loot notes, calendar,
+-- Shared data sets that every guildmate's addon keeps a copy of (loot notes, polls,
 -- alt links, professions...). Each set is a table of records by key; a record carries a
 -- revision (server time of the change), who wrote it, and its data as a string.
 --
@@ -290,6 +290,10 @@ end)
 
 function Sync:OnLoad()
 	ns.char.writeLogSince = ns.char.writeLogSince or ns.Now()
+	-- Sets of features that were taken out (0.6.0: the calendar and the Groups board).
+	for name in pairs(ns.db.sync) do
+		if not Sync.sets[name] then ns.db.sync[name] = nil end
+	end
 	Sync.Prune()
 end
 

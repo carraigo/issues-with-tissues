@@ -429,7 +429,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Play(Groups|Layers),Guild life(Calendar|Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Hop(Layers),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -742,32 +742,6 @@ test("same first name: when the game stamps the surname, that is the sender", fu
 	eq(gm.ns.Comm.Allowed("officer", "Sara Exe", "GUILD", false), false)
 end)
 
-test("groups board: a post reaches the guild, ends on time and can be taken down", function()
-	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Away", 3, false, 2 } } }
-	local mem = W.NewClient(base, "Mem", g)
-	local gm = W.NewClient(base, "Gm", g)
-	assert(mem.ns.LFG.Post("need", "Dungeon", 60, "Deadmines, tank |cffff0000red|r"))
-	local posts = gm.ns.LFG.Posts()
-	eq(#posts, 1); eq(posts[1].who, "Mem"); eq(posts[1].activity, "Dungeon")
-	eq(posts[1].note, "Deadmines, tank cffff0000redr", "no colour codes from others")
-	local said = table.concat(gm.printed or {}, "\n")
-	assert(said:find("Deadmines", 1, true), "a chat line about the new post")
-	W.now = W.now + 61 * 60
-	eq(#gm.ns.LFG.Posts(), 0, "expired")
-	W.now = W.now - 61 * 60
-	assert(mem.ns.LFG.Clear())
-	eq(#gm.ns.LFG.Posts(), 0, "taken down")
-	-- an offline guildmate's post is hidden; nobody can post for someone else
-	gm.ns.Sync.Accept("lfg", "Away", { rev = W.now, by = "Away", data = gm.ns.LFG.Encode("need", "Raid", W.now + 600, "x") })
-	eq(#gm.ns.LFG.Posts(), 0)
-	mem.ns.Comm.Send("SU", mem.ns.Comm.Pack("lfg", "Gm", W.now, "Mem", "", gm.ns.LFG.Encode("need", "Raid", W.now + 600, "fake")))
-	eq(gm.ns.Sync.Get("lfg", "Gm"), nil)
-	mem.ns.HandleSlash("lfg Stockades")
-	eq(gm.ns.LFG.Posts()[1].note, "Stockades")
-	mem.ns.HandleSlash("lfg off")
-	eq(#gm.ns.LFG.Posts(), 0)
-end)
-
 test("guild kills: each character shares its kills and Home adds them up", function()
 	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Gone", 3, true } } }
 	local mem = W.NewClient(base, "Mem", g)
@@ -790,6 +764,15 @@ test("guild kills: each character shares its kills and Home adds them up", funct
 	eq(mem.ns.Kills.Format(1234567), "1,234,567"); eq(mem.ns.Kills.Format(999), "999")
 	assert(mem.ns.GeneralTab.Facts().kills.mobs == 1500)
 	assert(mem.ns.Diagnostics.BuildReport():find("Kills: 12 honorable, 1500 creatures (stat)", 1, true))
+	-- Elite Soldier on Home, and each character's honourable kills on the roster
+	local elite = mem.ns.GeneralTab.Facts().elite
+	eq(elite.who, "Mem"); eq(elite.hk, 12)
+	local rows = mem.ns.RosterTab.Rows({ filter = "all", sort = "hk", desc = true, groupAlts = false })
+	eq(rows[1].name, "Mem"); eq(rows[1].hk, 12); eq(rows[2].hk, 3); eq(rows[3].hk, -1, "Gone hasn't shared")
+	for _, col in ipairs(mem.ns.RosterTab.COLUMNS) do assert(col.key ~= "rankIndex" and col.key ~= "where", "rank and zone columns are gone") end
+	mem.ns.UI.Open("Roster")
+	mem.ns.GeneralTab.Refresh()
+	eq(#mem.env.IwTDB.errors, 0)
 end)
 
 test("donations: officers set and edit the goal, deposits are noted, a new goal starts from zero", function()
@@ -822,6 +805,40 @@ test("donations: officers set and edit the goal, deposits are noted, a new goal 
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
+test("donations: only the officer who set the goal changes it, unless they allow it", function()
+	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Off", 1, true } } }
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	local off = W.NewClient(base, "Off", g)
+	assert(gm.ns.Donations.SetGoal("Guild bank", 500))
+	eq(off.ns.Donations.Goal().owner, "Gm")
+	local ok, why = off.ns.Donations.SetGoal("Mounts", 1000, true)
+	eq(ok, false); eq(why, "owned")
+	eq(mem.ns.Donations.Goal().title, "Guild bank", "nothing changed")
+	-- Off asks; Gm says no, then yes
+	assert(off.ns.Donations.RequestChange("Mounts", 1000, true))
+	eq(gm.popups[#gm.popups].which, "IWT_DGOAL"); eq(gm.popups[#gm.popups].arg, "Off")
+	assert(gm.ns.Donations.AnswerRequest(false))
+	eq(mem.ns.Donations.Goal().title, "Guild bank")
+	W.now = W.now + 31
+	assert(off.ns.Donations.RequestChange("Mounts", 1000, true))
+	gm.env.StaticPopupDialogs.IWT_DGOAL.OnAccept()
+	W.now = W.now + 1
+	local goal = mem.ns.Donations.Goal()
+	eq(goal.title, "Mounts"); eq(goal.target, 1000 * 10000); eq(goal.owner, "Off", "handed over")
+	assert(off.ns.Donations.SetGoal("Mounts", 1200))
+	eq(select(2, gm.ns.Donations.SetGoal("Back to bank", 5)), "owned", "now Gm has to ask")
+	-- a goal saved before 0.6.0 (no owner field) belongs to whoever wrote it
+	W.now = W.now + 1
+	mem.ns.Sync.Accept("dgoal", "goal", { rev = W.now, by = "Gm", data = "7;100;Old goal" })
+	eq(mem.ns.Donations.Goal().owner, "Gm"); eq(mem.ns.Donations.Goal().title, "Old goal")
+	-- an owner who left the guild doesn't block anyone
+	W.now = W.now + 1
+	mem.ns.Sync.Accept("dgoal", "goal", { rev = W.now, by = "Gm", data = "8;100;Stuck;Gone Person" })
+	eq(mem.ns.Donations.CanEdit("Off"), true)
+	eq(#gm.env.IwTDB.errors, 0); eq(#off.env.IwTDB.errors, 0)
+end)
+
 test("polls: officers ask, one vote per player (alts once), votes can change, closed polls stop voting", function()
 	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Other", 3, true } } }
 	local mem = W.NewClient(base, "Mem", g)
@@ -849,42 +866,27 @@ test("polls: officers ask, one vote per player (alts once), votes can change, cl
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
-test("calendar: officers add events, everyone signs up with a role, Home shows what's on", function()
+test("home: what's on shows open polls and the donation goal; the calendar is gone", function()
 	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true } } }
 	local mem = W.NewClient(base, "Mem", g)
 	local gm = W.NewClient(base, "Gm", g)
-	for _, c in ipairs({ mem, gm }) do
-		c.env.time = function(t) if t then return os.time(t) end return W.now end
-	end
-	local C = gm.ns.Calendar
-	local when = C.TimeOf(1, "20:00")
-	assert(when and when > W.now)
-	eq(C.TimeOf(0, "25:00"), nil); eq(C.TimeOf(0, "soon"), nil)
-	eq((mem.ns.Calendar.Add("Deadmines", when)), false, "members can't add events")
-	eq(select(2, C.Add("", when)), "Give the event a name.")
-	assert(C.Add("Deadmines run", when, "bring potions"))
-	assert(C.Add("Old event", W.now - 4 * 3600))
-	local list = mem.ns.Calendar.Upcoming()
-	eq(#list, 1, "past events drop off"); eq(list[1].title, "Deadmines run"); eq(list[1].note, "bring potions")
-	assert(mem.ns.Calendar.SignUp(list[1].id, "T"))
-	assert(gm.ns.Calendar.SignUp(list[1].id, "M"))
-	local s = gm.ns.Calendar.Signups(list[1].id)
-	eq(s.count, 1); eq(s.T[1], "Mem"); eq(s.M[1], "Gm")
-	eq(gm.ns.Calendar.RoleSummary(s), "1 tank, 1 maybe")
-	eq(mem.ns.Calendar.SignUp(list[1].id, "X"), false)
-	assert(mem.ns.Calendar.SignUp(list[1].id, nil))
-	eq(gm.ns.Calendar.Signups(list[1].id).count, 0)
-	eq(mem.ns.Calendar.When(when):sub(1, 8), "Tomorrow")
-	-- Home: What's on
+	eq(mem.ns.Calendar, nil); eq(mem.ns.LFG, nil)
 	assert(gm.ns.Polls.Ask("Raid night?", "Fri, Sat"))
 	local f = mem.ns.GeneralTab.Facts()
-	eq(f.nextEvent.title, "Deadmines run"); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
+	eq(f.nextEvent, nil); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
 	mem.ns.UI.Toggle()
 	mem.ns.GeneralTab.Refresh()
-	mem.ns.UI.Open("Calendar")
-	eq(mem.ns.Calendar.panel:IsShown(), true)
-	eq(mem.ns.UI.tabs[4].title, "Guild life")
+	eq(mem.ns.UI.tabs[3].title, "Hop"); eq(mem.ns.UI.tabs[4].title, "Guild life")
 	eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("saved data of removed features is dropped at load", function()
+	local g = { members = { { "Mem", 3, true } } }
+	local c = W.NewClient(base, "Mem", g)
+	c.env.IwTDB.sync.events = { records = { x = { rev = 1, by = "Gm", data = "y" } } }
+	c.env.IwTDB.sync.lfg = { records = {} }
+	c.ns.Sync:OnLoad()
+	eq(c.env.IwTDB.sync.events, nil); eq(c.env.IwTDB.sync.lfg, nil)
 end)
 
 test("loot notes: officers note who got what, everyone can search, notes only", function()
@@ -1067,7 +1069,8 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 	c.env.UnitGUID = function(u) if u == "target" then return "Creature-0-1-0-77-6491-00001A2B3C" end end
 	c.env.__fire("PLAYER_TARGET_CHANGED")
 	UI.Open("Layers")
-	eq(UI.tabs[3].info():find("Layer 1", 1, true) ~= nil, true, "your layer beside Play's sub-tabs")
+	eq(UI.tabs[3].title, "Hop"); eq(UI.tabs[3].frame:IsShown(), true)
+	eq(c.ns.Layers.panel:IsShown(), true, "the Hop tab opens straight on layer hopping")
 	eq(#c.env.IwTDB.errors, 0)
 end)
 

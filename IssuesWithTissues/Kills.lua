@@ -69,6 +69,23 @@ function Kills.Totals()
 	return t
 end
 
+-- One character's numbers, or nil when it hasn't shared any (no addon yet).
+function Kills.Of(name)
+	return Kills.Decode(ns.Sync.Get("kills", ns.FullName(name) or name))
+end
+
+-- The guildmate with the most honorable kills: { who, hk }, or nil before anyone has one.
+function Kills.EliteSoldier()
+	local best
+	for who, data in ns.Sync.Each("kills") do
+		local k = ns.Roster.IsMember(who) and Kills.Decode(data)
+		if k and k.hk > 0 and (not best or k.hk > best.hk or (k.hk == best.hk and who < best.who)) then
+			best = { who = who, hk = k.hk }
+		end
+	end
+	return best
+end
+
 -- 1234567 -> "1,234,567"
 function Kills.Format(n)
 	local s = tostring(math.floor(n or 0))
