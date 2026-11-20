@@ -313,6 +313,12 @@ pcall(ns.On, "SKILL_LINES_CHANGED", function() ns.After(2, Prof.UpdateSkills) en
 function Prof:OnLogin()
 	ns.After(12, Prof.UpdateSkills)
 end
+-- At login the roster can arrive after those 12 seconds, and until it has, sharing is refused
+-- (we are not known to be in the guild yet). Try again whenever the roster is read; it only
+-- sends when the skills differ from what is shared.
+ns.Listen("ROSTER_UPDATED", ns.Coalesce(function()
+	if ns.Roster.me then Prof.UpdateSkills() end
+end, 1))
 
 ns.RegisterCommand("craft", "who in the guild can make an item: /iwt craft name", function(rest)
 	local found = Prof.WhoCanMake(rest)
