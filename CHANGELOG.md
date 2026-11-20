@@ -1,8 +1,11 @@
 # Changelog
 
-## 0.6.0
+## 0.6.1
 
 - Fixed: macros that target or mark (for example RestedXP's target button, or /tm) were blocked with "IssuesWithTissues has been blocked from an action". The addon tainted the game's slash command list when registering /iwt.
+
+## 0.6.0
+
 - Roster: the Rank and Zone / last on columns make way for Honourable kills, so guildmates can compare. Rank and last online are still in the tooltip, and the away filters still work.
 - Home: Elite Soldier, the guildmate with the most honourable kills.
 - The Play tab is now Hop, with layer hopping only. The Groups board is gone.
