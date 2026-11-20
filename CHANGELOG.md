@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+- Professions now reach the guild after a first login. Skills were only shared 12 seconds after logging in, and if the guild roster hadn't loaded by then, sharing was refused and never tried again. They are now shared again whenever the roster loads.
+- Guildmates already online now show as addon users. The version check was only sent when someone logged in, so you never heard from people who were online before you. Whoever hears a new guildmate now whispers their version back once.
+
 ## 0.7.0
 
 - Diagnostics report: `/iwt report` (or Settings, Diagnostics report) packs version, client, errors, profiler numbers, the last self-test, shared-data counts, settings and usage counts (pages opened, commands used) into one string to copy. Paste it at carraigo.github.io/iwt-stats/#report to check it and send it as a GitHub issue. No chat, log lines or other players' names; your character's name only with `/iwt report name`.

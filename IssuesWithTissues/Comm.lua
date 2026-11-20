@@ -216,10 +216,18 @@ function Comm.Unpack(payload)
 end
 
 -- Version check: who in the guild runs which version.
+-- A HELLO goes to the guild at login. Whoever hears one from someone new whispers theirs back
+-- ("<version>;r"), so a guildmate who logs in later still learns who was already online.
 Comm.versions = {}
-Comm.Register("HELLO", function(sender, payload)
-	Comm.versions[sender] = payload
-	ns.Send("VERSION_SEEN", sender, payload)
+Comm.Register("HELLO", function(sender, payload, distribution)
+	local version, reply = tostring(payload or ""):match("^([^;]*);?(r?)$")
+	version = version or ""
+	local new = Comm.versions[sender] == nil
+	Comm.versions[sender] = version
+	ns.Send("VERSION_SEEN", sender, version)
+	if new and reply ~= "r" and sender ~= ns.PlayerName() then
+		Comm.Send("HELLO", ns.VERSION .. ";r", "WHISPER", sender)
+	end
 end)
 function Comm:OnLogin()
 	ns.After(5, function() Comm.Send("HELLO", ns.VERSION) end)

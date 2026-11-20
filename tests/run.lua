@@ -386,6 +386,30 @@ test("professions: skills are shared with the guild", function()
 	eq(mem.ns.Professions.UpdateSkills(), false, "unchanged skills are not sent again")
 end)
 
+test("professions: skills refused before the roster loaded are shared once it has (Vatic's bug)", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	mem.skills = { { "Cooking", 120, 150 } }
+	mem.env.__fire("GUILD_ROSTER_UPDATE")
+	mem.flush()
+	eq(#gm.ns.Professions.Of("Mem"), 1, "shared after the roster update")
+end)
+
+test("addon users: someone already online answers a new HELLO, so both see each other", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	mem.ns.Comm.Send("HELLO", mem.ns.VERSION) -- Mem logs in after Gm
+	eq(gm.ns.Comm.versions["Mem"], mem.ns.VERSION)
+	eq(mem.ns.Comm.versions["Gm"], gm.ns.VERSION, "Gm whispered back")
+	local sent = 0
+	gm.ns.Comm.sendHook = function() sent = sent + 1 end
+	mem.ns.Comm.Send("HELLO", mem.ns.VERSION)
+	eq(sent, 0, "only answered once")
+	gm.ns.Comm.sendHook = nil
+end)
+
 test("professions: recipes from an open window, and who can make it", function()
 	local g = Guild2()
 	local mem = W.NewClient(base, "Mem", g)
