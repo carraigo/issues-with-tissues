@@ -120,6 +120,22 @@ function Roster.Scan()
 	ns.Send("ROSTER_UPDATED")
 end
 
+-- A copy of the roster in the saved data, written on logout and /reload, for tools outside
+-- the game (the guild web page export). No notes: only what the roster shows everyone.
+function Roster.Snapshot()
+	local list = {}
+	for key, m in pairs(Roster.members) do
+		list[#list + 1] = { name = key, level = m.level, class = m.class, classFile = m.classFile,
+			rank = m.rank, rankIndex = m.rankIndex, days = m.offlineDays or 0 }
+	end
+	if #list == 0 then return nil end
+	return { at = ns.Now(), guild = GetGuildInfo and GetGuildInfo("player") or nil, version = ns.VERSION, members = list }
+end
+pcall(ns.On, "PLAYER_LOGOUT", function()
+	local snap = Roster.Snapshot()
+	if snap and ns.db then ns.db.snapshot = snap end
+end)
+
 -- The name to show: the key is already "First Surname".
 function Roster.DisplayName(key)
 	return ns.FullName(key) or key or ""
