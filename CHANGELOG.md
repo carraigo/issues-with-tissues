@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Diagnostics report: `/iwt report` (or Settings, Diagnostics report) packs version, client, errors, profiler numbers, the last self-test, shared-data counts, settings and usage counts (pages opened, commands used) into one string to copy. Paste it at carraigo.github.io/iwt-stats/#report to check it and send it as a GitHub issue. No chat, log lines or other players' names; your character's name only with `/iwt report name`.
+- Errors now remember the addon version they last happened on, so reports can tell old, already-fixed errors from new ones.
 
 ## 0.6.3
 

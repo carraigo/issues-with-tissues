@@ -170,7 +170,8 @@ function Report.Data(opts)
 	for i, e in ipairs(db.errors or {}) do
 		if i > Report.MAX_ERRORS then break end
 		local where = e.stack and e.stack:match("([%w_]+%.lua:%d+)")
-		d.errors[#d.errors + 1] = { text = Short(e.text, 300), count = e.count or 1, first = e.first, last = e.last, at = where }
+		d.errors[#d.errors + 1] = { text = Short(e.text, 300), count = e.count or 1, first = e.first, last = e.last, at = where,
+			version = e.version or "older" }
 	end
 	d.errorTotal = #(db.errors or {})
 

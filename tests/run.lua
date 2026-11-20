@@ -1160,6 +1160,7 @@ test("diagnostics report: one string with errors, timings and usage, no names un
 	assert(json:find('"Polls":1', 1, true), "page open counted")
 	assert(json:find('"test thing"', 1, true), "profiler numbers")
 	assert(not json:find('"character"', 1, true), "no name by default")
+	assert(json:find('"version":"' .. c.ns.VERSION .. '"', 1, true), "errors carry the version they last happened on")
 	assert(R.Encode(R.Data({ name = true })):len() > 0)
 	assert(select(2, R.Encode(R.Data({ name = true }))):find('"character":"Mem"', 1, true))
 	assert(#s < 6000, "short enough for a link: " .. #s)
