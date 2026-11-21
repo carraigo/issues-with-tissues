@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0
+
+Guild chat comes to the window, so the addon can stand in for the game's guild window. Plus themes.
+
+- **Chat tab:** guild chat and officer chat (officers only) in the window, with class-coloured names, clickable item and player links, the message of the day, and guildmates coming online and going offline. Type in the box and press Enter to send. Up and Down bring back what you sent, and shift-clicking an item links it. `/iwt chat` opens it.
+- **Chat history:** opening the Chat tab loads the recent guild and officer chat the game's server keeps for its own guild window, so you see what was said before you logged in, even on a new install or another PC. The addon also keeps the last 300 lines of each channel on your PC, merged with the server's without duplicates. Saved chat is never shared with guildmates or put in the diagnostics report or the guild web page, and Settings can turn saving off.
+- **Who's online:** a list beside the chat shows the guildmates online right now, grouped by rank with the Guild Master first. Click a name to whisper, right-click to invite, and hover for level, class and zone.
+- **Themes:** pick the window's colours in Settings: Default, Kawaii Night, Kawaii Day, Midnight or High contrast, applied after a reload. Every theme but Default keeps text readable by shading class colours and other text that would be too faint on its panels. The Kawaii themes use their own chat colours.
+- **Key bindings:** "Open or close the window" and "Open guild chat" are in the game's Key Bindings, under Issues with Tissues. Bind one to your guild key (J) to use the addon instead of the game's guild window.
+- A button next to the cog opens the game's own guild window, for invites, promotions and notes.
+
+Details for the curious: the game often hands chat over as hidden text that only turns into words on screen, so the addon matches a live line with the server's copy by author and time, and shows the server's fresh copy for saved lines from an earlier session. The message of the day is kept once until it changes, and authors the server hasn't looked up yet show as "[Unknown]".
+
 ## 0.7.2
 
 - The minimap button now sits on the rim of a bigger or square minimap (from other addons or UI packs), not inside the map.

@@ -1,4 +1,4 @@
--- The Settings tab: a toggle per option, the officer rank, and the tools.
+-- The Settings tab: a toggle per option, the theme, the officer rank, and the tools.
 -- Later features add their own toggles with ns.Settings.AddToggle(key, label, onChange).
 
 local _, ns = ...
@@ -45,6 +45,39 @@ local function Build(panel)
 		end)
 		y = y - 28
 	end
+
+	-- Theme: one button per theme; the change shows after a reload.
+	y = y - 8
+	local themeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	themeLabel:SetPoint("TOPLEFT", 4, y)
+	themeLabel:SetText("Theme")
+	y = y - 20
+	local themeNote = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local reload = ns.UI.Button(panel, "Reload now", 100, 22, "primary")
+	local buttons = {}
+	local function MarkThemes()
+		for id, b in pairs(buttons) do ns.UI.SetSelected(b, id == ns.db.settings.theme) end
+		local changed = ns.db.settings.theme ~= ns.UI.theme.id
+		themeNote:SetText(changed and "Reload to switch to the new theme." or "")
+		reload:SetShown(changed)
+	end
+	local tx = 0
+	for _, t in ipairs(ns.UI.THEMES) do
+		local b = ns.UI.Button(panel, t.name, 112, 22)
+		b:SetPoint("TOPLEFT", tx, y)
+		b:SetScript("OnClick", function()
+			ns.db.settings.theme = t.id
+			MarkThemes()
+		end)
+		buttons[t.id] = b
+		tx = tx + 116
+	end
+	y = y - 28
+	themeNote:SetPoint("TOPLEFT", 4, y - 4)
+	reload:SetPoint("TOPLEFT", 260, y)
+	reload:SetScript("OnClick", function() if ReloadUI then ReloadUI() end end)
+	MarkThemes()
+	y = y - 28
 
 	y = y - 10
 	local officers = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

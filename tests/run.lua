@@ -461,7 +461,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Hop(Layers),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Crafters),Hop(Layers),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -656,11 +656,11 @@ test("the window draws its own tabs: Blizzard's tab code is not used, and the cu
 	c.ns.UI.Toggle()
 	for i, t in ipairs(c.ns.UI.tabs) do assert(t.button, "button " .. i) eq(t.button:IsShown(), true) end
 	eq(c.ns.UI.tabs[1].button.selected, true)
-	c.ns.UI.SelectTab(2)
+	c.ns.UI.SelectTab(3)
 	eq(c.ns.RosterTab.panel:IsShown(), true)
-	eq(c.ns.UI.tabs[1].button.selected, false); eq(c.ns.UI.tabs[2].button.selected, true)
+	eq(c.ns.UI.tabs[1].button.selected, false); eq(c.ns.UI.tabs[3].button.selected, true)
 	c.ns.UI.Open("Settings")
-	eq(c.ns.UI.cog.selected, true); eq(c.ns.UI.tabs[2].button.selected, false)
+	eq(c.ns.UI.cog.selected, true); eq(c.ns.UI.tabs[3].button.selected, false)
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
@@ -908,7 +908,7 @@ test("home: what's on shows open polls and the donation goal; the calendar is go
 	eq(f.nextEvent, nil); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
 	mem.ns.UI.Toggle()
 	mem.ns.GeneralTab.Refresh()
-	eq(mem.ns.UI.tabs[3].title, "Hop"); eq(mem.ns.UI.tabs[4].title, "Guild life")
+	eq(mem.ns.UI.tabs[4].title, "Hop"); eq(mem.ns.UI.tabs[5].title, "Guild life")
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
@@ -1116,23 +1116,23 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 	eq(c.ns.CraftersTab.panel:IsShown(), true)
 	eq(UI.tabs[UI.current].title, "Members")
 	UI.Open("Home")
-	UI.SelectTab(2) -- Members again: back on Crafters
-	eq(UI.tabs[2].pages[UI.tabs[2].current].title, "Crafters")
+	UI.SelectTab(3) -- Members again: back on Crafters
+	eq(UI.tabs[3].pages[UI.tabs[3].current].title, "Crafters")
 	eq(c.env.IwTDB.window.pages.Members, "Crafters", "remembered across sessions")
 	UI.Open("Settings")
 	eq(UI.settings.panel:IsShown(), true)
-	eq(UI.tabs[2].frame:IsShown(), false)
+	eq(UI.tabs[3].frame:IsShown(), false)
 	UI.cog:GetScript("OnClick")()
 	c.env.UnitGUID = function(u) if u == "target" then return "Creature-0-1-0-77-6491-00001A2B3C" end end
 	c.env.__fire("PLAYER_TARGET_CHANGED")
 	UI.Open("Layers")
-	eq(UI.tabs[3].title, "Hop"); eq(UI.tabs[3].frame:IsShown(), true)
+	eq(UI.tabs[4].title, "Hop"); eq(UI.tabs[4].frame:IsShown(), true)
 	eq(c.ns.Layers.panel:IsShown(), true, "the Hop tab opens straight on layer hopping")
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
 test("no file assigns a Blizzard global like SlashCmdList (that taints every macro)", function()
-	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua" }) do
+	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua", "Chat.lua", "Themes.lua", "Settings.lua" }) do
 		local src = io.open(base .. "/IssuesWithTissues/" .. f):read("*a")
 		for _, g in ipairs({ "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames", "ChatFrame_OpenChat", "ChatEdit_InsertLink" }) do
 			assert(not src:find("\n%s*" .. g .. "%s*=[^=]"), f .. " assigns " .. g)
@@ -1197,6 +1197,301 @@ test("diagnostics report: one string with errors, timings and usage, no names un
 	assert(select(2, R.Encode(R.Data({ name = true }))):find('"character":"Mem"', 1, true))
 	assert(#s < 6000, "short enough for a link: " .. #s)
 	eq(#c.env.IwTDB.errors, 1)
+end)
+
+test("chat: guild and officer lines are kept apart, with class-coloured clickable names", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.RAID_CLASS_COLORS = { WARRIOR = { r = 1, g = 0.5, b = 0 } }
+	c.env.__fire("CHAT_MSG_GUILD", "hello |cffffffff|Hitem:2589::::|h[Linen Cloth]|h|r", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_OFFICER", "secret", "Offi-Realm")
+	local Chat = c.ns.Chat
+	eq(#Chat.Lines("guild"), 1); eq(#Chat.Lines("officer"), 1)
+	local line = Chat.Format("guild", Chat.Lines("guild")[1])
+	assert(line:find("|Hplayer:Gm-Realm|h|cffff8000[Gm]|r|h", 1, true), line)
+	assert(line:find("[Linen Cloth]", 1, true), "item links kept")
+	eq(Chat.unread, 2, "counted while the chat page is closed")
+	c.ns.UI.Open("Chat")
+	eq(#c.env.IwTDB.errors, 0, "chat page builds")
+	eq(Chat.unread, 0)
+end)
+
+test("chat: Enter sends to the right channel; commands go to the game's chat box", function()
+	local c = W.NewClient(base, "Gm", Guild2())
+	local sent, opened = {}, nil
+	c.env.SendChatMessage = function(m, ch) sent[#sent + 1] = ch .. ":" .. m end
+	c.env.ChatFrame_OpenChat = function(t) opened = t end
+	local Chat = c.ns.Chat
+	assert(Chat.Send("  hi all \n"))
+	eq(sent[1], "GUILD:hi all")
+	assert(Chat.Send("officers only", "officer"))
+	eq(sent[2], "OFFICER:officers only")
+	eq(Chat.Send("   "), false, "nothing to send")
+	eq(Chat.Send("/roll"), false); eq(opened, "/roll"); eq(#sent, 2)
+	assert(Chat.Send(string.rep("a", 300)))
+	eq(#sent[3], #"GUILD:" + 255, "cut to 255 bytes")
+	eq(Chat.sent[#Chat.sent], string.rep("a", 255), "kept for Up-arrow recall")
+end)
+
+test("chat: history stays on this PC, capped, and can be switched off", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	for i = 1, Chat.MAX_LINES + 5 do c.env.__fire("CHAT_MSG_GUILD", "line " .. i, "Gm-Realm") end
+	eq(#c.env.IwTCharDB.chat.guild, Chat.MAX_LINES, "saved, capped")
+	eq(c.env.IwTCharDB.chat.guild[1].m, "line 6", "oldest dropped")
+	c.env.__fire("PLAYER_LOGOUT")
+	local _, json = c.ns.Report.Encode(c.ns.Report.Data())
+	assert(not json:find("line 1", 1, true), "never in the diagnostics report")
+	assert(not (c.env.IwTDB.snapshot and c.env.IwTDB.snapshot.chat), "never in the web page snapshot")
+	c.env.IwTDB.settings.chatHistory = false
+	Chat.SetHistory(false)
+	eq(c.env.IwTCharDB.chat, nil, "saved lines forgotten")
+	eq(#Chat.Lines("guild"), Chat.MAX_LINES, "this session's lines still shown")
+	c.env.__fire("CHAT_MSG_GUILD", "after", "Gm-Realm")
+	eq(c.env.IwTCharDB.chat, nil, "nothing saved while off")
+end)
+
+test("chat: guildmates coming online show in the guild channel, friends outside the guild don't", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.__fire("CHAT_MSG_SYSTEM", "|Hplayer:Vet-Realm|h[Vet-Realm]|h has come online.")
+	c.env.__fire("CHAT_MSG_SYSTEM", "Stranger has gone offline.")
+	c.env.__fire("CHAT_MSG_SYSTEM", "Gone-Realm has gone offline.")
+	local lines = c.ns.Chat.Lines("guild")
+	eq(#lines, 2)
+	eq(lines[1].m, "Vet has come online."); eq(lines[2].m, "Gone has gone offline.")
+end)
+
+test("key bindings: the window and guild chat can be bound to a key (J, for example)", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	eq(c.env.BINDING_HEADER_ISSUESWITHTISSUES, "Issues with Tissues")
+	assert(c.env.BINDING_NAME_IWT_TOGGLE and c.env.BINDING_NAME_IWT_CHAT)
+	local xml = io.open(base .. "/IssuesWithTissues/Bindings.xml"):read("*a")
+	assert(xml:find('name="IWT_TOGGLE"', 1, true) and xml:find("IssuesWithTissues_Toggle()", 1, true))
+	assert(xml:find("IssuesWithTissues_Chat()", 1, true))
+	c.env.IssuesWithTissues_Toggle()
+	eq(c.ns.UI.window:IsShown(), true)
+	c.env.IssuesWithTissues_Chat()
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("chat: history from the game's server is merged with the saved lines, without duplicates", function()
+	local c = W.NewClient(base, "Offi", Guild2())
+	local now = W.now
+	local server = {
+		[1] = { { content = "old news", author = { name = "Gm" }, epoch = (now - 3600) * 1000000 },
+		        { content = "hi", author = { name = "Gm" }, epoch = (now - 5) * 1000000 } },
+		[2] = { { content = "officer stuff", author = { name = "Offi" }, epoch = (now - 100) * 1000000 } },
+	}
+	local asked = 0
+	c.env.C_Club = {
+		GetGuildClubId = function() return 215753832 end,
+		GetStreams = function() return { { streamId = "g", streamType = 1 }, { streamId = "o", streamType = 2 } } end,
+		RequestMoreMessagesBefore = function() asked = asked + 1 end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function(_, stream)
+			local out = {}
+			for i, m in ipairs(server[stream == "g" and 1 or 2]) do
+				out[i] = { content = m.content, author = m.author, messageId = { epoch = m.epoch, position = i } }
+			end
+			return out
+		end,
+	}
+	c.env.__fire("CHAT_MSG_GUILD", "hi", "Gm-Realm") -- also heard live: shown once
+	local Chat = c.ns.Chat
+	Chat.RequestServer()
+	eq(asked, 2, "both channels asked for")
+	local view = Chat.View("guild")
+	eq(#view, 2); eq(view[1].m, "old news"); eq(view[2].m, "hi")
+	eq(view[2].srv, nil, "the live copy is kept, the server's duplicate dropped")
+	eq(#Chat.View("officer"), 1)
+	eq(#c.env.IwTCharDB.chat.guild, 1, "server messages are shown, not saved")
+	c.ns.UI.Open("Chat")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("chat: if the server's history can't be read, the saved lines still show", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.C_Club = { GetGuildClubId = function() error("not available") end, GetStreams = function() return {} end }
+	c.env.__fire("CHAT_MSG_GUILD", "still here", "Gm-Realm")
+	c.ns.Chat.RequestServer()
+	eq(#c.ns.Chat.View("guild"), 1)
+	c.ns.UI.Open("Chat")
+	eq(#c.env.IwTDB.errors, 0, "logged, not an error")
+end)
+
+test("chat: online list shows only online guildmates, grouped by rank, Guild Master first", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	local rows, total = Chat.OnlineRows()
+	eq(total, 2)
+	eq(#rows, 4)
+	eq(rows[1].rank, "Rank0"); eq(rows[2].key, "Gm")
+	eq(rows[3].rank, "Rank3"); eq(rows[4].key, "Mem")
+	c.env.__fire("CHAT_MSG_SYSTEM", "|Hplayer:Vet-Realm|h[Vet-Realm]|h has come online.")
+	c.env.__fire("CHAT_MSG_SYSTEM", "Gm-Realm has gone offline.")
+	rows, total = Chat.OnlineRows()
+	eq(total, 2, "updated straight from the online/offline lines")
+	eq(rows[1].rank, "Rank2"); eq(rows[2].key, "Vet")
+	c.ns.UI.Open("Chat")
+	assert(Chat.online, "the list is beside the chat")
+	eq(#Chat.DrawOnline(), 4, "two ranks, two names")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("chat: the message of the day is kept once until it changes", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	for _ = 1, 3 do c.env.__fire("GUILD_MOTD", "Tabard designed") end
+	c.env.__fire("CHAT_MSG_GUILD", "hi", "Gm-Realm")
+	c.env.__fire("GUILD_MOTD", "Tabard designed")
+	c.env.__fire("GUILD_MOTD", "Raid at 8")
+	local lines = c.ns.Chat.Lines("guild")
+	eq(#lines, 3); eq(lines[1].m, "Tabard designed"); eq(lines[3].m, "Raid at 8")
+end)
+
+test("chat: a server message without an author name falls back to the GUID or member record", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	c.env.C_Club = { GetMemberInfo = function(_, id) return id == 7 and { name = "Vet" } or nil end }
+	c.env.GetPlayerInfoByGUID = function(g) if g == "Player-Gm" then return "Warrior", "WARRIOR", "", "", 0, "Gm", "" end end
+	eq(Chat.AuthorName(1, { name = "Offi" }), "Offi")
+	eq(Chat.AuthorName(1, { guid = "Player-Gm" }), "Gm")
+	eq(Chat.AuthorName(1, { memberId = 7 }), "Vet")
+	eq(Chat.AuthorName(1, {}), nil)
+	local line = Chat.Format("guild", { t = W.now, k = "msg", m = "hi" })
+	assert(line:find("[Unknown]", 1, true), line)
+end)
+
+test("chat: a server copy spelt differently still counts as the same message; two people saying the same thing both show", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local now = W.now
+	local msgs = {
+		{ content = "Go get him ", author = { name = "Gm-Surname-CAMWOWEU5Realm6PvP" }, epoch = (now + 30) * 1000000 },
+		{ content = "lol", author = { name = "Gm" }, epoch = now * 1000000 },
+		{ content = "lol", author = { name = "Mem" }, epoch = now * 1000000 },
+	}
+	local names = true
+	c.env.C_Club = {
+		GetGuildClubId = function() return 1 end,
+		GetStreams = function() return { { streamId = "g", streamType = 1 } } end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function()
+			local out = {}
+			for i, m in ipairs(msgs) do
+				out[i] = { content = m.content, author = { name = names and m.author.name or nil }, messageId = { epoch = m.epoch, position = i } }
+			end
+			return out
+		end,
+	}
+	c.env.__fire("CHAT_MSG_GUILD", "Go get him", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_GUILD", "lol", "Gm-Realm")
+	local Chat = c.ns.Chat
+	Chat.ReadServer()
+	local view = Chat.View("guild")
+	eq(#view, 3, "the live 'Go get him' and 'lol' hide their server copies; the second 'lol' stays")
+	names = false -- a later read without names keeps the ones found before
+	Chat.ReadServer()
+	for _, e in ipairs(Chat.server.guild) do assert(e.a, "author remembered") end
+end)
+
+test("chat: a server copy with hidden text matches the live line from the same person at the same time", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local now = W.now
+	c.env.C_Club = {
+		GetGuildClubId = function() return 1 end,
+		GetStreams = function() return { { streamId = "g", streamType = 1 }, { streamId = "o", streamType = 2 } } end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function(_, stream)
+			if stream == "o" then
+				return { { content = "|Kq7|k", author = { name = "Gm" }, messageId = { epoch = now * 1000000, position = 1 } } }
+			end
+			return {
+				{ content = "|Kq1|k", author = { name = "Gm" }, messageId = { epoch = now * 1000000, position = 1 } },
+				{ content = "|Kq2|k", author = { name = "Gm" }, messageId = { epoch = (now + 1) * 1000000, position = 2 } },
+				{ content = "|Kq3|k", author = { name = "Vet" }, messageId = { epoch = (now + 60) * 1000000, position = 3 } },
+			}
+		end,
+	}
+	c.env.__fire("CHAT_MSG_GUILD", "first", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_OFFICER", "|Kx1|k", "Gm-Realm")
+	local Chat = c.ns.Chat
+	Chat.ReadServer()
+	local view = Chat.View("guild")
+	eq(#view, 3, "Gm's live line hides one copy; Gm's second message and Vet's stay")
+	eq(view[1].m, "first")
+	eq(#Chat.View("officer"), 1, "officer copy matched too")
+end)
+
+test("chat: hidden text saved in an earlier session is replaced by the server's copy, or dropped", function()
+	local c = W.NewClient(base, "Gm", Guild2())
+	local now = W.now
+	local Chat = c.ns.Chat
+	c.env.__fire("CHAT_MSG_OFFICER", "|Kx1|k", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_OFFICER", "|Kx2|k", "Gm-Realm")
+	c.env.IwTCharDB.chat.officer[2].t = now - 7200
+	Chat:OnLoad() -- as after logging back in
+	assert(c.env.IwTCharDB.chat.officer[1].old)
+	eq(#Chat.View("officer"), 0, "nothing that would show as Unknown")
+	c.env.C_Club = {
+		GetGuildClubId = function() return 1 end,
+		GetStreams = function() return { { streamId = "o", streamType = 2 } } end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function()
+			return { { content = "|Kq9|k", author = { name = "Gm" }, messageId = { epoch = now * 1000000, position = 1 } } }
+		end,
+	}
+	Chat.ReadServer()
+	local view = Chat.View("officer")
+	eq(#view, 1); eq(view[1].m, "|Kq9|k", "the server's fresh copy")
+end)
+
+test("themes: Default leaves every colour as it was", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.RAID_CLASS_COLORS = { ROGUE = { r = 1, g = 0.96, b = 0.41 } }
+	local UI = c.ns.UI
+	eq(UI.theme.id, "default")
+	local r, g, b = UI.ClassColor("ROGUE")
+	eq(r, 1); eq(g, 0.96); eq(b, 0.41)
+	eq(UI.Recolor("|cffffd100Elite|r"), "|cffffd100Elite|r")
+	eq(UI.COLORS.tabtext[1], 0.78)
+end)
+
+test("themes: a saved theme applies at load; faint class colours and words are made readable", function()
+	local first = W.NewClient(base, "Mem", Guild2())
+	first.env.IwTDB.settings.theme = "kawaiiDay"
+	local c = W.NewClient(base, "Mem", Guild2(), { account = first })
+	c.env.RAID_CLASS_COLORS = { ROGUE = { r = 1, g = 0.96, b = 0.41 }, PRIEST = { r = 1, g = 1, b = 1 }, MAGE = { r = 0.41, g = 0.8, b = 0.94 } }
+	local UI = c.ns.UI
+	eq(UI.theme.id, "kawaiiDay")
+	eq(UI.COLORS.bg[1] > 0.9, true, "light panels")
+	for _, cls in ipairs({ "ROGUE", "PRIEST", "MAGE" }) do
+		local r, g, b = UI.ClassColor(cls)
+		assert(UI.Contrast({ r, g, b }, UI.theme.ref) >= UI.MIN_CONTRAST, cls .. " readable")
+	end
+	assert(UI.Recolor("|cffffd100Elite|r") ~= "|cffffd100Elite|r", "yellow words darkened")
+	eq(UI.Recolor("plain"), "plain")
+	local r = select(1, c.ns.Chat.ChannelColor("guild"))
+	eq(math.floor(r * 255 + 0.5), 0x2f, "the theme's own chat colour")
+	UI.Open("Chat"); UI.Open("Settings"); UI.Open("Roster")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("themes: every theme has every colour, and picking one in Settings waits for a reload", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	local keys = {}
+	for k in pairs(UI.COLORS) do keys[#keys + 1] = k end
+	for _, t in ipairs(UI.THEMES) do
+		if t.colors then
+			for _, k in ipairs(keys) do assert(t.colors[k], t.id .. " has " .. k) end
+			assert(t.ink and t.ref, t.id)
+			eq(UI.Contrast(t.colors.text, t.ref) >= UI.MIN_CONTRAST, true, t.id .. " body text readable")
+			eq(UI.Contrast(t.colors.gold, t.ref) >= UI.MIN_CONTRAST, true, t.id .. " headings readable")
+			eq(UI.Contrast(t.colors.primarytext, t.colors.primary) >= UI.MIN_CONTRAST, true, t.id .. " Send button readable")
+		end
+	end
+	UI.Open("Settings")
+	c.env.IwTDB.settings.theme = "midnight"
+	eq(UI.theme.id, "default", "applies at the next reload")
+	eq(#c.env.IwTDB.errors, 0)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))
