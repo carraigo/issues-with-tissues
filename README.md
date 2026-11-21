@@ -12,7 +12,7 @@ A guild addon for the Issues with Tissues guild on WoW: Forever. It puts guild c
 2. Unzip it into your game's `Interface\AddOns` folder, so you have `Interface\AddOns\IssuesWithTissues`.
 3. Restart the game.
 
-Open it with `/iwt`, the minimap button, the **Tissues** button on the guild window, or a key: Key Bindings, Issues with Tissues (bind it to J to replace the game's guild window).
+Open it with `/iwt`, the minimap button, the **Tissues** button on the guild window, the game's Options (AddOns, Issues with Tissues), or a key: Key Bindings, Issues with Tissues (bind it to J to replace the game's guild window). The addon tells you once when a guildmate has a newer version.
 
 ## Features
 
@@ -49,6 +49,9 @@ The addon only talks to guildmates, over hidden guild addon messages.
 | `/iwt selftest` | check the addon works on your client |
 | `/iwt perf on\|off\|reset` · `/iwt perf` | turn the profiler on or off, reset it, or show its report |
 | `/iwt report` | diagnostics report to send (paste it at [iwt-stats](https://carraigo.github.io/iwt-stats/#report)) |
+| `/iwt new` | what's new in this version |
+| `/iwt update` | the download link for the newest version |
+| `/iwt welcome` | show the welcome card again |
 | `/iwt version` | the addon version |
 
 ## How it works
