@@ -1422,5 +1422,28 @@ test("chat: a server copy with hidden text matches the live line from the same p
 	eq(#Chat.View("officer"), 1, "officer copy matched too")
 end)
 
+test("chat: hidden text saved in an earlier session is replaced by the server's copy, or dropped", function()
+	local c = W.NewClient(base, "Gm", Guild2())
+	local now = W.now
+	local Chat = c.ns.Chat
+	c.env.__fire("CHAT_MSG_OFFICER", "|Kx1|k", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_OFFICER", "|Kx2|k", "Gm-Realm")
+	c.env.IwTCharDB.chat.officer[2].t = now - 7200
+	Chat:OnLoad() -- as after logging back in
+	assert(c.env.IwTCharDB.chat.officer[1].old)
+	eq(#Chat.View("officer"), 0, "nothing that would show as Unknown")
+	c.env.C_Club = {
+		GetGuildClubId = function() return 1 end,
+		GetStreams = function() return { { streamId = "o", streamType = 2 } } end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function()
+			return { { content = "|Kq9|k", author = { name = "Gm" }, messageId = { epoch = now * 1000000, position = 1 } } }
+		end,
+	}
+	Chat.ReadServer()
+	local view = Chat.View("officer")
+	eq(#view, 1); eq(view[1].m, "|Kq9|k", "the server's fresh copy")
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

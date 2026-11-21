@@ -41,6 +41,13 @@ end
 function Chat:OnLoad()
 	-- History switched off: drop anything saved before.
 	if not ns.db.settings.chatHistory and ns.char then ns.char.chat = nil end
+	-- Hidden text (see Chat.Hidden) only draws in the session that received it; from an earlier
+	-- session it shows as "Unknown". Mark those lines so the server's fresh copy replaces them.
+	for _, lines in pairs(ns.char and ns.char.chat or {}) do
+		for _, e in ipairs(lines) do
+			if e.k == "msg" and Chat.Hidden(e.m) then e.old = true end
+		end
+	end
 end
 
 -- Turning history on keeps this session's lines; turning it off forgets the saved ones.
@@ -323,7 +330,11 @@ end
 function Chat.View(channel)
 	local mine = Chat.Lines(channel) or {}
 	local server = Chat.server[channel] or {}
-	if #server == 0 then return mine end
+	if #server == 0 then
+		local out = {}
+		for _, e in ipairs(mine) do if not e.old then out[#out + 1] = e end end
+		return out
+	end
 	local used = {}
 	local function First(a) return (ns.Roster.FirstName(a or "") or ""):lower() end
 	local function Match(e)
@@ -339,11 +350,20 @@ function Chat.View(channel)
 			end
 		end
 	end
-	local out = {}
-	for _, e in ipairs(mine) do out[#out + 1] = e end
+	local out, replaced = {}, {}
 	for _, e in ipairs(server) do
 		local i = Match(e)
-		if i then used[i] = true else out[#out + 1] = e end
+		if i then
+			used[i] = true
+			-- A saved line whose hidden text can't draw any more: show the server's copy.
+			if mine[i].old then replaced[i] = e end
+		else
+			out[#out + 1] = e
+		end
+	end
+	for i, e in ipairs(mine) do
+		if replaced[i] then out[#out + 1] = replaced[i]
+		elseif not e.old then out[#out + 1] = e end -- old hidden lines the server no longer has are dropped
 	end
 	table.sort(out, function(a, b) return a.t < b.t end)
 	while #out > Chat.MAX_LINES do table.remove(out, 1) end
