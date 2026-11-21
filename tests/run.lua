@@ -1132,7 +1132,7 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 end)
 
 test("no file assigns a Blizzard global like SlashCmdList (that taints every macro)", function()
-	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua", "Chat.lua", "Themes.lua", "Settings.lua" }) do
+	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua", "Chat.lua", "Themes.lua", "Settings.lua", "Welcome.lua", "Updates.lua", "GameOptions.lua" }) do
 		local src = io.open(base .. "/IssuesWithTissues/" .. f):read("*a")
 		for _, g in ipairs({ "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames", "ChatFrame_OpenChat", "ChatEdit_InsertLink" }) do
 			assert(not src:find("\n%s*" .. g .. "%s*=[^=]"), f .. " assigns " .. g)
@@ -1491,6 +1491,78 @@ test("themes: every theme has every colour, and picking one in Settings waits fo
 	UI.Open("Settings")
 	c.env.IwTDB.settings.theme = "midnight"
 	eq(UI.theme.id, "default", "applies at the next reload")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("welcome: a first install gets the welcome card; an update gets What's new once", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Welcome = c.ns.Welcome
+	Welcome.updating = false
+	c.env.IwTDB.seenVersion = nil
+	Welcome.Check()
+	eq(Welcome.shown, "Welcome to Issues with Tissues")
+	eq(c.env.IwTDB.seenVersion, c.ns.VERSION)
+	Welcome.shown = nil
+	Welcome.Check()
+	eq(Welcome.shown, nil, "only once")
+	c.env.IwTDB.seenVersion = "0.7.2"
+	Welcome.Check()
+	eq(Welcome.shown, "What's new in Issues with Tissues")
+	local notes = Welcome.NotesSince("0.7.2")
+	eq(#notes, 2); eq(notes[1].version, "0.8.1"); eq(notes[2].version, "0.8.0")
+	eq(#Welcome.NotesSince("0.8.0"), 1)
+	-- someone updating from an older version without seenVersion yet: What's new, not Welcome
+	c.env.IwTDB.seenVersion = nil
+	Welcome.updating = true
+	Welcome.shown = nil
+	Welcome.Check()
+	eq(Welcome.shown, "What's new in Issues with Tissues")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("welcome: every release has What's new notes (keep Welcome.NOTES up to date)", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local W2 = c.ns.Welcome
+	local a, b, d = W2.ParseVersion(c.ns.VERSION)
+	eq(W2.NOTES[1].version, string.format("%d.%d.%d", a, b, d), "the newest notes are for this version")
+end)
+
+test("versions compare as numbers, and a release beats its betas", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local N = c.ns.Welcome.Newer
+	eq(N("0.10.0", "0.9.9"), true); eq(N("0.8.1", "0.8.0"), true); eq(N("0.8.0", "0.8.0"), false)
+	eq(N("0.8.0", "0.8.0-beta.3"), true); eq(N("0.8.0-beta.3", "0.8.0"), false)
+	eq(N("0.8.0-beta.10", "0.8.0-beta.9"), true); eq(N("junk", "0.8.0"), false)
+end)
+
+test("updates: told once when a guildmate has a newer release; betas ignored", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local printed = {}
+	c.env.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) printed[#printed + 1] = m end }
+	local U = c.ns.Updates
+	eq(U.Consider("Gm", "9.0.0-beta.1"), false, "a beta doesn't nag people on a release")
+	eq(U.Consider("Gm", c.ns.VERSION), false)
+	eq(U.Consider("Gm", "9.0.0"), true)
+	eq(#printed, 1); assert(printed[1]:find("9.0.0", 1, true) and printed[1]:find("/iwt update", 1, true), printed[1])
+	U.Consider("Vet", "9.0.0")
+	eq(#printed, 1, "once per version")
+	c.ns.HandleSlash("update")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("game options: a page under AddOns that opens the addon's settings", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local registered
+	c.env.Settings = { RegisterCanvasLayoutCategory = function(panel, name) return { panel = panel, name = name } end,
+		RegisterAddOnCategory = function(cat) registered = cat end }
+	c.ns.GameOptions.Register()
+	eq(registered.name, "Issues with Tissues")
+	eq(c.ns.GameOptions.how, "Settings")
+	c.env.Settings = nil
+	local added
+	c.env.InterfaceOptions_AddCategory = function(p) added = p end
+	c.ns.GameOptions.Register()
+	eq(added.name, "Issues with Tissues")
 	eq(#c.env.IwTDB.errors, 0)
 end)
 

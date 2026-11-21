@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1
+
+- **Welcome card:** a new install opens with a short tour of the tabs, the key binding and the minimap button. `/iwt welcome` shows it again.
+- **What's new:** the first time a new version loads, a card lists its highlights (and the previous version's, if you skipped one). `/iwt new` shows it again.
+- **Newer version notice:** when a guildmate has a newer release than yours, you're told once in chat. `/iwt update` gives the download link to copy. Test versions (betas) only count if you're on one too.
+- **Game Options page:** Issues with Tissues now has its own page in the game's Options, under AddOns, with buttons for the addon's settings, the window and What's new.
+
 ## 0.8.0
 
 Guild chat comes to the window, so the addon can stand in for the game's guild window. Plus themes.
