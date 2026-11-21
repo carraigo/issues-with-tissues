@@ -14,20 +14,10 @@ A guild addon for the Issues with Tissues guild on WoW: Forever. It puts guild c
 
 Open it with `/iwt`, the minimap button, the **Tissues** button on the guild window, or a key: Key Bindings, Issues with Tissues (bind it to J to replace the game's guild window).
 
-## Screenshots
-
-![Chat: guild chat with the online list by rank (messages blurred)](docs/screenshots/chat.png)
-
-| Home | Crafters |
-| --- | --- |
-| ![Home: the guild at a glance, this character and its professions](docs/screenshots/home.png) | ![Crafters: who can make what, by profession](docs/screenshots/crafters.png) |
-| **Polls** | **Settings and themes** |
-| ![Polls under Guild life](docs/screenshots/polls.png) | ![Settings with the theme picker](docs/screenshots/settings.png) |
-
 ## Features
 
-- **Home**: the guild at a glance (members online, players with alts counted once, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
-- **Chat**: guild and officer chat in the window, with item links and class colours, and a list of who's online by rank. History stays on your PC.
+- **Home**: the guild at a glance (members online, players with alts counted once, how many use the addon, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
+- **Chat**: guild and officer chat in the window, with item links, class colours and a list of who's online by rank. Earlier chat loads from the game's own guild chat history, and the addon keeps a copy of the last 300 lines on your PC (never shared with anyone).
 - **Members**
   - **Roster**: the whole guild with level, class, honourable kills and professions, filters (online, away 7, 14 or 30 days) and alts grouped under their main.
   - **Crafters**: search who can make an item, or browse by profession.
@@ -36,7 +26,7 @@ Open it with `/iwt`, the minimap button, the **Tissues** button on the guild win
   - **Polls**: officers ask, everyone votes once.
   - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically. Only the officer who set a goal can change it, or allow another officer to.
   - **Loot notes**: a shared record of who received which item.
-- **Settings** (the cog): themes (Default, Kawaii Night, Kawaii Day, Midnight, High contrast), alerts, sounds, minimap button, bug report, profiler, self-test and diagnostics report.
+- **Settings** (the cog): themes (Default, Kawaii Night, Kawaii Day, Midnight, High contrast), the minimap and guild window buttons, alert sounds, layer-hop requests, saving chat between sessions, and the bug report, profiler, self-test and diagnostics report.
 
 Officers (Guild Master and Officer ranks) can add polls, donation goals and loot notes. Everyone else can read them and take part.
 
@@ -51,12 +41,13 @@ The addon only talks to guildmates, over hidden guild addon messages.
 | `/iwt chat` | open guild chat |
 | `/iwt roster` | open the roster |
 | `/iwt inactive 7\|14\|30` | members away that many days or more |
-| `/iwt alt add Name` · `/iwt alt remove Name` · `/iwt alt` | link an alt, unlink it, or list your links |
+| `/iwt alt main` · `/iwt alt add Name` · `/iwt alt remove Name` · `/iwt alt` | set this character as your main, link an alt, unlink it, or list your links |
 | `/iwt craft <name>` | who in the guild can make an item |
 | `/iwt layer` | your layer and guildmates' layers |
 | `/iwt hop Name` | ask a guildmate for a layer-hop invite |
 | `/iwt bug` | copyable bug report |
 | `/iwt selftest` | check the addon works on your client |
+| `/iwt perf on\|off\|reset` · `/iwt perf` | turn the profiler on or off, reset it, or show its report |
 | `/iwt report` | diagnostics report to send (paste it at [iwt-stats](https://carraigo.github.io/iwt-stats/#report)) |
 | `/iwt version` | the addon version |
 
@@ -67,6 +58,16 @@ There's no server: every guildmate's addon keeps a copy of the shared data, and 
 ## Changes
 
 See [CHANGELOG.md](CHANGELOG.md) for what's new in each version.
+
+## Screenshots
+
+![Chat: guild chat with the online list by rank (messages blurred)](docs/screenshots/chat.png)
+
+| Home | Crafters |
+| --- | --- |
+| ![Home: the guild at a glance, this character and its professions](docs/screenshots/home.png) | ![Crafters: who can make what, by profession](docs/screenshots/crafters.png) |
+| **Polls** | **Settings and themes** |
+| ![Polls under Guild life](docs/screenshots/polls.png) | ![Settings with the theme picker](docs/screenshots/settings.png) |
 
 ## Licence
 
