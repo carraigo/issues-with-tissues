@@ -1390,6 +1390,36 @@ test("chat: a server copy spelt differently still counts as the same message; tw
 	names = false -- a later read without names keeps the ones found before
 	Chat.ReadServer()
 	for _, e in ipairs(Chat.server.guild) do assert(e.a, "author remembered") end
+	local check = Chat.Check()
+	assert(#check >= 3 and check[#check]:find("apart", 1, true), check[#check])
+end)
+
+test("chat: a server copy with hidden text matches the live line from the same person at the same time", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local now = W.now
+	c.env.C_Club = {
+		GetGuildClubId = function() return 1 end,
+		GetStreams = function() return { { streamId = "g", streamType = 1 }, { streamId = "o", streamType = 2 } } end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function(_, stream)
+			if stream == "o" then
+				return { { content = "|Kq7|k", author = { name = "Gm" }, messageId = { epoch = now * 1000000, position = 1 } } }
+			end
+			return {
+				{ content = "|Kq1|k", author = { name = "Gm" }, messageId = { epoch = now * 1000000, position = 1 } },
+				{ content = "|Kq2|k", author = { name = "Gm" }, messageId = { epoch = (now + 1) * 1000000, position = 2 } },
+				{ content = "|Kq3|k", author = { name = "Vet" }, messageId = { epoch = (now + 60) * 1000000, position = 3 } },
+			}
+		end,
+	}
+	c.env.__fire("CHAT_MSG_GUILD", "first", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_OFFICER", "|Kx1|k", "Gm-Realm")
+	local Chat = c.ns.Chat
+	Chat.ReadServer()
+	local view = Chat.View("guild")
+	eq(#view, 3, "Gm's live line hides one copy; Gm's second message and Vet's stay")
+	eq(view[1].m, "first")
+	eq(#Chat.View("officer"), 1, "officer copy matched too")
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

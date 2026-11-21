@@ -3,7 +3,8 @@
 ## 0.8.0-beta.3
 
 - **Who's online:** a list beside the chat shows the guildmates who are online right now, grouped by rank with the Guild Master first. Offline members are left out. Click a name to whisper, right-click to invite, and hover for level, class and zone. It updates as people come online and go offline.
-- Messages heard live could show twice, once more from the server's history. The two copies are now matched on their text and time, whatever way the game spells the author's name, and two people saying the same thing still both show.
+- Messages heard live showed twice, once more from the server's history. The server often hands its copy over as hidden text that only draws on screen, so the two never matched. A copy now matches on its text and time, or, when the text is hidden, on the same author within a few seconds. This works in officer chat too. Two people saying the same thing still both show.
+- `/iwt chatcheck` (beta only) compares the saved chat with the server's copies, to track down lines that show twice. Its output stays on your PC.
 - Server messages whose author the game hadn't looked up yet showed as "[?]", or lost their name after alt-tabbing. A name found once is now kept, the game is asked another way, and anything still missing shows as "[Unknown]".
 - The message of the day was added to the chat again at every login. It's now kept once until it changes.
 

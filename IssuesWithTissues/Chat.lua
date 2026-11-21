@@ -306,35 +306,44 @@ function Chat.Plain(text)
 	return s:lower()
 end
 
-Chat.SAME_WINDOW = 120         -- seconds between two copies of one message
+Chat.SAME_WINDOW = 120         -- seconds between two copies of one message, by text
+Chat.HIDDEN_WINDOW = 5         -- seconds, when one copy's text is hidden
+
+-- The game can hand over a message's text as a hidden token ("|Kq12|k") that draws as the
+-- words on screen but can't be read by addons. Both the live event and the server's history
+-- do this, not always for the same message.
+function Chat.Hidden(text)
+	return tostring(text or ""):find("|K", 1, true) ~= nil
+end
 
 -- The two histories as one: the saved lines plus the server messages they don't already have,
--- oldest first. Each saved line hides at most one server message with the same text from
--- within two minutes, so two people saying "lol" still show twice. Authors aren't compared.
+-- oldest first. A saved line hides at most one server message: the same text within two
+-- minutes, or, when either text is hidden, the same author within a few seconds. So two
+-- people saying "lol" still show twice.
 function Chat.View(channel)
 	local mine = Chat.Lines(channel) or {}
 	local server = Chat.server[channel] or {}
 	if #server == 0 then return mine end
-	local unmatched = {}
-	for _, e in ipairs(mine) do
-		if e.k == "msg" then
-			local key = Chat.Plain(e.m)
-			unmatched[key] = unmatched[key] or {}
-			table.insert(unmatched[key], e.t)
+	local used = {}
+	local function First(a) return (ns.Roster.FirstName(a or "") or ""):lower() end
+	local function Match(e)
+		local hidden, plain, first = Chat.Hidden(e.m), Chat.Plain(e.m), First(e.a)
+		for i, m in ipairs(mine) do
+			if not used[i] and m.k == "msg" then
+				local d = math.abs((m.t or 0) - e.t)
+				if hidden or Chat.Hidden(m.m) then
+					if d <= Chat.HIDDEN_WINDOW and first ~= "" and First(m.a) == first then return i end
+				elseif d <= Chat.SAME_WINDOW and Chat.Plain(m.m) == plain then
+					return i
+				end
+			end
 		end
 	end
 	local out = {}
 	for _, e in ipairs(mine) do out[#out + 1] = e end
 	for _, e in ipairs(server) do
-		local times, dup = unmatched[Chat.Plain(e.m)], false
-		for i, t in ipairs(times or {}) do
-			if math.abs(t - e.t) <= Chat.SAME_WINDOW then
-				table.remove(times, i)
-				dup = true
-				break
-			end
-		end
-		if not dup then out[#out + 1] = e end
+		local i = Match(e)
+		if i then used[i] = true else out[#out + 1] = e end
 	end
 	table.sort(out, function(a, b) return a.t < b.t end)
 	while #out > Chat.MAX_LINES do table.remove(out, 1) end
@@ -656,3 +665,39 @@ end
 ns.Settings.AddToggle("chatHistory", "Keep guild chat between sessions (stays on this PC)", function(on) Chat.SetHistory(on) end)
 
 ns.RegisterCommand("chat", "open guild chat", function() ns.UI.Open("Chat") end)
+
+-- Beta only: compares the last saved lines with the server's copies, to find why a message
+-- can show twice. Prints the result and keeps it in IwTDB.chatcheck (never in the report).
+function Chat.Check()
+	Chat.ReadServer()
+	local out = {}
+	local function esc(x) return (tostring(x):gsub("[^%w%p ]", function(ch) return string.format("\\%d", ch:byte()) end)) end
+	local mine = Chat.Lines("guild") or {}
+	local server = Chat.server.guild or {}
+	out[#out + 1] = string.format("now=%s server=%d saved=%d", tostring(ns.Now()), #server, #mine)
+	for i = math.max(1, #server - 4), #server do
+		local e = server[i]
+		out[#out + 1] = string.format("srv t=%s a=%s m=%s", tostring(e.t), esc(e.a), esc(e.m))
+	end
+	local n = 0
+	for i = #mine, 1, -1 do
+		local e = mine[i]
+		if e.k == "msg" then
+			n = n + 1
+			local best, bestDiff
+			for _, s2 in ipairs(server) do
+				if Chat.Plain(s2.m) == Chat.Plain(e.m) then
+					local d = s2.t - e.t
+					if not bestDiff or math.abs(d) < math.abs(bestDiff) then best, bestDiff = s2, d end
+				end
+			end
+			out[#out + 1] = string.format("mine t=%s a=%s m=%s -> %s", tostring(e.t), esc(e.a), esc(e.m),
+				best and ("same text, " .. bestDiff .. "s apart") or "no server line with this text")
+			if n >= 4 then break end
+		end
+	end
+	ns.db.chatcheck = out
+	for _, l in ipairs(out) do print("|cff7fd4ffIwT chat check:|r " .. l) end
+	return out
+end
+ns.RegisterCommand("chatcheck", "beta: compare saved chat with the server's", function() Chat.Check() end)
