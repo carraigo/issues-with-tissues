@@ -461,7 +461,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Members(Roster|Crafters),Hop(Layers),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Crafters),Hop(Layers),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -656,11 +656,11 @@ test("the window draws its own tabs: Blizzard's tab code is not used, and the cu
 	c.ns.UI.Toggle()
 	for i, t in ipairs(c.ns.UI.tabs) do assert(t.button, "button " .. i) eq(t.button:IsShown(), true) end
 	eq(c.ns.UI.tabs[1].button.selected, true)
-	c.ns.UI.SelectTab(2)
+	c.ns.UI.SelectTab(3)
 	eq(c.ns.RosterTab.panel:IsShown(), true)
-	eq(c.ns.UI.tabs[1].button.selected, false); eq(c.ns.UI.tabs[2].button.selected, true)
+	eq(c.ns.UI.tabs[1].button.selected, false); eq(c.ns.UI.tabs[3].button.selected, true)
 	c.ns.UI.Open("Settings")
-	eq(c.ns.UI.cog.selected, true); eq(c.ns.UI.tabs[2].button.selected, false)
+	eq(c.ns.UI.cog.selected, true); eq(c.ns.UI.tabs[3].button.selected, false)
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
@@ -908,7 +908,7 @@ test("home: what's on shows open polls and the donation goal; the calendar is go
 	eq(f.nextEvent, nil); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
 	mem.ns.UI.Toggle()
 	mem.ns.GeneralTab.Refresh()
-	eq(mem.ns.UI.tabs[3].title, "Hop"); eq(mem.ns.UI.tabs[4].title, "Guild life")
+	eq(mem.ns.UI.tabs[4].title, "Hop"); eq(mem.ns.UI.tabs[5].title, "Guild life")
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
@@ -1116,23 +1116,23 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 	eq(c.ns.CraftersTab.panel:IsShown(), true)
 	eq(UI.tabs[UI.current].title, "Members")
 	UI.Open("Home")
-	UI.SelectTab(2) -- Members again: back on Crafters
-	eq(UI.tabs[2].pages[UI.tabs[2].current].title, "Crafters")
+	UI.SelectTab(3) -- Members again: back on Crafters
+	eq(UI.tabs[3].pages[UI.tabs[3].current].title, "Crafters")
 	eq(c.env.IwTDB.window.pages.Members, "Crafters", "remembered across sessions")
 	UI.Open("Settings")
 	eq(UI.settings.panel:IsShown(), true)
-	eq(UI.tabs[2].frame:IsShown(), false)
+	eq(UI.tabs[3].frame:IsShown(), false)
 	UI.cog:GetScript("OnClick")()
 	c.env.UnitGUID = function(u) if u == "target" then return "Creature-0-1-0-77-6491-00001A2B3C" end end
 	c.env.__fire("PLAYER_TARGET_CHANGED")
 	UI.Open("Layers")
-	eq(UI.tabs[3].title, "Hop"); eq(UI.tabs[3].frame:IsShown(), true)
+	eq(UI.tabs[4].title, "Hop"); eq(UI.tabs[4].frame:IsShown(), true)
 	eq(c.ns.Layers.panel:IsShown(), true, "the Hop tab opens straight on layer hopping")
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
 test("no file assigns a Blizzard global like SlashCmdList (that taints every macro)", function()
-	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua" }) do
+	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua", "Chat.lua" }) do
 		local src = io.open(base .. "/IssuesWithTissues/" .. f):read("*a")
 		for _, g in ipairs({ "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames", "ChatFrame_OpenChat", "ChatEdit_InsertLink" }) do
 			assert(not src:find("\n%s*" .. g .. "%s*=[^=]"), f .. " assigns " .. g)
@@ -1197,6 +1197,80 @@ test("diagnostics report: one string with errors, timings and usage, no names un
 	assert(select(2, R.Encode(R.Data({ name = true }))):find('"character":"Mem"', 1, true))
 	assert(#s < 6000, "short enough for a link: " .. #s)
 	eq(#c.env.IwTDB.errors, 1)
+end)
+
+test("chat: guild and officer lines are kept apart, with class-coloured clickable names", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.RAID_CLASS_COLORS = { WARRIOR = { r = 1, g = 0.5, b = 0 } }
+	c.env.__fire("CHAT_MSG_GUILD", "hello |cffffffff|Hitem:2589::::|h[Linen Cloth]|h|r", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_OFFICER", "secret", "Offi-Realm")
+	local Chat = c.ns.Chat
+	eq(#Chat.Lines("guild"), 1); eq(#Chat.Lines("officer"), 1)
+	local line = Chat.Format("guild", Chat.Lines("guild")[1])
+	assert(line:find("|Hplayer:Gm-Realm|h|cffff8000[Gm]|r|h", 1, true), line)
+	assert(line:find("[Linen Cloth]", 1, true), "item links kept")
+	eq(Chat.unread, 2, "counted while the chat page is closed")
+	c.ns.UI.Open("Chat")
+	eq(#c.env.IwTDB.errors, 0, "chat page builds")
+	eq(Chat.unread, 0)
+end)
+
+test("chat: Enter sends to the right channel; commands go to the game's chat box", function()
+	local c = W.NewClient(base, "Gm", Guild2())
+	local sent, opened = {}, nil
+	c.env.SendChatMessage = function(m, ch) sent[#sent + 1] = ch .. ":" .. m end
+	c.env.ChatFrame_OpenChat = function(t) opened = t end
+	local Chat = c.ns.Chat
+	assert(Chat.Send("  hi all \n"))
+	eq(sent[1], "GUILD:hi all")
+	assert(Chat.Send("officers only", "officer"))
+	eq(sent[2], "OFFICER:officers only")
+	eq(Chat.Send("   "), false, "nothing to send")
+	eq(Chat.Send("/roll"), false); eq(opened, "/roll"); eq(#sent, 2)
+	assert(Chat.Send(string.rep("a", 300)))
+	eq(#sent[3], #"GUILD:" + 255, "cut to 255 bytes")
+	eq(Chat.sent[#Chat.sent], string.rep("a", 255), "kept for Up-arrow recall")
+end)
+
+test("chat: history stays on this PC, capped, and can be switched off", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	for i = 1, Chat.MAX_LINES + 5 do c.env.__fire("CHAT_MSG_GUILD", "line " .. i, "Gm-Realm") end
+	eq(#c.env.IwTCharDB.chat.guild, Chat.MAX_LINES, "saved, capped")
+	eq(c.env.IwTCharDB.chat.guild[1].m, "line 6", "oldest dropped")
+	c.env.__fire("PLAYER_LOGOUT")
+	local _, json = c.ns.Report.Encode(c.ns.Report.Data())
+	assert(not json:find("line 1", 1, true), "never in the diagnostics report")
+	assert(not (c.env.IwTDB.snapshot and c.env.IwTDB.snapshot.chat), "never in the web page snapshot")
+	c.env.IwTDB.settings.chatHistory = false
+	Chat.SetHistory(false)
+	eq(c.env.IwTCharDB.chat, nil, "saved lines forgotten")
+	eq(#Chat.Lines("guild"), Chat.MAX_LINES, "this session's lines still shown")
+	c.env.__fire("CHAT_MSG_GUILD", "after", "Gm-Realm")
+	eq(c.env.IwTCharDB.chat, nil, "nothing saved while off")
+end)
+
+test("chat: guildmates coming online show in the guild channel, friends outside the guild don't", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.__fire("CHAT_MSG_SYSTEM", "|Hplayer:Vet-Realm|h[Vet-Realm]|h has come online.")
+	c.env.__fire("CHAT_MSG_SYSTEM", "Stranger has gone offline.")
+	c.env.__fire("CHAT_MSG_SYSTEM", "Gone-Realm has gone offline.")
+	local lines = c.ns.Chat.Lines("guild")
+	eq(#lines, 2)
+	eq(lines[1].m, "Vet has come online."); eq(lines[2].m, "Gone has gone offline.")
+end)
+
+test("key bindings: the window and guild chat can be bound to a key (J, for example)", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	eq(c.env.BINDING_HEADER_ISSUESWITHTISSUES, "Issues with Tissues")
+	assert(c.env.BINDING_NAME_IWT_TOGGLE and c.env.BINDING_NAME_IWT_CHAT)
+	local xml = io.open(base .. "/IssuesWithTissues/Bindings.xml"):read("*a")
+	assert(xml:find('name="IWT_TOGGLE"', 1, true) and xml:find("IssuesWithTissues_Toggle()", 1, true))
+	assert(xml:find("IssuesWithTissues_Chat()", 1, true))
+	c.env.IssuesWithTissues_Toggle()
+	eq(c.ns.UI.window:IsShown(), true)
+	c.env.IssuesWithTissues_Chat()
+	eq(#c.env.IwTDB.errors, 0)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

@@ -1,4 +1,4 @@
--- The main window: four tabs along the bottom (Home, Members, Hop, Guild life), each holding
+-- The main window: five tabs along the bottom (Home, Chat, Members, Hop, Guild life), each holding
 -- pages behind a row of sub-tabs, and Settings behind the cog in the title bar. Features add a
 -- page with ns.UI.AddPage("Members", "Roster", function(panel) ... end); the builder runs the
 -- first time the page is shown. A tab with no pages is not shown. Also the minimap button, the
@@ -11,7 +11,7 @@ ns.UI = UI
 
 -- The tabs, in order. UI.tabs is the ones with pages, set when the window is made.
 UI.groups = {}
-for _, title in ipairs({ "Home", "Members", "Hop", "Guild life" }) do
+for _, title in ipairs({ "Home", "Chat", "Members", "Hop", "Guild life" }) do
 	UI.groups[#UI.groups + 1] = { title = title, pages = {} }
 end
 UI.tabs = {}
@@ -386,6 +386,23 @@ function UI.Create()
 	end)
 	cog:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	UI.cog = cog
+	-- The game's own guild window, for what only it can do (invites, promotions, notes).
+	local blizz = UI.Button(f, nil, 22, 20)
+	blizz:SetPoint("RIGHT", cog, "LEFT", -4, 0)
+	local bicon = blizz:CreateTexture(nil, "ARTWORK")
+	bicon:SetTexture("Interface\\Icons\\INV_Misc_Note_02")
+	bicon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	bicon:SetSize(14, 14)
+	bicon:SetPoint("CENTER")
+	blizz:SetScript("OnClick", function() UI.OpenGameGuildWindow() end)
+	blizz:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine("Game's guild window")
+		GameTooltip:AddLine("Invites, promotions and notes", 1, 1, 1)
+		GameTooltip:Show()
+	end)
+	blizz:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	UI.gameGuildButton = blizz
 	UI.tabs = {}
 	for _, g in ipairs(UI.groups) do
 		if #g.pages > 0 then UI.tabs[#UI.tabs + 1] = g end
@@ -524,6 +541,7 @@ function UI.CreateInput(panel, width, hint)
 	local h = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	h:SetPoint("LEFT", 7, 0)
 	h:SetText(hint or "")
+	box.hint = h
 	local function Update()
 		local focus = box:HasFocus()
 		if not focus and GetTime then box.focusLostAt = GetTime() end
@@ -831,6 +849,23 @@ function UI.AttachGuildButton()
 	guildButton:SetPoint("TOPRIGHT", host, "TOPRIGHT", -30, -28)
 	guildButton:SetScript("OnClick", function() UI.Toggle() end)
 	UI.UpdateGuildButton()
+end
+
+-- Open the game's own guild window, whichever this client has.
+function UI.OpenGameGuildWindow()
+	if ToggleGuildFrame then return pcall(ToggleGuildFrame) end
+	if ToggleFriendsFrame then return pcall(ToggleFriendsFrame, 3) end
+end
+
+-- Key bindings (Bindings.xml): Esc menu > Options > Key Bindings > Issues with Tissues.
+-- Binding one to the guild key (J) makes it open this window instead of the game's.
+BINDING_HEADER_ISSUESWITHTISSUES = "Issues with Tissues"
+BINDING_NAME_IWT_TOGGLE = "Open or close the window"
+BINDING_NAME_IWT_CHAT = "Open guild chat"
+function IssuesWithTissues_Toggle() UI.Toggle() end
+function IssuesWithTissues_Chat()
+	local f = UI.Create()
+	if f:IsShown() and ns.Chat and ns.Chat.Visible() then f:Hide() else UI.Open("Chat") end
 end
 
 function UI.UpdateGuildButton()

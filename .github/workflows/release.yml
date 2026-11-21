@@ -1,5 +1,6 @@
 name: release
 # Push a tag like v0.5.0 to build IssuesWithTissues-v0.5.0.zip and attach it to a GitHub release.
+# A tag like v0.8.0-beta.1 makes a pre-release.
 on:
   push:
     tags: ["v*"]
@@ -33,4 +34,9 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "IssuesWithTissues-${GITHUB_REF_NAME}.zip" --title "Issues with Tissues ${GITHUB_REF_NAME}" --notes-file notes.md
+        # A tag with a dash (v0.8.0-beta.1) is a test build: marked as a pre-release, so the
+        # "latest release" link and badge keep pointing at the last full release.
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "IssuesWithTissues-${GITHUB_REF_NAME}.zip" --title "Issues with Tissues ${GITHUB_REF_NAME}" --notes-file notes.md $pre

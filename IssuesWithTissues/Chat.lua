@@ -1,0 +1,364 @@
+-- Guild chat inside the window (0.8.0 beta): a Chat tab with the Guild and Officer channels,
+-- the message of the day, guildmates coming online and going offline, class-coloured names,
+-- clickable item and player links, and a box to type in (Enter sends, Up/Down recall).
+--
+-- The game gives no chat from before you logged in, so the last lines of each channel are kept
+-- in this character's saved data (IwTCharDB.chat). They stay on this PC: never shared with
+-- guildmates, never in the diagnostics report or the guild web page. Settings can turn it off.
+--
+-- Nothing of Blizzard's is changed: the addon only listens to chat events and sends with
+-- SendChatMessage, which guild and officer chat allow from a key press.
+
+local _, ns = ...
+
+local Chat = ns.RegisterModule("Chat", {})
+ns.Chat = Chat
+
+Chat.MAX_LINES = 300           -- kept per channel
+Chat.MAX_SENT = 30             -- lines recalled with Up/Down
+Chat.CHANNELS = { "guild", "officer" }
+Chat.EVENTS = { CHAT_MSG_GUILD = "guild", CHAT_MSG_OFFICER = "officer" }
+Chat.SEND = { guild = "GUILD", officer = "OFFICER" }
+Chat.live = { guild = {}, officer = {} } -- this session, whether or not history is saved
+Chat.unread = 0
+Chat.channel = "guild"
+Chat.sent = {}
+
+---------------------------------------------------------------------------
+-- Storage
+---------------------------------------------------------------------------
+function Chat.Lines(channel)
+	if ns.db and ns.db.settings.chatHistory and ns.char then
+		ns.char.chat = ns.char.chat or {}
+		ns.char.chat[channel] = ns.char.chat[channel] or {}
+		return ns.char.chat[channel]
+	end
+	return Chat.live[channel]
+end
+
+function Chat:OnLoad()
+	-- History switched off: drop anything saved before.
+	if not ns.db.settings.chatHistory and ns.char then ns.char.chat = nil end
+end
+
+-- Turning history on keeps this session's lines; turning it off forgets the saved ones.
+function Chat.SetHistory(on)
+	if on then
+		ns.char.chat = ns.char.chat or {}
+		for _, ch in ipairs(Chat.CHANNELS) do
+			if not ns.char.chat[ch] or #ns.char.chat[ch] == 0 then ns.char.chat[ch] = Chat.live[ch] end
+		end
+	else
+		if ns.char.chat then
+			for _, ch in ipairs(Chat.CHANNELS) do Chat.live[ch] = ns.char.chat[ch] or Chat.live[ch] end
+		end
+		ns.char.chat = nil
+	end
+end
+
+---------------------------------------------------------------------------
+-- Lines
+---------------------------------------------------------------------------
+-- kind: "msg" (someone said something), "sys" (online/offline), "motd"
+function Chat.Add(channel, kind, author, text)
+	local lines = Chat.Lines(channel)
+	if not lines then return end
+	local entry = { t = ns.Now(), k = kind, a = author, m = tostring(text or "") }
+	lines[#lines + 1] = entry
+	while #lines > Chat.MAX_LINES do table.remove(lines, 1) end
+	if lines ~= Chat.live[channel] then
+		local live = Chat.live[channel]
+		live[#live + 1] = entry
+		while #live > Chat.MAX_LINES do table.remove(live, 1) end
+	end
+	if not Chat.Visible() then
+		Chat.unread = Chat.unread + 1
+		Chat.UpdateBadge()
+	end
+	ns.Send("CHAT_LINE", channel, entry)
+	return entry
+end
+
+local function Hex(r, g, b)
+	return string.format("%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+end
+
+function Chat.ChannelColor(channel)
+	local info = ChatTypeInfo and ChatTypeInfo[Chat.SEND[channel]]
+	if info and info.r then return info.r, info.g, info.b end
+	if channel == "officer" then return 0.25, 0.75, 0.25 end
+	return 0.25, 1, 0.25
+end
+
+-- "[18:04] [Vatic Cane]: hello" with the name in its class colour and clickable.
+function Chat.Format(channel, e)
+	local stamp = "|cff8a8170" .. date("%H:%M", e.t) .. "|r "
+	local r, g, b = Chat.ChannelColor(channel)
+	if e.k == "motd" then
+		return stamp .. "|cff" .. Hex(r, g, b) .. "Message of the day: " .. e.m .. "|r"
+	end
+	if e.k == "sys" then
+		return stamp .. "|cffa8a8a8" .. e.m .. "|r"
+	end
+	local key = ns.Roster.ParseName(e.a) or e.a or "?"
+	local m = ns.Roster.Get(key)
+	local cr, cg, cb = ns.UI.ClassColor(m and m.classFile)
+	local name = ns.Roster.DisplayName(key)
+	local link = "|Hplayer:" .. tostring(e.a or key) .. "|h|cff" .. Hex(cr, cg, cb) .. "[" .. name .. "]|r|h"
+	return stamp .. link .. "|cff" .. Hex(r, g, b) .. ": " .. e.m .. "|r"
+end
+
+---------------------------------------------------------------------------
+-- Sending
+---------------------------------------------------------------------------
+-- What the box sends: one line, at most 255 bytes, no surrounding spaces. Commands typed into
+-- it ("/w Bob hi", "/roll") go to the game's own chat box instead.
+function Chat.Clean(text)
+	local s = tostring(text or ""):gsub("[\r\n]+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+	if #s > 255 then
+		s = s:sub(1, 255)
+		-- Don't cut a link in half: drop a trailing piece of an unfinished "|H...|h[...]|h".
+		local lastStart = s:match(".*()|H")
+		if lastStart and not s:find("|h|r", lastStart, true) and not s:find("]|h", lastStart, true) then
+			s = s:sub(1, lastStart - 1)
+		end
+		s = s:gsub("|c%x*$", ""):gsub("%s+$", "")
+	end
+	return s
+end
+
+function Chat.Send(text, channel)
+	channel = channel or Chat.channel
+	local s = Chat.Clean(text)
+	if s == "" then return false end
+	if s:sub(1, 1) == "/" then
+		if ChatFrame_OpenChat then ChatFrame_OpenChat(s) end
+		return false, "command"
+	end
+	if not SendChatMessage then return false end
+	SendChatMessage(s, Chat.SEND[channel] or "GUILD")
+	table.insert(Chat.sent, s)
+	while #Chat.sent > Chat.MAX_SENT do table.remove(Chat.sent, 1) end
+	return true
+end
+
+---------------------------------------------------------------------------
+-- Events
+---------------------------------------------------------------------------
+for event, channel in pairs(Chat.EVENTS) do
+	ns.On(event, function(_, text, author)
+		Chat.Add(channel, "msg", author, text)
+	end)
+end
+
+-- "<name> has come online." / "<name> has gone offline." for guildmates (the same messages are
+-- used for friends, so only names in the roster count).
+local function Pattern(fmt)
+	if type(fmt) ~= "string" then return nil end
+	local p = fmt:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%%%s", "(.-)"):gsub("%%%%d", "%%d+")
+	return "^" .. p .. "$"
+end
+
+function Chat.SystemLine(text)
+	text = tostring(text or "")
+	for _, fmt in ipairs({ ERR_FRIEND_ONLINE_SS or "|Hplayer:%s|h[%s]|h has come online.", ERR_FRIEND_OFFLINE_S or "%s has gone offline." }) do
+		local p = Pattern(fmt)
+		local who = p and text:match(p)
+		if who and ns.Roster.IsMember(who) then
+			local name = ns.Roster.DisplayName(ns.Roster.ParseName(who))
+			local online = fmt:find("online", 1, true) ~= nil
+			return name .. (online and " has come online." or " has gone offline.")
+		end
+	end
+end
+
+ns.On("CHAT_MSG_SYSTEM", function(_, text)
+	local line = Chat.SystemLine(text)
+	if line then Chat.Add("guild", "sys", nil, line) end
+end)
+
+function Chat.MOTD()
+	local motd = GetGuildRosterMOTD and GetGuildRosterMOTD()
+	if type(motd) == "string" and motd ~= "" then return motd end
+end
+
+-- The message of the day is shown at the top of the Guild channel; a new one is added as a line.
+pcall(ns.On, "GUILD_MOTD", function(_, motd)
+	if type(motd) == "string" and motd ~= "" then Chat.Add("guild", "motd", nil, motd) end
+end)
+
+---------------------------------------------------------------------------
+-- The page
+---------------------------------------------------------------------------
+function Chat.CanOfficer()
+	if ns.Roster.IsOfficer(ns.PlayerName()) then return true end
+	local lines = Chat.Lines("officer")
+	return lines ~= nil and #lines > 0
+end
+
+function Chat.Visible()
+	return Chat.panel ~= nil and Chat.panel.IsVisible ~= nil and Chat.panel:IsVisible() and true or false
+end
+
+function Chat.UpdateBadge()
+	for _, g in ipairs(ns.UI.tabs or {}) do
+		if g.title == "Chat" and g.button then
+			g.button:SetText(Chat.unread > 0 and ("Chat (" .. math.min(Chat.unread, 99) .. ")") or "Chat")
+		end
+	end
+end
+
+function Chat.Redraw()
+	local box = Chat.messages
+	if not box then return end
+	box:Clear()
+	if Chat.channel == "guild" then
+		local motd = Chat.MOTD()
+		if motd then
+			local r, g, b = Chat.ChannelColor("guild")
+			box:AddMessage("|cff" .. Hex(r, g, b) .. "Message of the day: " .. motd .. "|r")
+		end
+	end
+	for _, e in ipairs(Chat.Lines(Chat.channel) or {}) do box:AddMessage(Chat.Format(Chat.channel, e)) end
+	box:ScrollToBottom()
+	if Chat.hint then
+		local lines = Chat.Lines(Chat.channel) or {}
+		Chat.hint:SetShown(#lines == 0)
+	end
+end
+
+function Chat.SetChannel(channel)
+	if channel == "officer" and not Chat.CanOfficer() then channel = "guild" end
+	Chat.channel = channel
+	for ch, b in pairs(Chat.channelButtons or {}) do ns.UI.SetSelected(b, ch == channel) end
+	if Chat.input and Chat.input.hint then
+		Chat.input.hint:SetText(channel == "officer" and "Type to officers, Enter to send" or "Type to the guild, Enter to send")
+	end
+	Chat.Redraw()
+end
+
+local function Build(panel)
+	Chat.panel = panel
+	local UI = ns.UI
+	local guild = UI.Button(panel, "Guild", 80, 22)
+	guild:SetPoint("TOPLEFT", 0, 0)
+	guild:SetScript("OnClick", function() Chat.SetChannel("guild") end)
+	local officer = UI.Button(panel, "Officer", 80, 22)
+	officer:SetPoint("LEFT", guild, "RIGHT", 4, 0)
+	officer:SetScript("OnClick", function() Chat.SetChannel("officer") end)
+	Chat.channelButtons = { guild = guild, officer = officer }
+
+	local note = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	note:SetPoint("RIGHT", panel, "TOPRIGHT", -4, -11)
+	note:SetText("Shift-click items to link them")
+
+	local frame = CreateFrame("Frame", nil, panel)
+	frame:SetPoint("TOPLEFT", 0, -30)
+	frame:SetPoint("BOTTOMRIGHT", 0, 34)
+	UI.Skin(frame, UI.COLORS.input, UI.COLORS.dim)
+
+	local box = CreateFrame("ScrollingMessageFrame", nil, frame)
+	box:SetPoint("TOPLEFT", 8, -6)
+	box:SetPoint("BOTTOMRIGHT", -8, 6)
+	box:SetFontObject(_G.ChatFontNormal or "ChatFontNormal")
+	box:SetJustifyH("LEFT")
+	box:SetMaxLines(Chat.MAX_LINES + 20)
+	box:SetFading(false)
+	if box.SetIndentedWordWrap then box:SetIndentedWordWrap(true) end
+	if box.SetHyperlinksEnabled then box:SetHyperlinksEnabled(true) end
+	box:EnableMouseWheel(true)
+	box:SetScript("OnMouseWheel", function(self, delta)
+		if IsShiftKeyDown and IsShiftKeyDown() then
+			if delta > 0 then self:ScrollToTop() else self:ScrollToBottom() end
+		elseif delta > 0 then self:ScrollUp() else self:ScrollDown() end
+	end)
+	-- Item, spell and player links work as in the game's chat (player: left-click whispers,
+	-- right-click opens the usual menu).
+	box:SetScript("OnHyperlinkClick", function(self, link, text, button)
+		if SetItemRef then SetItemRef(link, text, button, self) end
+	end)
+	box:SetScript("OnHyperlinkEnter", function(self, link)
+		local kind = tostring(link):match("^(%a+):")
+		if kind == "item" or kind == "spell" or kind == "enchant" then
+			GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+			pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+			GameTooltip:Show()
+		end
+	end)
+	box:SetScript("OnHyperlinkLeave", function() GameTooltip:Hide() end)
+	Chat.messages = box
+
+	local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+	hint:SetPoint("CENTER")
+	hint:SetText("No messages yet. New guild chat shows up here.")
+	Chat.hint = hint
+
+	local input = UI.CreateInput(panel, 300, "Type to the guild, Enter to send")
+	input:ClearAllPoints()
+	input:SetPoint("BOTTOMLEFT", 0, 0)
+	input:SetPoint("BOTTOMRIGHT", -84, 0)
+	input:SetHeight(26)
+	input:SetMaxLetters(255)
+	if input.SetAltArrowKeyMode then input:SetAltArrowKeyMode(false) end
+	-- Enter sends and keeps the box open for the next line, like the game's chat.
+	input:SetScript("OnEnterPressed", function(self)
+		local text = self:GetText() or ""
+		if text ~= "" then
+			Chat.Send(text)
+			self:SetText("")
+		end
+		Chat.recall = nil
+	end)
+	input:SetScript("OnArrowPressed", function(self, key)
+		local n = #Chat.sent
+		if n == 0 then return end
+		if key == "UP" then Chat.recall = math.max(1, (Chat.recall or n + 1) - 1)
+		elseif key == "DOWN" then Chat.recall = Chat.recall and Chat.recall + 1 or nil
+		else return end
+		if Chat.recall and Chat.recall > n then Chat.recall = nil end
+		self:SetText(Chat.recall and Chat.sent[Chat.recall] or "")
+		if self.SetCursorPosition then self:SetCursorPosition(#(self:GetText() or "")) end
+	end)
+	Chat.input = input
+
+	local send = UI.Button(panel, "Send", 80, 26, "primary")
+	send:SetPoint("BOTTOMRIGHT", 0, 0)
+	send:SetScript("OnClick", function()
+		local text = input:GetText() or ""
+		if text ~= "" and Chat.Send(text) then input:SetText("") end
+	end)
+
+	panel:SetScript("OnShow", function()
+		officer:SetShown(Chat.CanOfficer())
+		Chat.unread = 0
+		Chat.UpdateBadge()
+		Chat.SetChannel(Chat.channel)
+	end)
+	officer:SetShown(Chat.CanOfficer())
+	Chat.unread = 0
+	Chat.UpdateBadge()
+	Chat.SetChannel(Chat.channel)
+end
+
+ns.UI.AddPage("Chat", "Chat", Build)
+
+-- New lines go straight into the open page.
+ns.Listen("CHAT_LINE", function(channel, entry)
+	if Chat.messages and channel == Chat.channel then
+		Chat.messages:AddMessage(Chat.Format(channel, entry))
+		if Chat.hint then Chat.hint:Hide() end
+	end
+end)
+
+-- Shift-clicking an item (bags, loot, the auction house...) while our box has focus puts the
+-- link in it. A hook after the game's own function: nothing of Blizzard's is replaced.
+if hooksecurefunc and ChatEdit_InsertLink then
+	hooksecurefunc("ChatEdit_InsertLink", function(link)
+		local box = Chat.input
+		if box and box.HasFocus and box:HasFocus() and link then box:Insert(link) end
+	end)
+end
+
+ns.Settings.AddToggle("chatHistory", "Keep guild chat between sessions (stays on this PC)", function(on) Chat.SetHistory(on) end)
+
+ns.RegisterCommand("chat", "open guild chat", function() ns.UI.Open("Chat") end)

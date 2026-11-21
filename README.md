@@ -12,11 +12,12 @@ A guild addon for the Issues with Tissues guild on WoW: Forever. It puts the gui
 2. Unzip it into your game's `Interface\AddOns` folder, so you have `Interface\AddOns\IssuesWithTissues`.
 3. Restart the game.
 
-Open it with `/iwt`, the minimap button, or the **Tissues** button on the guild window.
+Open it with `/iwt`, the minimap button, the **Tissues** button on the guild window, or a key: Key Bindings, Issues with Tissues (bind it to J to replace the game's guild window).
 
 ## Features
 
 - **Home**: the guild at a glance (members online, players with alts counted once, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
+- **Chat**: guild and officer chat in the window, with item links and class colours. History stays on your PC.
 - **Members**
   - **Roster**: the whole guild with level, class, honourable kills and professions, filters (online, away 7, 14 or 30 days) and alts grouped under their main.
   - **Crafters**: search who can make an item, or browse by profession.
@@ -37,6 +38,7 @@ The addon only talks to guildmates, over hidden guild addon messages.
 | --- | --- |
 | `/iwt` | open or close the window |
 | `/iwt settings` | open the settings |
+| `/iwt chat` | open guild chat |
 | `/iwt roster` | open the roster |
 | `/iwt inactive 7\|14\|30` | members away that many days or more |
 | `/iwt alt add Name` · `/iwt alt remove Name` · `/iwt alt` | link an alt, unlink it, or list your links |

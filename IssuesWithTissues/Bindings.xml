@@ -1,0 +1,8 @@
+<Bindings>
+	<Binding name="IWT_TOGGLE" header="ISSUESWITHTISSUES">
+		IssuesWithTissues_Toggle()
+	</Binding>
+	<Binding name="IWT_CHAT">
+		IssuesWithTissues_Chat()
+	</Binding>
+</Bindings>
