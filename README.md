@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/carraigo/issues-with-tissues?label=release)](https://github.com/carraigo/issues-with-tissues/releases/latest)
 ![WoW: Forever](https://img.shields.io/badge/WoW-Forever%201.60-c79a3c)
 
-A guild addon for the Issues with Tissues guild on WoW: Forever. It puts the guild's roster, crafters, layer hopping, polls and donations in one window, and shares everything between guildmates who run it.
+A guild addon for the Issues with Tissues guild on WoW: Forever. It puts guild chat, the roster, crafters, layer hopping, polls and donations in one window, and shares everything between guildmates who run it.
 
 ## Install
 
@@ -13,6 +13,16 @@ A guild addon for the Issues with Tissues guild on WoW: Forever. It puts the gui
 3. Restart the game.
 
 Open it with `/iwt`, the minimap button, the **Tissues** button on the guild window, or a key: Key Bindings, Issues with Tissues (bind it to J to replace the game's guild window).
+
+## Screenshots
+
+![Chat: guild chat with the online list by rank (messages blurred)](docs/screenshots/chat.png)
+
+| Home | Crafters |
+| --- | --- |
+| ![Home: the guild at a glance, this character and its professions](docs/screenshots/home.png) | ![Crafters: who can make what, by profession](docs/screenshots/crafters.png) |
+| **Polls** | **Settings and themes** |
+| ![Polls under Guild life](docs/screenshots/polls.png) | ![Settings with the theme picker](docs/screenshots/settings.png) |
 
 ## Features
 
@@ -49,6 +59,10 @@ The addon only talks to guildmates, over hidden guild addon messages.
 | `/iwt selftest` | check the addon works on your client |
 | `/iwt report` | diagnostics report to send (paste it at [iwt-stats](https://carraigo.github.io/iwt-stats/#report)) |
 | `/iwt version` | the addon version |
+
+## How it works
+
+There's no server: every guildmate's addon keeps a copy of the shared data, and the copies sync over hidden guild addon messages. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the messaging, the sync rules, the chat history, themes, diagnostics and the tests.
 
 ## Changes
 

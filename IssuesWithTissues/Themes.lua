@@ -1,4 +1,4 @@
--- Themes (0.8.0 beta): the window's colours, picked in Settings and applied at the next /reload.
+-- Themes (0.8.0): the window's colours, picked in Settings and applied at the next /reload.
 -- A theme is a full set of UI.COLORS, copied into that table before any frame is made, so every
 -- part of the addon picks it up without knowing about themes.
 --

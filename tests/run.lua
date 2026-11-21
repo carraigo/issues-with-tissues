@@ -1390,8 +1390,6 @@ test("chat: a server copy spelt differently still counts as the same message; tw
 	names = false -- a later read without names keeps the ones found before
 	Chat.ReadServer()
 	for _, e in ipairs(Chat.server.guild) do assert(e.a, "author remembered") end
-	local check = Chat.Check()
-	assert(#check >= 3 and check[#check]:find("apart", 1, true), check[#check])
 end)
 
 test("chat: a server copy with hidden text matches the live line from the same person at the same time", function()

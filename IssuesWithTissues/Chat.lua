@@ -1,4 +1,4 @@
--- Guild chat inside the window (0.8.0 beta): a Chat tab with the Guild and Officer channels,
+-- Guild chat inside the window (0.8.0): a Chat tab with the Guild and Officer channels,
 -- the message of the day, guildmates coming online and going offline, class-coloured names,
 -- clickable item and player links, and a box to type in (Enter sends, Up/Down recall).
 --
@@ -691,38 +691,3 @@ ns.Settings.AddToggle("chatHistory", "Keep guild chat between sessions (stays on
 
 ns.RegisterCommand("chat", "open guild chat", function() ns.UI.Open("Chat") end)
 
--- Beta only: compares the last saved lines with the server's copies, to find why a message
--- can show twice. Prints the result and keeps it in IwTDB.chatcheck (never in the report).
-function Chat.Check()
-	Chat.ReadServer()
-	local out = {}
-	local function esc(x) return (tostring(x):gsub("[^%w%p ]", function(ch) return string.format("\\%d", ch:byte()) end)) end
-	local mine = Chat.Lines("guild") or {}
-	local server = Chat.server.guild or {}
-	out[#out + 1] = string.format("now=%s server=%d saved=%d", tostring(ns.Now()), #server, #mine)
-	for i = math.max(1, #server - 4), #server do
-		local e = server[i]
-		out[#out + 1] = string.format("srv t=%s a=%s m=%s", tostring(e.t), esc(e.a), esc(e.m))
-	end
-	local n = 0
-	for i = #mine, 1, -1 do
-		local e = mine[i]
-		if e.k == "msg" then
-			n = n + 1
-			local best, bestDiff
-			for _, s2 in ipairs(server) do
-				if Chat.Plain(s2.m) == Chat.Plain(e.m) then
-					local d = s2.t - e.t
-					if not bestDiff or math.abs(d) < math.abs(bestDiff) then best, bestDiff = s2, d end
-				end
-			end
-			out[#out + 1] = string.format("mine t=%s a=%s m=%s -> %s", tostring(e.t), esc(e.a), esc(e.m),
-				best and ("same text, " .. bestDiff .. "s apart") or "no server line with this text")
-			if n >= 4 then break end
-		end
-	end
-	ns.db.chatcheck = out
-	for _, l in ipairs(out) do print("|cff7fd4ffIwT chat check:|r " .. l) end
-	return out
-end
-ns.RegisterCommand("chatcheck", "beta: compare saved chat with the server's", function() Chat.Check() end)
