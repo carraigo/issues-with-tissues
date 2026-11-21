@@ -2,6 +2,9 @@
 
 ## 0.8.0-beta.3
 
+- **Themes:** pick the window's colours in Settings: Default, Kawaii Night, Kawaii Day, Midnight or High contrast. The new theme shows after a reload (there's a button for it).
+- Every theme except Default keeps text readable on its own: class colours, coloured words and the game's own text colours that would be too faint on the panels are shifted toward the theme's text colour. On Kawaii Day, for example, Rogue yellow and Priest white names turn a darker shade. Default keeps every colour exactly as before.
+- The Kawaii themes use their own guild and officer chat colours (mint green); the other themes follow your game's chat colours.
 - **Who's online:** a list beside the chat shows the guildmates who are online right now, grouped by rank with the Guild Master first. Offline members are left out. Click a name to whisper, right-click to invite, and hover for level, class and zone. It updates as people come online and go offline.
 - Messages heard live showed twice, once more from the server's history. The server often hands its copy over as hidden text that only draws on screen, so the two never matched. A copy now matches on its text and time, or, when the text is hidden, on the same author within a few seconds. This works in officer chat too. Two people saying the same thing still both show.
 - Hidden text only draws in the session it arrived in, so saved lines showed as "Unknown" after logging out. Those lines now show the server's fresh copy instead, and are left out when the server no longer has one.

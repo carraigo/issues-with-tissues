@@ -102,6 +102,8 @@ local function Hex(r, g, b)
 end
 
 function Chat.ChannelColor(channel)
+	local own = ns.UI.ChatColor and ns.UI.ChatColor(channel)
+	if own then return own[1], own[2], own[3] end
 	local info = ChatTypeInfo and ChatTypeInfo[Chat.SEND[channel]]
 	if info and info.r then return info.r, info.g, info.b end
 	if channel == "officer" then return 0.25, 0.75, 0.25 end
@@ -110,16 +112,18 @@ end
 
 -- "[18:04] [Vatic Cane]: hello" with the name in its class colour and clickable.
 function Chat.Format(channel, e)
-	local stamp = "|cff8a8170" .. date("%H:%M", e.t) .. "|r "
+	local C = ns.UI.COLORS
+	local stamp = "|cff" .. Hex(C.stamp[1], C.stamp[2], C.stamp[3]) .. date("%H:%M", e.t) .. "|r "
+	local sys = "|cff" .. Hex(C.sys[1], C.sys[2], C.sys[3])
 	local r, g, b = Chat.ChannelColor(channel)
 	if e.k == "motd" then
 		return stamp .. "|cff" .. Hex(r, g, b) .. "Message of the day: " .. e.m .. "|r"
 	end
 	if e.k == "sys" then
-		return stamp .. "|cffa8a8a8" .. e.m .. "|r"
+		return stamp .. sys .. e.m .. "|r"
 	end
 	if not e.a then
-		return stamp .. "|cffa8a8a8[Unknown]|r|cff" .. Hex(r, g, b) .. ": " .. e.m .. "|r"
+		return stamp .. sys .. "[Unknown]|r|cff" .. Hex(r, g, b) .. ": " .. e.m .. "|r"
 	end
 	local key = ns.Roster.ParseName(e.a) or e.a
 	local m = ns.Roster.Get(key)
@@ -535,7 +539,7 @@ function Chat.DrawOnline()
 				row:Hide()
 			elseif data.rank then
 				row.text:SetText(data.rank .. " (" .. data.count .. ")")
-				row.text:SetTextColor(1, 0.82, 0)
+				row.text:SetTextColor(ns.UI.COLORS.gold[1], ns.UI.COLORS.gold[2], ns.UI.COLORS.gold[3])
 				row.text:SetPoint("LEFT", 4, 0)
 				row.hl:Hide()
 				row:Show()
@@ -548,6 +552,7 @@ function Chat.DrawOnline()
 			end
 		end
 	end
+	if ns.UI.ThemeTree then ns.UI.ThemeTree(f) end
 	return rows
 end
 

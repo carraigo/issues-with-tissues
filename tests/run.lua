@@ -1132,7 +1132,7 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 end)
 
 test("no file assigns a Blizzard global like SlashCmdList (that taints every macro)", function()
-	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua", "Chat.lua" }) do
+	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua", "Chat.lua", "Themes.lua", "Settings.lua" }) do
 		local src = io.open(base .. "/IssuesWithTissues/" .. f):read("*a")
 		for _, g in ipairs({ "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames", "ChatFrame_OpenChat", "ChatEdit_InsertLink" }) do
 			assert(not src:find("\n%s*" .. g .. "%s*=[^=]"), f .. " assigns " .. g)
@@ -1443,6 +1443,57 @@ test("chat: hidden text saved in an earlier session is replaced by the server's 
 	Chat.ReadServer()
 	local view = Chat.View("officer")
 	eq(#view, 1); eq(view[1].m, "|Kq9|k", "the server's fresh copy")
+end)
+
+test("themes: Default leaves every colour as it was", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.RAID_CLASS_COLORS = { ROGUE = { r = 1, g = 0.96, b = 0.41 } }
+	local UI = c.ns.UI
+	eq(UI.theme.id, "default")
+	local r, g, b = UI.ClassColor("ROGUE")
+	eq(r, 1); eq(g, 0.96); eq(b, 0.41)
+	eq(UI.Recolor("|cffffd100Elite|r"), "|cffffd100Elite|r")
+	eq(UI.COLORS.tabtext[1], 0.78)
+end)
+
+test("themes: a saved theme applies at load; faint class colours and words are made readable", function()
+	local first = W.NewClient(base, "Mem", Guild2())
+	first.env.IwTDB.settings.theme = "kawaiiDay"
+	local c = W.NewClient(base, "Mem", Guild2(), { account = first })
+	c.env.RAID_CLASS_COLORS = { ROGUE = { r = 1, g = 0.96, b = 0.41 }, PRIEST = { r = 1, g = 1, b = 1 }, MAGE = { r = 0.41, g = 0.8, b = 0.94 } }
+	local UI = c.ns.UI
+	eq(UI.theme.id, "kawaiiDay")
+	eq(UI.COLORS.bg[1] > 0.9, true, "light panels")
+	for _, cls in ipairs({ "ROGUE", "PRIEST", "MAGE" }) do
+		local r, g, b = UI.ClassColor(cls)
+		assert(UI.Contrast({ r, g, b }, UI.theme.ref) >= UI.MIN_CONTRAST, cls .. " readable")
+	end
+	assert(UI.Recolor("|cffffd100Elite|r") ~= "|cffffd100Elite|r", "yellow words darkened")
+	eq(UI.Recolor("plain"), "plain")
+	local r = select(1, c.ns.Chat.ChannelColor("guild"))
+	eq(math.floor(r * 255 + 0.5), 0x2f, "the theme's own chat colour")
+	UI.Open("Chat"); UI.Open("Settings"); UI.Open("Roster")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("themes: every theme has every colour, and picking one in Settings waits for a reload", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	local keys = {}
+	for k in pairs(UI.COLORS) do keys[#keys + 1] = k end
+	for _, t in ipairs(UI.THEMES) do
+		if t.colors then
+			for _, k in ipairs(keys) do assert(t.colors[k], t.id .. " has " .. k) end
+			assert(t.ink and t.ref, t.id)
+			eq(UI.Contrast(t.colors.text, t.ref) >= UI.MIN_CONTRAST, true, t.id .. " body text readable")
+			eq(UI.Contrast(t.colors.gold, t.ref) >= UI.MIN_CONTRAST, true, t.id .. " headings readable")
+			eq(UI.Contrast(t.colors.primarytext, t.colors.primary) >= UI.MIN_CONTRAST, true, t.id .. " Send button readable")
+		end
+	end
+	UI.Open("Settings")
+	c.env.IwTDB.settings.theme = "midnight"
+	eq(UI.theme.id, "default", "applies at the next reload")
+	eq(#c.env.IwTDB.errors, 0)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

@@ -26,7 +26,7 @@ Open it with `/iwt`, the minimap button, the **Tissues** button on the guild win
   - **Polls**: officers ask, everyone votes once.
   - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically. Only the officer who set a goal can change it, or allow another officer to.
   - **Loot notes**: a shared record of who received which item.
-- **Settings** (the cog): alerts, sounds, minimap button, bug report, profiler, self-test and diagnostics report.
+- **Settings** (the cog): themes (Default, Kawaii Night, Kawaii Day, Midnight, High contrast), alerts, sounds, minimap button, bug report, profiler, self-test and diagnostics report.
 
 Officers (Guild Master and Officer ranks) can add polls, donation goals and loot notes. Everyone else can read them and take part.
 

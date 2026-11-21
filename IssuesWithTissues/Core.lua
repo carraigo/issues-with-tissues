@@ -17,6 +17,7 @@ ns.DEFAULTS = {
 		debug = false,
 		hopRequests = true,    -- let guildmates ask you for a layer-hop invite
 		chatHistory = true,    -- keep guild chat between sessions (this PC only)
+		theme = "default",     -- window colours (Themes.lua), applied at /reload
 	},
 	minimapAngle = 220,
 	errors = {},               -- Diagnostics

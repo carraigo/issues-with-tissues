@@ -14,6 +14,7 @@ Roster.lua
 Comm.lua
 Sync.lua
 UI.lua
+Themes.lua
 Settings.lua
 Alts.lua
 Professions.lua
