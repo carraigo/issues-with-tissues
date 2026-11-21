@@ -66,6 +66,15 @@ function Chat.Add(channel, kind, author, text)
 	local lines = Chat.Lines(channel)
 	if not lines then return end
 	local entry = { t = ns.Now(), k = kind, a = author, m = tostring(text or "") }
+	-- The game repeats the message of the day at every login: keep it once until it changes.
+	if kind == "motd" then
+		for i = #lines, 1, -1 do
+			if lines[i].k == "motd" then
+				if lines[i].m == entry.m then return nil end
+				break
+			end
+		end
+	end
 	lines[#lines + 1] = entry
 	while #lines > Chat.MAX_LINES do table.remove(lines, 1) end
 	if lines ~= Chat.live[channel] then
@@ -102,7 +111,10 @@ function Chat.Format(channel, e)
 	if e.k == "sys" then
 		return stamp .. "|cffa8a8a8" .. e.m .. "|r"
 	end
-	local key = ns.Roster.ParseName(e.a) or e.a or "?"
+	if not e.a then
+		return stamp .. "|cffa8a8a8[Unknown]|r|cff" .. Hex(r, g, b) .. ": " .. e.m .. "|r"
+	end
+	local key = ns.Roster.ParseName(e.a) or e.a
 	local m = ns.Roster.Get(key)
 	local cr, cg, cb = ns.UI.ClassColor(m and m.classFile)
 	local name = ns.Roster.DisplayName(key)
@@ -167,16 +179,26 @@ function Chat.SystemLine(text)
 		local p = Pattern(fmt)
 		local who = p and text:match(p)
 		if who and ns.Roster.IsMember(who) then
-			local name = ns.Roster.DisplayName(ns.Roster.ParseName(who))
+			local key = ns.Roster.ParseName(who)
+			local name = ns.Roster.DisplayName(key)
 			local online = fmt:find("online", 1, true) ~= nil
-			return name .. (online and " has come online." or " has gone offline.")
+			return name .. (online and " has come online." or " has gone offline."), key, online
 		end
 	end
 end
 
 ns.On("CHAT_MSG_SYSTEM", function(_, text)
-	local line = Chat.SystemLine(text)
-	if line then Chat.Add("guild", "sys", nil, line) end
+	local line, key, online = Chat.SystemLine(text)
+	if not line then return end
+	Chat.Add("guild", "sys", nil, line)
+	-- Keep the online list right away; the next roster scan confirms it.
+	local m = ns.Roster.Get(key)
+	if m and m.online ~= online then
+		m.online = online
+		ns.Roster.online = math.max(0, (ns.Roster.online or 0) + (online and 1 or -1))
+		Chat.DrawOnlineSoon()
+	end
+	ns.Roster.Request()
 end)
 
 function Chat.MOTD()
@@ -194,6 +216,7 @@ end)
 ---------------------------------------------------------------------------
 Chat.SERVER_COUNT = 100        -- messages asked for per channel
 Chat.server = { guild = {}, officer = {} }
+Chat.authors = {}              -- server message id -> author name, for this session
 local STREAM = { guild = 1, officer = 2 } -- Enum.ClubStreamType.Guild / .Officer
 
 local function StreamType(channel)
@@ -227,6 +250,23 @@ function Chat.RequestServer()
 	Chat.ReadServer()
 end
 
+-- The server sometimes leaves out a message's author name (it hasn't looked that member up
+-- yet): fall back to the character behind the author's GUID, then to the club member record.
+function Chat.AuthorName(clubId, author)
+	if type(author) ~= "table" then return nil end
+	if author.name and author.name ~= "" then return author.name end
+	if author.guid and GetPlayerInfoByGUID then
+		local ok, _, _, _, _, _, name, realm = pcall(GetPlayerInfoByGUID, author.guid)
+		if ok and name and name ~= "" then
+			return (realm and realm ~= "") and (name .. "-" .. realm) or name
+		end
+	end
+	if author.memberId and C_Club.GetMemberInfo then
+		local ok, info = pcall(C_Club.GetMemberInfo, clubId, author.memberId)
+		if ok and type(info) == "table" and info.name and info.name ~= "" then return info.name end
+	end
+end
+
 -- Copy what the server holds into Chat.server[channel] as { t, k, a, m } lines, oldest first.
 function Chat.ReadServer()
 	for _, ch in ipairs(Chat.CHANNELS) do
@@ -239,8 +279,13 @@ function Chat.ReadServer()
 			local out = {}
 			for _, msg in ipairs(C_Club.GetMessagesInRange(clubId, streamId, last.oldestMessageId, last.newestMessageId) or {}) do
 				if not msg.destroyed and msg.content and msg.messageId then
+					-- A name found once is remembered: later reads (after alt-tabbing, say) can
+					-- come back without it.
+					local id = tostring(msg.messageId.epoch) .. ":" .. tostring(msg.messageId.position)
+					local name = Chat.AuthorName(clubId, msg.author) or Chat.authors[id]
+					Chat.authors[id] = name
 					out[#out + 1] = { t = math.floor((msg.messageId.epoch or 0) / 1000000), k = "msg",
-						a = msg.author and msg.author.name, m = msg.content, srv = true }
+						a = name, m = msg.content, srv = true }
 				end
 			end
 			table.sort(out, function(a, b) return a.t < b.t end)
@@ -251,27 +296,43 @@ function Chat.ReadServer()
 	end
 end
 
--- The two histories as one: the saved lines plus server messages they don't already have (same
--- text, same first name, within a minute), oldest first.
+-- Text as compared between the two histories: colour codes and link wrappers dropped, spaces
+-- squeezed, lower case. The game's server and the live chat event don't always spell a
+-- message, or its author, the same way.
+function Chat.Plain(text)
+	local s = tostring(text or "")
+	s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")
+	s = s:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+	return s:lower()
+end
+
+Chat.SAME_WINDOW = 120         -- seconds between two copies of one message
+
+-- The two histories as one: the saved lines plus the server messages they don't already have,
+-- oldest first. Each saved line hides at most one server message with the same text from
+-- within two minutes, so two people saying "lol" still show twice. Authors aren't compared.
 function Chat.View(channel)
 	local mine = Chat.Lines(channel) or {}
 	local server = Chat.server[channel] or {}
 	if #server == 0 then return mine end
-	local seen = {}
-	local function First(a) return ns.Roster.FirstName(a or "") or "" end
+	local unmatched = {}
 	for _, e in ipairs(mine) do
 		if e.k == "msg" then
-			local key = First(e.a) .. "\1" .. e.m
-			seen[key] = seen[key] or {}
-			table.insert(seen[key], e.t)
+			local key = Chat.Plain(e.m)
+			unmatched[key] = unmatched[key] or {}
+			table.insert(unmatched[key], e.t)
 		end
 	end
 	local out = {}
 	for _, e in ipairs(mine) do out[#out + 1] = e end
 	for _, e in ipairs(server) do
-		local dup = false
-		for _, t in ipairs(seen[First(e.a) .. "\1" .. e.m] or {}) do
-			if math.abs(t - e.t) <= 60 then dup = true break end
+		local times, dup = unmatched[Chat.Plain(e.m)], false
+		for i, t in ipairs(times or {}) do
+			if math.abs(t - e.t) <= Chat.SAME_WINDOW then
+				table.remove(times, i)
+				dup = true
+				break
+			end
 		end
 		if not dup then out[#out + 1] = e end
 	end
@@ -337,6 +398,134 @@ function Chat.SetChannel(channel)
 	Chat.Redraw()
 end
 
+---------------------------------------------------------------------------
+-- Who's online, by rank, beside the chat (offline members are left out)
+---------------------------------------------------------------------------
+Chat.ONLINE_WIDTH = 150
+Chat.ONLINE_ROW = 14
+
+-- { {rank = "Guild Master", count = 1}, {key = "Large Joseph", m = member}, ... } with ranks in
+-- guild order (Guild Master first) and names A to Z within each rank.
+function Chat.OnlineRows()
+	local byRank, order = {}, {}
+	local total = 0
+	for key, m in pairs(ns.Roster.members or {}) do
+		if m.online then
+			local r = m.rankIndex or 99
+			if not byRank[r] then
+				byRank[r] = { name = m.rank or ("Rank " .. (r + 1)), list = {} }
+				order[#order + 1] = r
+			end
+			table.insert(byRank[r].list, key)
+			total = total + 1
+		end
+	end
+	table.sort(order)
+	local rows = {}
+	for _, r in ipairs(order) do
+		local g = byRank[r]
+		table.sort(g.list, function(a, b) return ns.Roster.DisplayName(a) < ns.Roster.DisplayName(b) end)
+		rows[#rows + 1] = { rank = g.name, count = #g.list }
+		for _, key in ipairs(g.list) do rows[#rows + 1] = { key = key, m = ns.Roster.members[key] } end
+	end
+	return rows, total
+end
+
+function Chat.BuildOnline(panel)
+	local UI = ns.UI
+	local f = CreateFrame("Frame", nil, panel)
+	f:SetPoint("TOPRIGHT", 0, -30)
+	f:SetPoint("BOTTOMRIGHT", 0, 34)
+	f:SetWidth(Chat.ONLINE_WIDTH)
+	UI.Skin(f, UI.COLORS.input, UI.COLORS.dim)
+	local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	title:SetPoint("TOPLEFT", 8, -6)
+	title:SetText("Online")
+	f.title = title
+	f.rows, f.offset = {}, 0
+	f:EnableMouseWheel(true)
+	f:SetScript("OnMouseWheel", function(self, delta)
+		self.offset = math.max(0, self.offset - delta * 3)
+		Chat.DrawOnline()
+	end)
+	f:SetScript("OnSizeChanged", function() Chat.DrawOnline() end)
+	Chat.online = f
+end
+
+local function OnlineRow(f, i)
+	local row = f.rows[i]
+	if row then return row end
+	row = CreateFrame("Button", nil, f)
+	row:SetHeight(Chat.ONLINE_ROW)
+	row:SetPoint("TOPLEFT", 4, -22 - (i - 1) * Chat.ONLINE_ROW)
+	row:SetPoint("TOPRIGHT", -4, -22 - (i - 1) * Chat.ONLINE_ROW)
+	local hl = ns.UI.Fill(row:CreateTexture(nil, "HIGHLIGHT"), ns.UI.COLORS.hover)
+	hl:SetAllPoints()
+	row.hl = hl
+	local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	text:SetPoint("LEFT", 4, 0)
+	text:SetPoint("RIGHT", -2, 0)
+	text:SetJustifyH("LEFT")
+	text:SetWordWrap(false)
+	row.text = text
+	row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	-- Left-click whispers, right-click invites, like the roster page.
+	row:SetScript("OnClick", function(self, button)
+		if not self.key then return end
+		if button == "RightButton" then ns.UI.Invite(self.key) else ns.UI.Whisper(self.key) end
+	end)
+	row:SetScript("OnEnter", function(self)
+		local m = self.key and ns.Roster.members[self.key]
+		if not m then return end
+		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+		GameTooltip:AddLine(ns.Roster.DisplayName(self.key), ns.UI.ClassColor(m.classFile))
+		GameTooltip:AddLine(string.format("Level %s %s", tostring(m.level or "?"), m.class or ""), 1, 1, 1)
+		if m.zone and m.zone ~= "" then GameTooltip:AddLine(m.zone, 0.8, 0.8, 0.8) end
+		GameTooltip:AddLine("Click to whisper, right-click to invite", 0.6, 0.6, 0.6)
+		GameTooltip:Show()
+	end)
+	row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.rows[i] = row
+	return row
+end
+
+function Chat.DrawOnline()
+	local f = Chat.online
+	if not f then return end
+	local rows, total = Chat.OnlineRows()
+	f.title:SetText("Online (" .. total .. ")")
+	local h = f.GetHeight and f:GetHeight() or 0
+	local fit = (h and h > 40) and math.floor((h - 26) / Chat.ONLINE_ROW) or 24
+	f.offset = math.min(f.offset, math.max(0, #rows - fit))
+	for i = 1, math.max(fit, #f.rows) do
+		local data = i <= fit and rows[i + f.offset] or nil
+		local row = (data or f.rows[i]) and OnlineRow(f, i)
+		if row then
+			row.key = data and data.key or nil
+			if not data then
+				row:Hide()
+			elseif data.rank then
+				row.text:SetText(data.rank .. " (" .. data.count .. ")")
+				row.text:SetTextColor(1, 0.82, 0)
+				row.text:SetPoint("LEFT", 4, 0)
+				row.hl:Hide()
+				row:Show()
+			else
+				row.text:SetText(ns.Roster.DisplayName(data.key))
+				row.text:SetTextColor(ns.UI.ClassColor(data.m and data.m.classFile))
+				row.text:SetPoint("LEFT", 12, 0)
+				row.hl:Show()
+				row:Show()
+			end
+		end
+	end
+	return rows
+end
+
+local drawOnlineSoon = ns.Coalesce(function() if Chat.Visible() then Chat.DrawOnline() end end)
+function Chat.DrawOnlineSoon() drawOnlineSoon() end
+ns.Listen("ROSTER_UPDATED", Chat.DrawOnlineSoon)
+
 local function Build(panel)
 	Chat.panel = panel
 	local UI = ns.UI
@@ -354,8 +543,9 @@ local function Build(panel)
 
 	local frame = CreateFrame("Frame", nil, panel)
 	frame:SetPoint("TOPLEFT", 0, -30)
-	frame:SetPoint("BOTTOMRIGHT", 0, 34)
+	frame:SetPoint("BOTTOMRIGHT", -(Chat.ONLINE_WIDTH + 6), 34)
 	UI.Skin(frame, UI.COLORS.input, UI.COLORS.dim)
+	Chat.BuildOnline(panel)
 
 	local box = CreateFrame("ScrollingMessageFrame", nil, frame)
 	box:SetPoint("TOPLEFT", 8, -6)
@@ -430,6 +620,8 @@ local function Build(panel)
 
 	panel:SetScript("OnShow", function()
 		Chat.RequestServer()
+		ns.Roster.Request()
+		Chat.DrawOnline()
 		officer:SetShown(Chat.CanOfficer())
 		Chat.unread = 0
 		Chat.UpdateBadge()

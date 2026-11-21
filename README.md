@@ -17,7 +17,7 @@ Open it with `/iwt`, the minimap button, the **Tissues** button on the guild win
 ## Features
 
 - **Home**: the guild at a glance (members online, players with alts counted once, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
-- **Chat**: guild and officer chat in the window, with item links and class colours. History stays on your PC.
+- **Chat**: guild and officer chat in the window, with item links and class colours, and a list of who's online by rank. History stays on your PC.
 - **Members**
   - **Roster**: the whole guild with level, class, honourable kills and professions, filters (online, away 7, 14 or 30 days) and alts grouped under their main.
   - **Crafters**: search who can make an item, or browse by profession.

@@ -1318,5 +1318,79 @@ test("chat: if the server's history can't be read, the saved lines still show", 
 	eq(#c.env.IwTDB.errors, 0, "logged, not an error")
 end)
 
+test("chat: online list shows only online guildmates, grouped by rank, Guild Master first", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	local rows, total = Chat.OnlineRows()
+	eq(total, 2)
+	eq(#rows, 4)
+	eq(rows[1].rank, "Rank0"); eq(rows[2].key, "Gm")
+	eq(rows[3].rank, "Rank3"); eq(rows[4].key, "Mem")
+	c.env.__fire("CHAT_MSG_SYSTEM", "|Hplayer:Vet-Realm|h[Vet-Realm]|h has come online.")
+	c.env.__fire("CHAT_MSG_SYSTEM", "Gm-Realm has gone offline.")
+	rows, total = Chat.OnlineRows()
+	eq(total, 2, "updated straight from the online/offline lines")
+	eq(rows[1].rank, "Rank2"); eq(rows[2].key, "Vet")
+	c.ns.UI.Open("Chat")
+	assert(Chat.online, "the list is beside the chat")
+	eq(#Chat.DrawOnline(), 4, "two ranks, two names")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("chat: the message of the day is kept once until it changes", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	for _ = 1, 3 do c.env.__fire("GUILD_MOTD", "Tabard designed") end
+	c.env.__fire("CHAT_MSG_GUILD", "hi", "Gm-Realm")
+	c.env.__fire("GUILD_MOTD", "Tabard designed")
+	c.env.__fire("GUILD_MOTD", "Raid at 8")
+	local lines = c.ns.Chat.Lines("guild")
+	eq(#lines, 3); eq(lines[1].m, "Tabard designed"); eq(lines[3].m, "Raid at 8")
+end)
+
+test("chat: a server message without an author name falls back to the GUID or member record", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	c.env.C_Club = { GetMemberInfo = function(_, id) return id == 7 and { name = "Vet" } or nil end }
+	c.env.GetPlayerInfoByGUID = function(g) if g == "Player-Gm" then return "Warrior", "WARRIOR", "", "", 0, "Gm", "" end end
+	eq(Chat.AuthorName(1, { name = "Offi" }), "Offi")
+	eq(Chat.AuthorName(1, { guid = "Player-Gm" }), "Gm")
+	eq(Chat.AuthorName(1, { memberId = 7 }), "Vet")
+	eq(Chat.AuthorName(1, {}), nil)
+	local line = Chat.Format("guild", { t = W.now, k = "msg", m = "hi" })
+	assert(line:find("[Unknown]", 1, true), line)
+end)
+
+test("chat: a server copy spelt differently still counts as the same message; two people saying the same thing both show", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local now = W.now
+	local msgs = {
+		{ content = "Go get him ", author = { name = "Gm-Surname-CAMWOWEU5Realm6PvP" }, epoch = (now + 30) * 1000000 },
+		{ content = "lol", author = { name = "Gm" }, epoch = now * 1000000 },
+		{ content = "lol", author = { name = "Mem" }, epoch = now * 1000000 },
+	}
+	local names = true
+	c.env.C_Club = {
+		GetGuildClubId = function() return 1 end,
+		GetStreams = function() return { { streamId = "g", streamType = 1 } } end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function()
+			local out = {}
+			for i, m in ipairs(msgs) do
+				out[i] = { content = m.content, author = { name = names and m.author.name or nil }, messageId = { epoch = m.epoch, position = i } }
+			end
+			return out
+		end,
+	}
+	c.env.__fire("CHAT_MSG_GUILD", "Go get him", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_GUILD", "lol", "Gm-Realm")
+	local Chat = c.ns.Chat
+	Chat.ReadServer()
+	local view = Chat.View("guild")
+	eq(#view, 3, "the live 'Go get him' and 'lol' hide their server copies; the second 'lol' stays")
+	names = false -- a later read without names keeps the ones found before
+	Chat.ReadServer()
+	for _, e in ipairs(Chat.server.guild) do assert(e.a, "author remembered") end
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end
