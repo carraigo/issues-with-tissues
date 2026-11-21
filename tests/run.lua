@@ -1509,8 +1509,8 @@ test("welcome: a first install gets the welcome card; an update gets What's new 
 	Welcome.Check()
 	eq(Welcome.shown, "What's new in Issues with Tissues")
 	local notes = Welcome.NotesSince("0.7.2")
-	eq(#notes, 2); eq(notes[1].version, "0.8.1"); eq(notes[2].version, "0.8.0")
-	eq(#Welcome.NotesSince("0.8.0"), 1)
+	eq(#notes, 2, "at most two versions"); eq(notes[1].version, c.ns.VERSION)
+	eq(#Welcome.NotesSince(c.ns.VERSION), 0)
 	-- someone updating from an older version without seenVersion yet: What's new, not Welcome
 	c.env.IwTDB.seenVersion = nil
 	Welcome.updating = true

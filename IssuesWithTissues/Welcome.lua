@@ -10,6 +10,9 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "0.8.2", lines = {
+		"This card now fits its text, so the buttons no longer cover the last lines.",
+	} },
 	{ version = "0.8.1", lines = {
 		"A welcome card for new installs, and this card after each update.",
 		"You're told once when a guildmate has a newer version, with the download link (/iwt update).",
@@ -75,10 +78,10 @@ local card
 local function Card()
 	if card then return card end
 	local UI = ns.UI
-	card = UI.Window("IwTWelcomeCard", 460, 330, "", "DIALOG")
+	card = UI.Window("IwTWelcomeCard", 500, 330, "", "DIALOG")
 	local body = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	body:SetPoint("TOPLEFT", 22, -48)
-	body:SetPoint("TOPRIGHT", -22, -48)
+	body:SetWidth(500 - 44) -- a fixed width, so its height can be measured before it's shown
 	body:SetJustifyH("LEFT")
 	body:SetJustifyV("TOP")
 	if body.SetSpacing then body:SetSpacing(3) end
@@ -98,7 +101,14 @@ local function Show(title, text)
 	local c = Card()
 	c.title:SetText(title)
 	c.body:SetText(text)
+	-- Fit the card to the text: title bar and padding above, a gap and the buttons below.
+	local function Fit()
+		local h = c.body.GetStringHeight and c.body:GetStringHeight()
+		if type(h) == "number" and h > 0 then c:SetHeight(math.max(200, math.ceil(48 + h + 20 + 24 + 16))) end
+	end
+	Fit()
 	c:Show()
+	ns.After(0, Fit) -- once more after the game has laid the text out
 	if ns.UI.ThemeTree then ns.UI.ThemeTree(c) end
 	Welcome.shown = title
 	return c
