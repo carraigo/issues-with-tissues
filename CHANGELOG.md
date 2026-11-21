@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2
+
+- The welcome and What's new card now grows to fit its text, so its buttons no longer cover the last lines. It's a little wider too.
+
 ## 0.8.1
 
 - **Welcome card:** a new install opens with a short tour of the tabs, the key binding and the minimap button. `/iwt welcome` shows it again.
