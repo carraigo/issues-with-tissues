@@ -1273,5 +1273,50 @@ test("key bindings: the window and guild chat can be bound to a key (J, for exam
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
+test("chat: history from the game's server is merged with the saved lines, without duplicates", function()
+	local c = W.NewClient(base, "Offi", Guild2())
+	local now = W.now
+	local server = {
+		[1] = { { content = "old news", author = { name = "Gm" }, epoch = (now - 3600) * 1000000 },
+		        { content = "hi", author = { name = "Gm" }, epoch = (now - 5) * 1000000 } },
+		[2] = { { content = "officer stuff", author = { name = "Offi" }, epoch = (now - 100) * 1000000 } },
+	}
+	local asked = 0
+	c.env.C_Club = {
+		GetGuildClubId = function() return 215753832 end,
+		GetStreams = function() return { { streamId = "g", streamType = 1 }, { streamId = "o", streamType = 2 } } end,
+		RequestMoreMessagesBefore = function() asked = asked + 1 end,
+		GetMessageRanges = function() return { { oldestMessageId = {}, newestMessageId = {} } } end,
+		GetMessagesInRange = function(_, stream)
+			local out = {}
+			for i, m in ipairs(server[stream == "g" and 1 or 2]) do
+				out[i] = { content = m.content, author = m.author, messageId = { epoch = m.epoch, position = i } }
+			end
+			return out
+		end,
+	}
+	c.env.__fire("CHAT_MSG_GUILD", "hi", "Gm-Realm") -- also heard live: shown once
+	local Chat = c.ns.Chat
+	Chat.RequestServer()
+	eq(asked, 2, "both channels asked for")
+	local view = Chat.View("guild")
+	eq(#view, 2); eq(view[1].m, "old news"); eq(view[2].m, "hi")
+	eq(view[2].srv, nil, "the live copy is kept, the server's duplicate dropped")
+	eq(#Chat.View("officer"), 1)
+	eq(#c.env.IwTCharDB.chat.guild, 1, "server messages are shown, not saved")
+	c.ns.UI.Open("Chat")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("chat: if the server's history can't be read, the saved lines still show", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.C_Club = { GetGuildClubId = function() error("not available") end, GetStreams = function() return {} end }
+	c.env.__fire("CHAT_MSG_GUILD", "still here", "Gm-Realm")
+	c.ns.Chat.RequestServer()
+	eq(#c.ns.Chat.View("guild"), 1)
+	c.ns.UI.Open("Chat")
+	eq(#c.env.IwTDB.errors, 0, "logged, not an error")
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

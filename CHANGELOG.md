@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0-beta.2
+
+- **Chat history from the game's server:** opening the Chat tab now loads recent guild and officer chat that the game keeps for its own guild window, so you see what was said before you logged in, even on a new install or another PC. It's merged with the lines the addon saved, without duplicates. If the server's history can't be read, the saved lines show as before.
+
 ## 0.8.0-beta.1
 
 A test build of guild chat in the window. Please report anything odd with `/iwt report`.

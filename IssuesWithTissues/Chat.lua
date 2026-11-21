@@ -2,8 +2,10 @@
 -- the message of the day, guildmates coming online and going offline, class-coloured names,
 -- clickable item and player links, and a box to type in (Enter sends, Up/Down recall).
 --
--- The game gives no chat from before you logged in, so the last lines of each channel are kept
--- in this character's saved data (IwTCharDB.chat). They stay on this PC: never shared with
+-- Earlier chat comes from two places: the game's server, which keeps recent guild and officer
+-- chat for the guild window (C_Club, read when the Chat tab opens), and the last lines of each
+-- channel kept in this character's saved data (IwTCharDB.chat). The two are merged, without
+-- duplicates; if the server can't be read, the saved lines are shown on their own. They stay on this PC: never shared with
 -- guildmates, never in the diagnostics report or the guild web page. Settings can turn it off.
 --
 -- Nothing of Blizzard's is changed: the addon only listens to chat events and sends with
@@ -188,12 +190,112 @@ pcall(ns.On, "GUILD_MOTD", function(_, motd)
 end)
 
 ---------------------------------------------------------------------------
+-- History kept by the game's server (the guild window's chat), through C_Club
+---------------------------------------------------------------------------
+Chat.SERVER_COUNT = 100        -- messages asked for per channel
+Chat.server = { guild = {}, officer = {} }
+local STREAM = { guild = 1, officer = 2 } -- Enum.ClubStreamType.Guild / .Officer
+
+local function StreamType(channel)
+	local e = Enum and Enum.ClubStreamType
+	if e then return channel == "officer" and e.Officer or e.Guild end
+	return STREAM[channel]
+end
+
+-- clubId, streamId for a channel, or nil when this client or guild has none.
+function Chat.Stream(channel)
+	if not (C_Club and C_Club.GetGuildClubId and C_Club.GetStreams) then return nil end
+	local clubId = C_Club.GetGuildClubId()
+	if not clubId then return nil end
+	local want = StreamType(channel)
+	for _, st in ipairs(C_Club.GetStreams(clubId) or {}) do
+		if st.streamType == want then return clubId, st.streamId end
+	end
+end
+
+-- Ask the server for recent messages; CLUB_MESSAGE_HISTORY_RECEIVED says when they are in.
+function Chat.RequestServer()
+	for _, ch in ipairs(Chat.CHANNELS) do
+		local ok, err = pcall(function()
+			local clubId, streamId = Chat.Stream(ch)
+			if clubId and C_Club.RequestMoreMessagesBefore then
+				C_Club.RequestMoreMessagesBefore(clubId, streamId, nil, Chat.SERVER_COUNT)
+			end
+		end)
+		if not ok then ns.Log("chat: asking the server for %s history failed: %s", ch, tostring(err)) end
+	end
+	Chat.ReadServer()
+end
+
+-- Copy what the server holds into Chat.server[channel] as { t, k, a, m } lines, oldest first.
+function Chat.ReadServer()
+	for _, ch in ipairs(Chat.CHANNELS) do
+		local ok, err = pcall(function()
+			local clubId, streamId = Chat.Stream(ch)
+			if not clubId or not C_Club.GetMessageRanges or not C_Club.GetMessagesInRange then return end
+			local ranges = C_Club.GetMessageRanges(clubId, streamId) or {}
+			local last = ranges[#ranges]
+			if not last then return end
+			local out = {}
+			for _, msg in ipairs(C_Club.GetMessagesInRange(clubId, streamId, last.oldestMessageId, last.newestMessageId) or {}) do
+				if not msg.destroyed and msg.content and msg.messageId then
+					out[#out + 1] = { t = math.floor((msg.messageId.epoch or 0) / 1000000), k = "msg",
+						a = msg.author and msg.author.name, m = msg.content, srv = true }
+				end
+			end
+			table.sort(out, function(a, b) return a.t < b.t end)
+			if #out ~= #(Chat.server[ch] or {}) then ns.Log("chat: %d %s messages from the server", #out, ch) end
+			Chat.server[ch] = out
+		end)
+		if not ok then ns.Log("chat: reading %s history from the server failed: %s", ch, tostring(err)) end
+	end
+end
+
+-- The two histories as one: the saved lines plus server messages they don't already have (same
+-- text, same first name, within a minute), oldest first.
+function Chat.View(channel)
+	local mine = Chat.Lines(channel) or {}
+	local server = Chat.server[channel] or {}
+	if #server == 0 then return mine end
+	local seen = {}
+	local function First(a) return ns.Roster.FirstName(a or "") or "" end
+	for _, e in ipairs(mine) do
+		if e.k == "msg" then
+			local key = First(e.a) .. "\1" .. e.m
+			seen[key] = seen[key] or {}
+			table.insert(seen[key], e.t)
+		end
+	end
+	local out = {}
+	for _, e in ipairs(mine) do out[#out + 1] = e end
+	for _, e in ipairs(server) do
+		local dup = false
+		for _, t in ipairs(seen[First(e.a) .. "\1" .. e.m] or {}) do
+			if math.abs(t - e.t) <= 60 then dup = true break end
+		end
+		if not dup then out[#out + 1] = e end
+	end
+	table.sort(out, function(a, b) return a.t < b.t end)
+	while #out > Chat.MAX_LINES do table.remove(out, 1) end
+	return out
+end
+
+local redrawSoon = ns.Coalesce(function() if Chat.Visible() then Chat.Redraw() end end, 0.3)
+pcall(ns.On, "CLUB_MESSAGE_HISTORY_RECEIVED", function()
+	Chat.ReadServer()
+	redrawSoon()
+end)
+
+function Chat:OnLogin()
+	ns.After(10, Chat.RequestServer)
+end
+
+---------------------------------------------------------------------------
 -- The page
 ---------------------------------------------------------------------------
 function Chat.CanOfficer()
 	if ns.Roster.IsOfficer(ns.PlayerName()) then return true end
-	local lines = Chat.Lines("officer")
-	return lines ~= nil and #lines > 0
+	return #Chat.View("officer") > 0
 end
 
 function Chat.Visible()
@@ -219,12 +321,10 @@ function Chat.Redraw()
 			box:AddMessage("|cff" .. Hex(r, g, b) .. "Message of the day: " .. motd .. "|r")
 		end
 	end
-	for _, e in ipairs(Chat.Lines(Chat.channel) or {}) do box:AddMessage(Chat.Format(Chat.channel, e)) end
+	local lines = Chat.View(Chat.channel)
+	for _, e in ipairs(lines) do box:AddMessage(Chat.Format(Chat.channel, e)) end
 	box:ScrollToBottom()
-	if Chat.hint then
-		local lines = Chat.Lines(Chat.channel) or {}
-		Chat.hint:SetShown(#lines == 0)
-	end
+	if Chat.hint then Chat.hint:SetShown(#lines == 0) end
 end
 
 function Chat.SetChannel(channel)
@@ -329,11 +429,13 @@ local function Build(panel)
 	end)
 
 	panel:SetScript("OnShow", function()
+		Chat.RequestServer()
 		officer:SetShown(Chat.CanOfficer())
 		Chat.unread = 0
 		Chat.UpdateBadge()
 		Chat.SetChannel(Chat.channel)
 	end)
+	Chat.RequestServer()
 	officer:SetShown(Chat.CanOfficer())
 	Chat.unread = 0
 	Chat.UpdateBadge()
