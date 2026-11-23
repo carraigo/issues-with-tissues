@@ -102,7 +102,9 @@ function UI.OpenGameGuildWindow()
 end
 
 -- Key bindings (Bindings.xml): Esc menu > Options > Key Bindings > Issues with Tissues.
--- Binding one to the guild key (J) makes it open this window instead of the game's.
+-- Binding "Open or close the window" to the guild key (J) opens this window instead of the
+-- game's. The bindings use a category (its own expandable section in the list); the old
+-- header attribute showed up on this client as a stray bindable row.
 BINDING_HEADER_ISSUESWITHTISSUES = "Issues with Tissues"
 BINDING_NAME_IWT_TOGGLE = "Open or close the window"
 BINDING_NAME_IWT_CHAT = "Open guild chat"

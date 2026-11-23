@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Fixed the key bindings list: "Issues with Tissues" was showing as a bindable row of its own under Other. The two bindings now have their own expandable Issues with Tissues section in the game's Key Bindings, like other addons.
+
 ## 1.0.0
 
 The first release on CurseForge.
