@@ -1325,6 +1325,33 @@ test("settings: the window opens on the last tab, Home or Chat", function()
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
+test("guild key: the welcome card offers to make J open the addon, only on a click", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local W2 = c.ns.Welcome
+	local binds = { J = "TOGGLEGUILDTAB" }
+	c.env.GetBindingKey = function(action) for k, a in pairs(binds) do if a == action then return k end end end
+	c.env.GetBindingAction = function(key) return binds[key] or "" end
+	local saved
+	c.env.SetBinding = function(key, action) binds[key] = action; return true end
+	c.env.SaveBindings = function(set) saved = set end
+	c.env.GetCurrentBindingSet = function() return 2 end
+	eq(W2.GuildKey(), "J"); eq(W2.KeyIsOurs(), false)
+	-- the welcome says so and shows the button; nothing changes yet
+	W2.ShowWelcome()
+	local card = c.env.IwTWelcomeCard or select(1, W2.ShowWelcome())
+	eq(binds.J, "TOGGLEGUILDTAB")
+	-- the click
+	eq(W2.UseGuildKey(), "J")
+	eq(binds.J, "IWT_TOGGLE"); eq(saved, 2)
+	eq(W2.KeyIsOurs(), true)
+	-- in combat it won't
+	binds.J = "TOGGLEGUILDTAB"
+	c.env.InCombatLockdown = function() return true end
+	eq(W2.UseGuildKey(), false); eq(binds.J, "TOGGLEGUILDTAB")
+	assert(card)
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
 test("every tab builds without errors", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	for _, t in ipairs(c.ns.UI.tabs) do c.ns.UI.Open(t.title) end
@@ -1693,7 +1720,17 @@ test("themes: a saved theme applies at load; faint class colours and words are m
 	assert(UI.Recolor("|cffffd100Elite|r") ~= "|cffffd100Elite|r", "yellow words darkened")
 	eq(UI.Recolor("plain"), "plain")
 	local r = select(1, c.ns.Chat.ChannelColor("guild"))
-	eq(math.floor(r * 255 + 0.5), 0x2f, "the theme's own chat colour")
+	eq(math.floor(r * 255 + 0.5), 0x1d, "the theme's own chat colour")
+	for _, ch in ipairs({ "guild", "officer" }) do
+		local cr, cg, cb = c.ns.Chat.ChannelColor(ch)
+		assert(UI.Contrast({ cr, cg, cb }, UI.theme.ref) >= UI.MIN_CONTRAST, ch .. " chat readable on Kawaii Day")
+	end
+	-- the game's outlined chat font loses its outline on a light theme
+	local font = { flags = "OUTLINE" }
+	function font:GetFont() return "Fonts\\ARIALN.TTF", 14, self.flags end
+	function font:SetFont(_, _, flags) self.flags = flags end
+	function font:SetShadowColor(_, _, _, a) self.shadow = a end
+	eq(UI.PlainFont(font), true); eq(font.flags, ""); eq(font.shadow, 0)
 	UI.Open("Chat"); UI.Open("Settings"); UI.Open("Roster")
 	eq(#c.env.IwTDB.errors, 0)
 end)

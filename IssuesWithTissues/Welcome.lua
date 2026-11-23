@@ -10,6 +10,10 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.2.1", lines = {
+		"Kawaii Day: guild chat is easy to read again.",
+		"Your guild key can open this window instead of the game's guild window: press the button below.",
+	} },
 	{ version = "1.2.0", lines = {
 		"Item tooltips say \"Guild craftable\" in green when someone in the guild can make it.",
 		"Promote and Demote on the roster now fill in the game's command in chat: press Enter to do it.",
@@ -67,6 +71,8 @@ Welcome.WELCOME = {
 	"Guild life: polls, donations and loot notes.",
 	"The cog opens Settings, with themes. Everything is shared only with guildmates who run the addon.",
 }
+-- Shown under the welcome (and in What's new) while the guild key still opens the game's window.
+Welcome.KEY_TIP = "Tip: let your guild key (%s) open this window instead of the game's Guild & Communities. Press the button below, or set it in Key Bindings."
 
 -- "0.8.0-beta.3" -> 0, 8, 0, "beta.3"
 function Welcome.ParseVersion(v)
@@ -129,7 +135,53 @@ local function Card()
 	open:SetPoint("RIGHT", ok, "LEFT", -8, 0)
 	open:SetScript("OnClick", function() card:Hide(); UI.Open("Home") end)
 	card.open = open
+	local key = UI.Button(card, "", 180, 24)
+	key:SetPoint("RIGHT", open, "LEFT", -8, 0)
+	key:SetScript("OnClick", function()
+		if Welcome.UseGuildKey() then key:Hide() end
+	end)
+	card.key = key
 	return card
+end
+
+---------------------------------------------------------------------------
+-- The guild key: the game's "Guild & Communities" key (J unless changed) can open this
+-- window instead. Only ever on the player's click, and never in combat.
+---------------------------------------------------------------------------
+Welcome.GAME_GUILD = "TOGGLEGUILDTAB"
+Welcome.OURS = "IWT_TOGGLE"
+
+-- The key the game's guild window uses now (or J, its default, when it has none).
+function Welcome.GuildKey()
+	local key = GetBindingKey and GetBindingKey(Welcome.GAME_GUILD)
+	return key or "J"
+end
+
+-- True when the guild key already opens our window.
+function Welcome.KeyIsOurs()
+	local key = Welcome.GuildKey()
+	if GetBindingAction and GetBindingAction(key) == Welcome.OURS then return true end
+	local ours = GetBindingKey and GetBindingKey(Welcome.OURS)
+	return ours ~= nil and ours == key
+end
+
+function Welcome.UseGuildKey()
+	if not SetBinding or (InCombatLockdown and InCombatLockdown()) then
+		ns.Print("Change it out of combat, or in the game's Key Bindings (Issues with Tissues).")
+		return false
+	end
+	local key = Welcome.GuildKey()
+	if not SetBinding(key, Welcome.OURS) then return false end
+	if SaveBindings then SaveBindings(GetCurrentBindingSet and GetCurrentBindingSet() or 1) end
+	ns.Print("%s now opens Issues with Tissues. You can change it back in Key Bindings.", key)
+	return key
+end
+
+-- The card's key button, when the guild key isn't ours yet.
+function Welcome.UpdateKeyButton(c)
+	if Welcome.KeyIsOurs() then c.key:Hide() return end
+	c.key:SetText("Use " .. Welcome.GuildKey() .. " for this window")
+	c.key:Show()
 end
 
 local function Show(title, text)
@@ -142,6 +194,7 @@ local function Show(title, text)
 		if type(h) == "number" and h > 0 then c:SetHeight(math.max(200, math.ceil(48 + h + 20 + 24 + 16))) end
 	end
 	Fit()
+	Welcome.UpdateKeyButton(c)
 	c:Show()
 	ns.After(0, Fit) -- once more after the game has laid the text out
 	if ns.UI.ThemeTree then ns.UI.ThemeTree(c) end
@@ -159,6 +212,10 @@ function Welcome.ShowWelcome()
 	for i = 2, #Welcome.WELCOME - 1 do lines[#lines + 1] = "- " .. Welcome.WELCOME[i] end
 	lines[#lines + 1] = ""
 	lines[#lines + 1] = Welcome.WELCOME[#Welcome.WELCOME]
+	if not Welcome.KeyIsOurs() then
+		lines[#lines + 1] = ""
+		lines[#lines + 1] = Gold(Welcome.KEY_TIP:format(Welcome.GuildKey()))
+	end
 	return Show("Welcome to Issues with Tissues", table.concat(lines, "\n"))
 end
 
