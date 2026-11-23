@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.2
+
+- **Faster first sync:** a new install keeps asking the guild every minute until someone answers, and asks straight away when a guildmate with the addon logs in. Before, it asked twice: at login and 10 minutes later.
+- **Catch-up in rounds:** after the first answer the addon asks again while answers still bring something new, so anything one guildmate was missing comes from another a few seconds later.
+- **Smaller catch-ups:** big data sets (recipes, loot notes) are fingerprinted in 16 parts, and guildmates send only the parts that differ instead of everything. A new install's empty sets get one answer instead of one from everyone online.
+- **Nothing lost when the game says "too fast":** messages the game refuses for sending too quickly are sent again a moment later, in order. Before, a refused piece broke the whole message.
+- **Sync now:** a button in Settings (and `/iwt sync`) asks the guild for anything you're missing. Home shows "Syncing with the guild: 340 of 1,200" while it runs.
+- Guildmates in combat or a raid don't answer catch-ups, so someone who's free does. `/iwt bug` shows the sync state and how many messages the game refused.
+
 ## 1.2.1
 
 - **Kawaii Day chat is readable:** on light themes the chat text drops the game's thick black outline, and guild and officer chat use darker greens.

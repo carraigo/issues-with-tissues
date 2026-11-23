@@ -23,6 +23,8 @@ Comm.MAX_PACKET = 250          -- the game allows 255 bytes
 Comm.SEND_INTERVAL = 0.1       -- seconds between queued packets
 Comm.RAID_INTERVAL = 1         -- in a raid
 Comm.HOLD_CHECK = 2            -- in combat: how often to look again
+Comm.THROTTLE_WAIT = 1.5       -- the game said "too fast": wait this long, then send it again
+Comm.MAX_TRIES = 4             -- give up on a packet the game keeps refusing
 Comm.PARTIAL_TIMEOUT = 30      -- seconds to wait for the rest of a split message
 Comm.MAX_PIECES = 64
 
@@ -61,6 +63,16 @@ function Comm.Encode(msgType, payload)
 	return packets
 end
 
+-- Did the game refuse a packet? Older clients answer true/false, newer ones a result code
+-- (0 = sent; the throttle codes mean "too many messages, try again shortly").
+function Comm.Refused(result)
+	if result == nil or result == true or result == 0 then return false end
+	if result == false then return true end
+	local E = Enum and Enum.SendAddonMessageResult
+	if E and result == E.Success then return false end
+	return type(result) == "number"
+end
+
 -- "combat" (hold everything), "raid" (go slowly) or nil.
 function Comm.Held()
 	if InCombatLockdown and InCombatLockdown() then return "combat" end
@@ -77,9 +89,19 @@ function Comm.Pump()
 		return
 	end
 	local item = table.remove(Comm.queue, 1)
-	if item then RawSend(item.packet, item.distribution, item.target) end
+	local wait = held == "raid" and Comm.RAID_INTERVAL or Comm.SEND_INTERVAL
+	if item and Comm.Refused(RawSend(item.packet, item.distribution, item.target)) then
+		item.tries = (item.tries or 0) + 1
+		Comm.throttled = (Comm.throttled or 0) + 1
+		if item.tries < Comm.MAX_TRIES then
+			table.insert(Comm.queue, 1, item) -- keep the order: a split message needs every piece
+			wait = Comm.THROTTLE_WAIT
+		else
+			Comm.dropped = (Comm.dropped or 0) + 1
+		end
+	end
 	if #Comm.queue > 0 then
-		ns.After(held == "raid" and Comm.RAID_INTERVAL or Comm.SEND_INTERVAL, Comm.Pump)
+		ns.After(wait, Comm.Pump)
 	else
 		Comm.pumping = false
 	end
@@ -243,6 +265,7 @@ Comm.Register("HELLO", function(sender, payload, distribution)
 	local new = Comm.versions[sender] == nil
 	Comm.versions[sender] = version
 	ns.Send("VERSION_SEEN", sender, version)
+	ns.Send("ADDON_HELLO", sender, reply == "r")
 	if new and reply ~= "r" and sender ~= ns.PlayerName() then
 		Comm.Send("HELLO", ns.VERSION .. ";r", "WHISPER", sender)
 	end
