@@ -337,11 +337,22 @@ test("comm: a packet the game refuses for speed is sent again, in order", functi
 	C.sendHook = function() calls = calls + 1 return calls == 1 and 3 or 0 end
 	C.Send("TEST", "hi")
 	eq(calls, 1)
-	eq(#C.queue, 1, "kept for another try")
-	eq(C.queue[1].tries, 1)
+	eq(C.Queued(), 1, "kept for another try")
+	eq(C.Peek().tries, 1)
 	C.Pump()
-	eq(#C.queue, 0)
+	eq(C.Queued(), 0)
 	eq(C.throttled, 1)
+	-- A long queue keeps its order, including a refused packet put back in front
+	local sent = {}
+	calls = 0
+	C.sendHook = function(_, packet) calls = calls + 1; if calls == 3 then return 3 end; sent[#sent + 1] = packet; return 0 end
+	C.pumping = true -- queue without sending yet
+	for i = 1, 500 do C.Send("T" .. i, "x") end
+	eq(C.Queued(), 500)
+	for _ = 1, 501 do C.Pump() end
+	eq(#sent, 500); eq(C.Queued(), 0)
+	for i = 1, 500 do assert(sent[i]:find("\tT" .. i .. "\t", 1, true), "packet " .. i .. " in order") end
+	C.pumping = false
 	C.immediate, C.sendHook = true, nil
 end)
 
@@ -577,15 +588,41 @@ test("recipes: shared as ids, names looked up in game, older records upgraded", 
 	late.unknownItems = { [6218] = true }
 	late.ns.Sync.Ask()
 	eq(#late.ns.Professions.WhoCanMake("runed copper"), 0)
+	eq(late.ns.Professions.PrefetchNames(), 1, "the missing name is asked for")
+	eq(late.ns.Professions.PrefetchNames(), 0, "not twice")
 	late.unknownItems = nil
 	late.env.__fire("GET_ITEM_INFO_RECEIVED", 6218, true)
-	late.flush()
-	eq(#late.ns.Professions.WhoCanMake("runed copper"), 1)
+	eq(#late.ns.Professions.WhoCanMake("runed copper"), 1, "the last name in: refreshed at once")
 	-- A record from a 1.2 client (version 1, names inline) is upgraded as it arrives.
 	mem.ns.Comm.Send("SU", mem.ns.Comm.Pack("recipes", "Mem#Cooking", W.now + 5, "Mem", "", "2888:Roasted Boar Meat;0:Secret Stew", 1))
 	eq(gm.ns.Sync.Get("recipes", "Mem#Cooking"), "2888;nSecret Stew")
 	eq(#gm.ns.Professions.WhoCanMake("boar"), 1)
 	eq(#gm.ns.Professions.WhoCanMake("secret stew"), 1)
+end)
+
+test("recipes: a batch of missing names refreshes the list once, when they're all in", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local recipes = {}
+	for i = 1, 250 do recipes[i] = { i, "Batch Recipe " .. i, 50000 + i } end
+	mem.tradeSkill = { name = "Tailoring", recipes = recipes }
+	assert(mem.ns.Professions.ReadOpenWindow(false))
+	local late = W.NewClient(base, "Vet", g)
+	late.unknownItems = {}
+	for i = 1, 250 do late.unknownItems[50000 + i] = true end
+	late.ns.Sync.Ask()
+	local P = late.ns.Professions
+	local asked = {}
+	late.env.C_Item = { RequestLoadItemDataByID = function(id) asked[#asked + 1] = id end }
+	eq(P.PrefetchNames(), 250)
+	eq(#asked, 100, "the first batch now, the rest a moment later")
+	late.unknownItems = nil
+	local gen = P.namesGen
+	for i = 1, 249 do late.env.__fire("GET_ITEM_INFO_RECEIVED", 50000 + i, true) end
+	eq(P.namesGen, gen, "no rebuild per item")
+	late.env.__fire("GET_ITEM_INFO_RECEIVED", 50250, true)
+	eq(P.namesGen, gen + 1, "one rebuild when the last arrives")
+	eq(#P.WhoCanMake("batch recipe"), 250)
 end)
 
 test("recipes: the shared data is much smaller than before", function()
@@ -659,7 +696,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Officers),Crafting(Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Raid|Officers),Crafting(Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -1402,7 +1439,7 @@ test("sync: records carry a data version; older ones are upgraded, newer ones le
 	eq(#old.env.IwTDB.errors, 0); eq(#new.env.IwTDB.errors, 0)
 end)
 
-test("comms wait in combat, go slowly in a raid, and skip catch-ups in both", function()
+test("comms wait in combat, go slowly in a raid or dungeon, and skip catch-ups there", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	local Comm = c.ns.Comm
 	local sent = {}
@@ -1425,8 +1462,16 @@ test("comms wait in combat, go slowly in a raid, and skip catch-ups in both", fu
 	Comm.Send("X", "two") -- already pumping: just queued
 	Comm.Pump()
 	eq(#sent, 1); eq(c.timers[#c.timers].sec, Comm.RAID_INTERVAL)
-	-- in a dungeon or the open world: the usual pace
+	-- in a dungeon: slow too, and no catch-up
 	c.env.IsInInstance = function() return true, "party" end
+	eq(Comm.Held(), "raid")
+	asked = 0
+	c.ns.Sync.Ask()
+	eq(asked, 0, "no catch-up in a dungeon")
+	-- a battleground or the open world: the usual pace
+	c.env.IsInInstance = function() return true, "pvp" end
+	eq(Comm.Held(), nil)
+	c.env.IsInInstance = function() return false, "none" end
 	eq(Comm.Held(), nil)
 	Comm.Pump()
 	eq(#sent, 2)
@@ -2215,6 +2260,17 @@ test("chat: 12 or 24-hour times", function()
 	assert(Chat.Format("guild", { t = t, k = "msg", a = "Gm-Realm", m = "hi" }):find("2:05pm", 1, true))
 end)
 
+test("times: how long ago a moment was, and how long a span is, are separate helpers", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	local now = W.now
+	eq(UI.TimeAgo(now - 120, now), "2 min ago")
+	eq(UI.TimeAgo(now - 3 * 3600, now), "3 hours ago")
+	eq(UI.TimeAgo(now - 86400 - 5, now), "yesterday")
+	eq(UI.TimeAgo(now - 5), "just now", "defaults to now")
+	eq(UI.Ago(300), "5m", "Polls' time left still works")
+end)
+
 test("chat: recent lines say how long ago, with the full time on hover", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	local Chat = c.ns.Chat
@@ -2337,6 +2393,161 @@ test("layer hopping is gone (0.9.0): no Hop tab, no commands, its setting droppe
 	local gm = W.NewClient(base, "Gm", Guild2())
 	gm.ns.Comm.Send("LAYER", "1;2;Elwynn") -- from someone still on 0.8
 	eq(#c.env.IwTDB.errors, 0)
+end)
+
+-- A character with attunement quests done, key items in the bags and saved raids.
+local function Attune(c, quests, items, saves)
+	c.env.C_QuestLog = { IsQuestFlaggedCompleted = function(id) return quests[id] == true end }
+	c.env.GetItemCount = function(id) return items[id] or 0 end
+	c.env.GetNumSavedInstances = function() return #saves end
+	c.env.GetSavedInstanceInfo = function(i)
+		local s = saves[i]
+		-- name, id, reset, difficulty, locked, extended, mostSig, isRaid, maxPlayers, diffName, total, done
+		return s[1], i, s[2], 1, s[5] ~= false, false, 0, true, 40, "Normal", s[3], s[4]
+	end
+	c.env.RequestRaidInfo = function() c.askedRaidInfo = (c.askedRaidInfo or 0) + 1 end
+end
+
+test("character sheet: attunements, keys and saved raids, shared once and read by guildmates", function()
+	local g = Guild2()
+	local mem, gm = W.NewClient(base, "Mem", g), W.NewClient(base, "Gm", g)
+	local S = mem.ns.Sheet
+	Attune(mem, { [7848] = true, [6602] = true }, { [12344] = 1, [18249] = 1 },
+		{ { "Molten Core", 3 * 86400 + 7, 10, 7 }, { "Onyxia's Lair", 86400, 1, 1, false } })
+	local data = S.Read()
+	eq(data, "mc.ony.ubrs.dm;Molten Core:" .. (math.floor((W.now + 3 * 86400 + 7) / 300 + 0.5) * 300) .. ":7:10", "unlocked raids left out")
+	assert(S.Share())
+	eq(S.Share(), false, "nothing changed: nothing sent")
+	-- the reset time read a few seconds later is the same lockout
+	local now = W.now
+	W.now = now + 3
+	eq(S.Share(), false, "rounded reset time")
+	W.now = now
+	local s = gm.ns.Sheet.Of("Mem")
+	eq(s.has.mc, true); eq(s.has.ony, true); eq(s.has.bwl, nil); eq(s.has.ubrs, true)
+	eq(#s.locks, 1); eq(s.locks[1].name, "Molten Core"); eq(s.locks[1].done, 7)
+	-- a lockout that has reset no longer shows
+	eq(#gm.ns.Sheet.Decode(gm.ns.Sync.Get("sheet", "Mem"), W.now + 4 * 86400).locks, 0)
+	-- codes from a newer version are kept; bad text is no record
+	assert(S.Decode("mc.zz;").has.zz)
+	eq(#S.Decode("junk").locks, 0)
+	-- nobody else may write Mem's sheet
+	gm.ns.Comm.Send("SU", gm.ns.Comm.Pack("sheet", "Mem", W.now + 5, "Gm", "", "naxx;"))
+	eq(mem.ns.Sheet.Of("Mem").has.naxx, nil)
+	-- names can't break the format
+	eq(S.Encode({}, { { name = "A:b/c;d.e", resetAt = 600, done = 1, total = 2 } }), ";Abcde:600:1:2")
+	assert(mem.ns.Professions.LEAVER_SETS[5] == "sheet")
+	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("character sheet: read at login, after hand-ins, bags and boss kills", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	Attune(c, {}, {}, {})
+	c.timers = {}
+	c.ns.Sheet:OnLogin()
+	eq(c.timers[1].sec, c.ns.TIMERS.sheet)
+	c.timers[1].fn()
+	eq(c.askedRaidInfo, 1, "asks the game for saved raids")
+	c.timers = {}
+	c.env.__fire("UPDATE_INSTANCE_INFO")
+	eq(c.timers[1].sec, c.ns.TIMERS.sheetChanged)
+	c.timers[1].fn()
+	eq(c.ns.Sync.Get("sheet", "Mem"), ";", "shared, even with nothing yet")
+	c.env.GetItemCount = function(id) return id == 13704 and 1 or 0 end
+	c.timers = {}
+	c.env.__fire("BAG_UPDATE_DELAYED"); c.env.__fire("BAG_UPDATE_DELAYED")
+	eq(#c.timers, 1, "a burst of bag changes reads once")
+	c.timers[1].fn()
+	eq(c.ns.Sync.Get("sheet", "Mem"), "scholo;")
+	c.timers = {}
+	c.env.__fire("BOSS_KILL", 1, "Ragnaros")
+	eq(c.timers[1].sec, c.ns.TIMERS.sheetBoss)
+	c.ns.HandleSlash("raid")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("raid page: rows, filters, search, sorting, and the choice is remembered", function()
+	local g = Guild2()
+	local gm, mem = W.NewClient(base, "Gm", g), W.NewClient(base, "Mem", g)
+	Attune(mem, { [7848] = true }, {}, { { "Molten Core", 86400, 10, 3 } })
+	Attune(gm, { [7848] = true, [7761] = true, [6502] = true }, { [12382] = 1 }, {})
+	assert(mem.ns.Sheet.Share()); assert(gm.ns.Sheet.Share())
+	-- Offi shares a sheet then is offline
+	gm.ns.Sync.Accept("sheet", "Offi", { rev = W.now, by = "Offi", data = "mc.ony;" })
+	eq(mem.ns.RaidTab.Visible(), false, "members don't see the Raid page"); eq(gm.ns.RaidTab.Visible(), true)
+	gm.ns.UI.Create()
+	gm.ns.UI.Open("Raid")
+	local R = gm.ns.RaidTab
+	assert(R.panel:IsShown())
+	R.Refresh()
+	local list = R.list
+	eq(#list.rows, 3)
+	eq(list.rows[1].name, "Gm", "most raids attuned first")
+	eq(R.Marks(list.rows[1].has, true), "|cff66dd66MC|r |cff66dd66Ony|r |cff66dd66BWL|r |cff555555Naxx|r")
+	eq(R.Saved(gm.ns.Sheet.Of("Mem").locks), "MC 3/10")
+	assert(R.Summary(list.rows):find("Attuned: MC 3, Ony 2, BWL 1, Naxx 0   Saved: MC 1", 1, true), R.Summary(list.rows))
+	eq(R.Until(W.now + 3 * 86400 + 4 * 3600, W.now), "3d 4h"); eq(R.Until(W.now + 600, W.now), "10m")
+	-- filters
+	list.filterButtons[2].scripts.OnClick()
+	eq(#list.rows, 2, "online only")
+	list.filterButtons[4].scripts.OnClick()
+	eq(#list.rows, 2, "not saved: Gm and Offi")
+	list.filterButtons[1].scripts.OnClick()
+	-- search
+	list.searchBox.onChange("me")
+	eq(#list.rows, 1); eq(list.rows[1].name, "Mem")
+	list.searchBox.onChange("")
+	-- sort by name, then reversed
+	list:SortBy("name")
+	eq(list.rows[1].name, "Gm")
+	list:SortBy("name")
+	eq(list.rows[1].name, "Offi")
+	eq(gm.env.IwTDB.lists.raid.sort, "name"); eq(gm.env.IwTDB.lists.raid.desc, true)
+	list.filterButtons[2].scripts.OnClick()
+	-- a reload keeps the sort and filter
+	local again = W.NewClient(base, "Gm", g, { account = gm })
+	again.ns.UI.Create(); again.ns.UI.Open("Raid"); again.ns.RaidTab.Refresh()
+	eq(again.ns.RaidTab.list.state.sort, "name"); eq(again.ns.RaidTab.list.state.filter, "online")
+	eq(#gm.env.IwTDB.errors, 0); eq(#again.env.IwTDB.errors, 0)
+end)
+
+test("list builder: sorts numbers, text and booleans, keeps ties by name, and is backward compatible", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	local cols = { { key = "n", sort = true }, { key = "on", sort = true }, { key = "x", sort = function(r) return -r.n end }, { key = "plain" } }
+	local rows = { { name = "b", n = 2, on = true }, { name = "a", n = 2, on = false }, { name = "c", n = 1, on = true } }
+	UI.SortRows(rows, cols, "n", false)
+	eq(rows[1].name .. rows[2].name .. rows[3].name, "cab")
+	UI.SortRows(rows, cols, "on", true)
+	eq(rows[3].name, "a")
+	UI.SortRows(rows, cols, "x", false)
+	eq(rows[1].name .. rows[2].name .. rows[3].name, "abc")
+	UI.SortRows(rows, cols, "plain", false) -- not sortable: left alone
+	eq(rows[1].name, "a")
+	-- an old-style list (no filters, no sort) still just shows what it's given
+	local panel = c.env.CreateFrame("Frame")
+	local list = UI.CreateList(panel, { top = -10, rows = 3, columns = { { key = "name", label = "Name", width = 100 } } })
+	list:SetRows({ { name = "z" }, { name = "y" } }, function(r) return r.name end)
+	eq(list.rows[1].name, "z"); eq(list.lines[1].row.name, "z"); eq(#list.rows, 2)
+end)
+
+test("roster page runs on the list builder: filters, sort and search still work", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	gm.ns.UI.Create(); gm.ns.UI.Open("Roster")
+	local T = gm.ns.RosterTab
+	local list = T.list
+	eq(#list.filterButtons, 5)
+	list.filterButtons[2].scripts.OnClick()
+	for _, r in ipairs(list.rows) do assert(r.online) end
+	list.filterButtons[1].scripts.OnClick()
+	list:SortBy("level")
+	eq(list.rows[1].level, 60, "level sorts highest first")
+	eq(T.state.sort, "level")
+	eq(gm.env.IwTDB.lists.roster.sort, "level")
+	T.searchBox.onChange("gm")
+	eq(#list.rows, 1)
+	eq(#gm.env.IwTDB.errors, 0)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

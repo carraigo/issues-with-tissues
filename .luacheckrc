@@ -18,7 +18,7 @@ read_globals = {
 	"GetBindingAction", "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
 	"ERR_GUILD_JOIN_S", "IsInInstance", "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2", "TooltipDataProcessor",
 	"CanGuildDemote", "CanGuildPromote", "CanGuildRemove", "GuildDemote", "GuildPromote",
-	"C_ChatInfo", "C_Club", "C_Item", "C_Spell", "GetSpellInfo", "C_GuildInfo", "C_PartyInfo", "C_Timer", "C_TradeSkillUI", "Enum", "Settings", "SOUNDKIT",
+	"C_ChatInfo", "C_QuestLog", "IsQuestFlaggedCompleted", "GetItemCount", "GetNumSavedInstances", "GetSavedInstanceInfo", "RequestRaidInfo", "C_Club", "C_Item", "C_Spell", "GetSpellInfo", "C_GuildInfo", "C_PartyInfo", "C_Timer", "C_TradeSkillUI", "Enum", "Settings", "SOUNDKIT",
 	"ChatEdit_InsertLink", "ChatFontNormal", "ChatFrame_OpenChat", "ChatFrame_SendTell", "ChatTypeInfo",
 	"CreateFrame", "DEFAULT_CHAT_FRAME", "DepositGuildBankMoney", "ERR_FRIEND_OFFLINE_S", "ERR_FRIEND_ONLINE_SS",
 	"GameTooltip", "GetAddOnMemoryUsage", "GetBuildInfo", "GetCraftDisplaySkillLine", "GetCraftInfo",

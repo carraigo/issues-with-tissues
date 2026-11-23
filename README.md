@@ -18,7 +18,7 @@ Open it with `/iwt`, the minimap button, the **Tissues** button on the guild win
 
 - **Home**: the guild at a glance (members online, players with alts counted once, how many use the addon, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls, the donation goal and this week's guild news (joins, leavers, level 60s and promotions). Officers get a nudge in chat when someone joins.
 - **Chat**: guild and officer chat in the window, with "5 min ago" times, with item links, class colours, a Newest button when you've scrolled up, an unread count on the tab and the minimap button, and a list of who's online by rank. Earlier chat loads from the game's own guild chat history, and the addon keeps a copy of the last 300 lines on your PC (never shared with anyone).
-- **Members**: the whole guild with level, class, honourable kills, rank and when they were last on, a name search, filters (online, away 7, 14 or 30 days) and alts grouped under their main. Hover for their guild note (officers also see the officer note). Right-click someone to whisper or invite them. Officers can also promote, demote and remove from here, and have an **Officers** page: everyone away 30 days or more, and who runs which version of the addon.
+- **Members**: the whole guild with level, class, honourable kills, rank and when they were last on, a name search, filters (online, away 7, 14 or 30 days) and alts grouped under their main. Hover for their guild note (officers also see the officer note). Right-click someone to whisper or invite them. Officers can also promote, demote and remove from here, and have an **Officers** page: everyone away 30 days or more, and who runs which version of the addon. Officers also get a **Raid** page: who is attuned (Molten Core, Onyxia, Blackwing Lair, Naxxramas), who has the dungeon keys, and who is saved to which raid and when it resets.
 - **Crafting**: a green "Guild craftable" line on item tooltips when someone in the guild can make the item. Search who can make an item, or browse by profession. Only crafting professions are tracked (Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring and Cooking).
 - **Guild life**
   - **Polls**: officers ask, everyone votes once.
@@ -44,6 +44,7 @@ The addon only talks to guildmates, over hidden guild addon messages.
 | `/iwt inactive 7\|14\|30` | members away that many days or more |
 | `/iwt alt main` · `/iwt alt add Name` · `/iwt alt remove Name` · `/iwt alt` | set this character as your main, link an alt, unlink it, or list your links |
 | `/iwt craft <name>` | who in the guild can make an item |
+| `/iwt raid` | your attunements, keys and saved raids, as the guild sees them |
 | `/iwt bug` | copyable bug report, with memory use |
 | `/iwt selftest` | check the addon works on your client |
 | `/iwt perf on\|off\|reset` · `/iwt perf` | turn the profiler on or off, reset it, or show its report |

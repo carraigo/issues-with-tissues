@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0-beta.2
+
+- **Faster send queue:** outgoing messages wait in a ring instead of a list that was shifted for every packet, so a big catch-up costs the sender less.
+- **Recipe names in one batch:** about 30 seconds after login (and when new recipes arrive), the addon asks the game for every recipe item name it doesn't know yet, 100 at a time, and rebuilds the Crafting list once they're all in instead of once per item.
+- **Tour tips fixed:** the tip now has a background and sits below the window's tabs instead of on top of them.
+- The theme drop-down and the roster's right-click menu also get a solid background, so they're readable over the game world.
+- **Raid page** (Members, officers and the Guild Master only for now): who is attuned to Molten Core, Onyxia, Blackwing Lair and Naxxramas, who holds the dungeon keys (UBRS seal, Scholomance, Stratholme, Dire Maul, Blackrock Depths) and the Aqual Quintessence, and who is saved to which raid with bosses killed and when it resets. Filters for online, level 60 and not saved; hover a name for details. `/iwt raid` prints your own.
+- **One character sheet:** attunements, keys and saved raids travel in one small record per character, read at login and after a quest hand-in, a bag change or a boss kill, and sent only when something in it changed.
+- **Quiet in dungeons too:** in a dungeon the addon sends slowly (one packet a second) and doesn't ask for or answer catch-ups, as in raids.
+- **Shared list builder:** every list page (Roster, Raid, Officers, Crafting, Loot notes, Polls, Donations) is built by one helper with sortable columns, filter buttons, search and a count line. Roster, Raid and Officers remember your sort and filter.
+- **"Heard" times fixed:** the Officers page and loot note tooltips showed hundreds of thousands of hours ago (a clash with the polls' "time left" helper). They now say "2 min ago", "3 hours ago" and so on.
+
 ## 1.3.0-beta.1
 
 **Performance**

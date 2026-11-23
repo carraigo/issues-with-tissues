@@ -72,7 +72,7 @@ function Off.VersionRows()
 	return rows, never, newest
 end
 
-local function Ago(t) return ns.UI.Ago(t) end
+local function Ago(t) return ns.UI.TimeAgo(t) end
 
 ---------------------------------------------------------------------------
 -- The page
@@ -115,12 +115,13 @@ local function Build(panel)
 	awayTitle:SetPoint("TOPLEFT", 4, -2)
 	awayList = ns.UI.CreateList(top, {
 		top = -22, rows = 10,
+		state = { sort = "where", desc = true }, save = "officersAway",
 		columns = {
-			{ key = "name", label = "Name", width = 150 },
-			{ key = "rank", label = "Rank", width = 100 },
-			{ key = "level", label = "Lvl", width = 40 },
-			{ key = "where", label = "Last seen", width = 100 },
-			{ key = "alts", label = "Alts", width = 216 },
+			{ key = "name", label = "Name", width = 150, sort = true },
+			{ key = "rank", label = "Rank", width = 100, sort = function(r) return r.rankIndex end },
+			{ key = "level", label = "Lvl", width = 40, sort = true, desc = true },
+			{ key = "where", label = "Last seen", width = 100, sort = function(r) return r.online and -1 or r.offlineDays end, desc = true },
+			{ key = "alts", label = "Alts", width = 216, sort = function(r) return #r.alts end, desc = true },
 		},
 		onClick = function(row, button)
 			if button == "RightButton" then ns.RosterTab.ShowMenu(row, nil, panel) end
@@ -141,16 +142,16 @@ local function Build(panel)
 	versionList = ns.UI.CreateList(bottom, {
 		top = -22, rows = 8,
 		columns = {
-			{ key = "name", label = "Name", width = 200 },
+			{ key = "name", label = "Name", width = 200, sort = true },
 			{ key = "version", label = "Version", width = 200 },
-			{ key = "seen", label = "Last heard", width = 206 },
+			{ key = "seen", label = "Last heard", width = 206, sort = function(r) return r.online and math.huge or r.at end, desc = true },
 		},
 		onClick = function(row, button)
 			if button == "LeftButton" and row.old then ns.UI.Whisper(row.full) end
 		end,
 		onEnter = function(_, row)
 			GameTooltip:AddLine(row.name .. ": " .. row.version)
-			GameTooltip:AddLine("Heard " .. ns.UI.Ago(row.at) .. " (" .. date("%d %b %Y, %H:%M", row.at) .. ")", 0.7, 0.7, 0.7)
+			GameTooltip:AddLine("Heard " .. ns.UI.TimeAgo(row.at) .. " (" .. date("%d %b %Y, %H:%M", row.at) .. ")", 0.7, 0.7, 0.7)
 			if row.old then GameTooltip:AddLine("Click to whisper them about updating", 0.7, 0.7, 0.7) end
 		end,
 	})

@@ -280,7 +280,7 @@ local function Total()
 end
 
 function Sync.Ask()
-	-- A catch-up can bring hundreds of records: not during a fight or a raid.
+	-- A catch-up can bring hundreds of records: not during a fight, a raid or a dungeon.
 	if Comm.Held() then
 		ns.After(30, Sync.Ask)
 		return
@@ -359,7 +359,7 @@ end
 
 -- "Sync now" (Settings, /iwt sync): start a fresh catch-up. False, reason when it can't.
 function Sync.AskNow()
-	if Comm.Held() then return false, "not in combat or a raid" end
+	if Comm.Held() then return false, "not in combat, a raid or a dungeon" end
 	if Sync.round or (Sync.lastAsk and ns.Now() - Sync.lastAsk < Sync.NOW_COOLDOWN) then
 		return false, "already syncing"
 	end
@@ -417,7 +417,7 @@ Comm.Register("SQ", function(sender, payload)
 	for f in (payload .. ","):gmatch("([^,]*),") do fields[#fields + 1] = f end
 	local nonce = fields[1]
 	if not nonce or nonce == "" then return end
-	if Comm.Held() then return end -- someone not fighting or raiding answers
+	if Comm.Held() then return end -- someone not fighting, raiding or in a dungeon answers
 	local wants = {}
 	for i = 2, #fields do
 		local name, rev, digest = fields[i]:match("^(.-)=(%d+):?([%d%.]*)$")

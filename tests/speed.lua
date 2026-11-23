@@ -18,6 +18,8 @@ local LIMITS = { -- ms per run, on LuaJIT (about 4 times what a GitHub runner ta
 	["chat view (300 + 300 lines)"] = 10,
 	["sync digest (all sets)"] = 10,
 	["sync catch-up (whole guild)"] = 1000,
+	["raid page (500 sheets)"] = 20,
+	["sheet read and compare"] = 1,
 }
 
 local clock = os.clock
@@ -45,9 +47,12 @@ local now = W.now
 local store = gm.env.IwTDB.sync
 store.profs = { records = {} }
 store.recipes = { records = {} }
+store.sheet = { records = {} }
 for i = 2, MEMBERS do
 	local who = g.members[i][1]
 	local a, b = PROFS[i % 7 + 1], PROFS[(i + 3) % 7 + 1]
+	store.sheet.records[who] = { rev = now - i, by = who,
+		data = (i % 3 == 0 and "mc.ony.bwl.ubrs" or "mc") .. ";Molten Core:" .. (now + 86400) .. ":" .. (i % 10) .. ":10" }
 	store.profs.records[who] = { rev = now - i, by = who, data = a .. ":" .. (i % 300) .. ":300," .. b .. ":75:150" }
 	if i <= CRAFTERS + 1 then
 		local parts = {}
@@ -66,6 +71,9 @@ end
 Chat.server.guild = server
 
 local results = {}
+gm.ns.UI.Open("Raid")
+results["raid page (500 sheets)"] = Time(20, function() gm.ns.RaidTab.Refresh() end)
+results["sheet read and compare"] = Time(200, function() gm.ns.Sheet.Share() end)
 results["roster rows (500 members)"] = Time(20, function() gm.ns.RosterTab.Rows() end)
 gm.ns.UI.Open("Roster")
 results["roster redraw"] = Time(20, function() gm.ns.RosterTab.Refresh(true) end)

@@ -15,6 +15,8 @@ Welcome.NOTES = {
 		"Kawaii Day has its own class colours, easy to read and easy to tell apart.",
 		"Chat says \"5 min ago\" for recent lines; hover a time for the full date.",
 		"Officers: a new Officers page under Members lists who's been away 30+ days and who needs to update.",
+		"Officers: a Raid page under Members shows who's attuned, who has the keys, and who's saved where (and when it resets).",
+		"Lists remember how you sorted and filtered them, and the addon stays quiet in dungeons too.",
 		"Lighter syncing: recipes are shared as item ids, and old votes are tidied away.",
 	} },
 	{ version = "1.2.3", lines = {
@@ -270,7 +272,7 @@ local function Tip()
 	tip:SetSize(420, 96)
 	tip:SetFrameStrata("DIALOG")
 	tip:EnableMouse(true)
-	UI.Skin(tip)
+	UI.Skin(tip, UI.COLORS.bg, UI.COLORS.edge)
 	tip.step = tip:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	tip.step:SetPoint("TOPLEFT", 12, -10)
 	tip.text = tip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -300,7 +302,8 @@ function Welcome.TourStep(i)
 	t.next:SetText(i == #Welcome.TOUR and "Done" or "Next")
 	t:ClearAllPoints()
 	local w = _G.IwTMainWindow
-	if w then t:SetPoint("TOP", w, "BOTTOM", 0, -6) else t:SetPoint("CENTER") end
+	-- Below the tabs, which hang under the window's bottom edge.
+	if w then t:SetPoint("TOP", w, "BOTTOM", 0, -40) else t:SetPoint("CENTER") end
 	t:Show()
 	if ns.UI.ThemeTree then ns.UI.ThemeTree(t) end
 	return step

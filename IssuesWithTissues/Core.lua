@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.3.0-beta.1"
+ns.VERSION = "1.3.0-beta.2"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
@@ -146,7 +146,9 @@ ns.TIMERS = {
 	chatHistory = 10,   -- Chat: ask the server for guild chat history
 	alts = 11,          -- Alts: pending link requests (after the chat history)
 	profs = 12,         -- Professions: share skills
+	sheet = 14,         -- Sheet: ask for saved raids, then share attunements and lockouts
 	kills = 15,         -- Kills: share kill counts
+	recipeNames = 30,   -- Professions: ask the game for recipe item names this PC lacks
 	tidyVotes = 90,     -- Polls: drop our votes on polls no longer listed (after the catch-up)
 	lateCatchUp = 600,  -- Sync: a second catch-up, for whoever logged in since
 	-- Repeating and event-driven waits:
@@ -154,6 +156,9 @@ ns.TIMERS = {
 	skillsChanged = 2,  -- Professions: after SKILL_LINES_CHANGED
 	recipeRead = 0.6,   -- Professions: after the profession window changes
 	welcomeRetry = 10,  -- Welcome: waiting for combat to end
+	sheetChanged = 3,   -- Sheet: after a quest hand-in or the game's raid info
+	sheetBags = 10,     -- Sheet: after the bags change (keys)
+	sheetBoss = 5,      -- Sheet: after a boss kill, ask for saved raids again
 }
 -- ns.Later("kills", fn): run fn after ns.TIMERS.kills seconds.
 function ns.Later(name, fn)

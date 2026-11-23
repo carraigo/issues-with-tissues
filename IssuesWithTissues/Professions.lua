@@ -165,8 +165,9 @@ end
 ---------------------------------------------------------------------------
 -- Recipe names: looked up in game, remembered on this PC.
 ---------------------------------------------------------------------------
-Prof.namesGen = 0 -- goes up when a name arrives (the recipe list is decoded again)
-local missing = {} -- item id -> true while the game loads its name
+Prof.namesGen = 0 -- goes up when names arrive (the recipe list is decoded again)
+Prof.NAME_BATCH = 100 -- item names asked of the game per step
+local missing, waiting = {}, 0 -- item id -> true while the game loads its name; how many
 
 local function Names()
 	ns.db.recipeNames = ns.db.recipeNames or {}
@@ -180,12 +181,7 @@ end
 
 local function ItemName(id)
 	local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-	local name = type(fn) == "function" and fn(id) or nil
-	if name then return name end
-	if not missing[id] then
-		missing[id] = true
-		if C_Item and type(C_Item.RequestLoadItemDataByID) == "function" then pcall(C_Item.RequestLoadItemDataByID, id) end
-	end
+	return type(fn) == "function" and fn(id) or nil
 end
 
 local function SpellName(id)
@@ -203,16 +199,51 @@ function Prof.NameOf(kind, id)
 	return name
 end
 
-local namesArrived = ns.Coalesce(function()
+-- Names arrive one item at a time: the Crafting list is rebuilt once they're all in, or every
+-- few seconds while a big batch is still loading, not once per item.
+local function NamesIn()
 	Prof.namesGen = Prof.namesGen + 1
 	ns.Send("SYNC_CHANGED", "recipes")
-end, 1)
+end
+local namesArrived = ns.Coalesce(NamesIn, 3)
 pcall(ns.On, "GET_ITEM_INFO_RECEIVED", function(_, id, ok)
 	id = tonumber(id)
 	if not id or not missing[id] then return end
 	missing[id] = nil
-	if ok ~= false and Prof.NameOf("i", id) then namesArrived() end
+	waiting = waiting - 1
+	if ok ~= false then Prof.NameOf("i", id) end
+	if waiting <= 0 then waiting = 0; NamesIn() else namesArrived() end
 end)
+
+-- Every recipe item in the guild's data whose name this PC doesn't know yet: asked of the game
+-- in batches (after the catch-up, and when new recipes come in). Returns how many were asked.
+function Prof.PrefetchNames()
+	local names, want = Names(), {}
+	for _, data in ns.Sync.Each("recipes") do
+		for token in tostring(data):gmatch("[^;]+") do
+			local id = token:match("^(%d+)$")
+			id = tonumber(id)
+			if id and id > 0 and not names["i" .. id] and not missing[id] then
+				local name = ItemName(id)
+				if name then Prof.Remember("i", id, name) else want[#want + 1] = id end
+			end
+		end
+	end
+	if #want == 0 then return 0 end
+	for _, id in ipairs(want) do missing[id] = true end -- all counted now, asked in batches
+	waiting = waiting + #want
+	local request = C_Item and C_Item.RequestLoadItemDataByID
+	local function Step(from)
+		for i = from, math.min(#want, from + Prof.NAME_BATCH - 1) do
+			if type(request) == "function" then pcall(request, want[i]) else ItemName(want[i]) end
+		end
+		if from + Prof.NAME_BATCH <= #want then ns.After(0.2, function() Step(from + Prof.NAME_BATCH) end) end
+	end
+	Step(1)
+	return #want
+end
+local prefetchSoon = ns.Coalesce(Prof.PrefetchNames, 5)
+ns.Listen("SYNC_CHANGED", function(set) if set == "recipes" then prefetchSoon() end end)
 
 local function Token(r)
 	if r.item and r.item > 0 then
@@ -434,6 +465,7 @@ pcall(ns.On, "SKILL_LINES_CHANGED", function() ns.Later("skillsChanged", Prof.Up
 
 function Prof:OnLogin()
 	ns.Later("profs", Prof.UpdateSkills)
+	ns.Later("recipeNames", Prof.PrefetchNames)
 end
 -- At login the roster can arrive after those 12 seconds, and until it has, sharing is refused
 -- (we are not known to be in the guild yet). Try again whenever the roster is read; it only
@@ -450,7 +482,7 @@ end, 1))
 ---------------------------------------------------------------------------
 Prof.LEAVER_DAYS = 3
 -- Sets keyed by character (recipes: character#profession) that are dropped for leavers.
-Prof.LEAVER_SETS = { "profs", "recipes", "kills", "votes" }
+Prof.LEAVER_SETS = { "profs", "recipes", "kills", "votes", "sheet" }
 Prof.rosterPeak = 0
 
 local function Owner(set, key)
