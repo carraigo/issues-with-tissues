@@ -148,6 +148,7 @@ function Comm.Send(msgType, payload, distribution, target)
 		Push({ packet = p, distribution = distribution, target = target })
 	end
 	Comm.sentCount, Comm.sentBytes = (Comm.sentCount or 0) + 1, (Comm.sentBytes or 0) + #payload
+	Comm.peakQueue = math.max(Comm.peakQueue or 0, Comm.Queued())
 	ns.Trace("send", "%s to %s, %d bytes in %d packet%s", msgType, distribution == "WHISPER" and tostring(target) or "the guild",
 		#payload, #packets, #packets == 1 and "" or "s")
 	if Comm.immediate then -- tests: deliver at once

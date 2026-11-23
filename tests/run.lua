@@ -2707,5 +2707,30 @@ test("live log (/iwt clane): secret, shows catch-ups, messages and records as th
 	eq(Con.window:IsShown(), false)
 end)
 
+test("logout saves this session's stats for the site's performance page: numbers only", function()
+	local g = Guild()
+	local offi = W.NewClient(base, "Offi", g)
+	DefineSets(offi)
+	offi.ns.Sync.Set("notes", "n1", "first")
+	local late = W.NewClient(base, "Mem", g)
+	DefineSets(late)
+	late.ns.Sync.Ask()
+	late.ns.ReportError("boom")
+	late.env.__fire("PLAYER_LOGOUT")
+	offi.env.__fire("PLAYER_LOGOUT")
+	local st = late.env.IwTDB.stats
+	assert(st, "stats written")
+	eq(st.version, late.ns.VERSION)
+	eq(st.errors, 1)
+	assert(st.sync.asks >= 1 and st.sync.got >= 1, "catch-up counted " .. late.ns.Report.Json(st.sync))
+	assert(st.comm.sent >= 1 and st.comm.heard >= 1, "traffic counted")
+	eq(st.records.notes, 1)
+	assert(st.sizes.notes and st.memoryKB >= 0 and st.members > 0)
+	assert(offi.env.IwTDB.stats.sync.answered >= 1, "the answer counted")
+	-- no names anywhere in it
+	local text = late.ns.Report.Json(st)
+	assert(not text:find("Mem") and not text:find("Offi"), text)
+end)
+
 print(string.format("%d passed, %d failed", passed, failed))
 if failed > 0 then os.exit(1) end

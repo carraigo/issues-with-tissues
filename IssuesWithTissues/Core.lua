@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.3.0-beta.3"
+ns.VERSION = "1.3.0-beta.4"
 
 -- Every setting, declared once: its default and how the Settings page shows it. The page builds
 -- itself from this list (Settings.lua); a feature reacts to a change with
@@ -271,6 +271,7 @@ ns.On("ADDON_LOADED", function(_, name)
 end)
 
 ns.On("PLAYER_LOGIN", function()
+	ns.loginAt = ns.Now()
 	EachModule("OnLogin")
 end)
 

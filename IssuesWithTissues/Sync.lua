@@ -31,6 +31,8 @@ local Sync = ns.RegisterModule("Sync", {})
 ns.Sync = Sync
 
 Sync.sets = {}
+-- This session's catch-up numbers, for the stats saved at logout (Diagnostics).
+Sync.stats = { asks = 0, rounds = 0, got = 0, new = 0, answered = 0, answeredRecords = 0 }
 Sync.gen = 0 -- goes up whenever a record changes (caches of decoded data check it)
 Sync.ANSWER_DELAY_MAX = 3      -- seconds; a random wait so one guildmate answers
 Sync.DELETED_KEEP = 30 * 86400 -- keep deletion marks so an old copy can't bring a record back
@@ -307,6 +309,7 @@ function Sync.Ask()
 		if f.n >= Sync.BUCKET_MIN then parts[#parts + 1] = name .. "~" .. f.buckets end
 	end
 	Sync.lastAsk = ns.Now()
+	Sync.stats.asks = Sync.stats.asks + 1
 	Sync.round = { nonce = nonce, started = ns.Now(), expected = {}, got = 0, new = 0 }
 	ns.Trace("sync", "Asking the guild for anything newer (round %d, holding %d records)", (Sync.rounds or 0) + 1, Total())
 	if Sync.catching == nil then Sync.catching, Sync.fresh = true, Total() == 0 end
@@ -337,6 +340,8 @@ function Sync.CheckRound()
 	end
 	Sync.round = nil
 	Sync.rounds = Sync.rounds + 1
+	local st = Sync.stats
+	st.rounds = st.rounds + 1
 	local who = {}
 	for name in pairs(r.expected) do who[#who + 1] = name end
 	table.sort(who)
@@ -358,6 +363,9 @@ function Sync.CheckRound()
 	else
 		ns.Trace("sync", "%s. Done.", summary)
 		Sync.catching = false
+	end
+	if not Sync.catching and r.lastHeard and not st.caughtUpAfter and ns.loginAt then
+		st.caughtUpAfter = ns.Now() - ns.loginAt -- seconds from login to caught up
 	end
 	ns.Send("SYNC_PROGRESS")
 end
@@ -495,6 +503,8 @@ Comm.Register("SQ", function(sender, payload)
 		end
 		ns.Trace("sync", "Answering %s's catch-up: %d records (%s)%s", sender, #records, table.concat(sets, ", "),
 			private and ", whispered" or "")
+		Sync.stats.answered = Sync.stats.answered + 1
+		Sync.stats.answeredRecords = Sync.stats.answeredRecords + #records
 		Comm.Send("SC", nonce .. "," .. table.concat(sets, ","))
 		mine[#mine + 1] = "#=" .. #records
 		local head = nonce .. "\2" .. table.concat(mine, ",")
@@ -542,7 +552,7 @@ local function Drain()
 		queue[head], ours[head] = nil, nil
 		head = head + 1
 		local name, key, rec = Deserialize(piece)
-		if name and Sync.Accept(name, key, rec) and round then round.new = round.new + 1 end
+		if name and Sync.Accept(name, key, rec) and round then round.new = round.new + 1; Sync.stats.new = Sync.stats.new + 1 end
 	end
 	if head <= tail then ns.After(0, Drain) else queue, head, tail, ours = {}, 1, 0, {} end
 end
@@ -576,11 +586,12 @@ Comm.Register("SR", function(sender, payload)
 		else
 			if round then
 				round.got = round.got + 1
+				Sync.stats.got = Sync.stats.got + 1
 				Sync.peers[sender].records = Sync.peers[sender].records + 1
 			end
 			if Comm.immediate then
 				local name, key, rec = Deserialize(piece)
-				if name and Sync.Accept(name, key, rec) and round then round.new = round.new + 1 end
+				if name and Sync.Accept(name, key, rec) and round then round.new = round.new + 1; Sync.stats.new = Sync.stats.new + 1 end
 			else
 				local idle = head > tail
 				tail = tail + 1

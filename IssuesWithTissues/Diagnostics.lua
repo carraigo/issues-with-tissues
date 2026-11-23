@@ -31,6 +31,7 @@ local pending = {} -- errors raised before saved variables load
 
 function ns.ReportError(err)
 	local text = tostring(err)
+	Diag.sessionErrors = (Diag.sessionErrors or 0) + 1
 	ns.Trace("error", "%s", text)
 	local stack = debugstack and debugstack(2, 8, 0) or ""
 	local db = ns.db
@@ -242,4 +243,51 @@ ns.RegisterCommand("bug", "copyable bug report", function(rest)
 	else
 		ns.Print(Diag.BuildReport())
 	end
+end)
+
+---------------------------------------------------------------------------
+-- Session stats: a small record of how this session went, saved at logout and /reload
+-- (db.stats), for the guild site's performance page. Numbers only: no names, no chat.
+---------------------------------------------------------------------------
+Diag.PERF_TOP = 8
+
+function Diag.SessionStats()
+	local now = ns.Now()
+	local C, S = ns.Comm, ns.Sync
+	local records, sizes = {}, {}
+	for name in pairs(S.sets) do
+		local n = 0
+		for _ in S.Each(name) do n = n + 1 end
+		records[name] = n
+	end
+	for _, s in ipairs(Diag.Sizes()) do sizes[s.name] = math.floor(s.bytes) end
+	local startup = 0
+	for _, method in ipairs({ "OnLoad", "OnLogin" }) do
+		for _, ms in pairs(ns.startup[method] or {}) do startup = startup + ms end
+	end
+	local perf = {}
+	for label, p in pairs(ns.Perf and ns.Perf.stats or {}) do
+		perf[#perf + 1] = { label = label, calls = p.calls, total = math.floor(p.total * 100) / 100, max = math.floor(p.max * 100) / 100 }
+	end
+	table.sort(perf, function(a, b) return a.total > b.total end)
+	for i = #perf, Diag.PERF_TOP + 1, -1 do perf[i] = nil end
+	local users, week = 0, now - 7 * 86400
+	for _, v in pairs(ns.db.versionsSeen or {}) do if (v.at or 0) >= week then users = users + 1 end end
+	local st = S.stats or {}
+	return {
+		at = now, version = ns.VERSION, session = ns.loginAt and (now - ns.loginAt) or 0,
+		memoryKB = math.floor((ns.MemoryKB() or 0) + 0.5), startupMs = math.floor(startup * 10 + 0.5) / 10,
+		sync = { asks = st.asks or 0, rounds = st.rounds or 0, got = st.got or 0, new = st.new or 0,
+			answered = st.answered or 0, answeredRecords = st.answeredRecords or 0, caughtUpAfter = st.caughtUpAfter },
+		comm = { sent = C.sentCount or 0, sentBytes = C.sentBytes or 0, heard = C.heardCount or 0,
+			heardBytes = C.heardBytes or 0, refused = C.throttled or 0, dropped = C.dropped or 0, peakQueue = C.peakQueue or 0 },
+		errors = Diag.sessionErrors or 0, records = records, sizes = sizes, perf = perf,
+		members = ns.Roster.count or 0, online = ns.Roster.online or 0, addonUsers = users,
+	}
+end
+
+pcall(ns.On, "PLAYER_LOGOUT", function()
+	if not ns.db then return end
+	local ok, stats = pcall(Diag.SessionStats)
+	if ok then ns.db.stats = stats end
 end)

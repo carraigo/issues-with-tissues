@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0-beta.4
+
+- **Session stats for the guild site:** at logout (and /reload) the addon saves a small record of how the session went: memory, start-up time, how long catching up took, messages sent and heard, refused and dropped packets, errors, and records and saved size per set. Numbers only, with no names or chat. The site's exporter keeps a history of these for a performance page.
+
 ## 1.3.0-beta.3
 
 - **Cooking dropped from Crafting:** nearly everyone has it, so it swamped the list. It is no longer read, shared or shown, and each character deletes its old Cooking recipes at login, which also shrinks everyone's saved data.
