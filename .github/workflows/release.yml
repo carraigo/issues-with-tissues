@@ -40,3 +40,30 @@ jobs:
           pre=""
           case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" "IssuesWithTissues-${GITHUB_REF_NAME}.zip" --title "Issues with Tissues ${GITHUB_REF_NAME}" --notes-file notes.md $pre
+
+      # Needs: repo secret CF_API_TOKEN (a CurseForge API token) and repo variable
+      # CF_GAME_VERSIONS
+      - name: Upload to CurseForge
+        env:
+          CF_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_PROJECT: "1825695"
+          CF_GAME_VERSIONS: ${{ vars.CF_GAME_VERSIONS }}
+        run: |
+          api="https://wow.curseforge.com/api"
+          curl -sS --fail-with-body -H "X-Api-Token: $CF_TOKEN" "$api/game/versions" > versions.json
+          ids=$(jq -c --arg want "$CF_GAME_VERSIONS" \
+            '($want | split(",") | map(gsub("^ +| +$"; ""))) as $w | [ .[] | select(.name as $n | $w | index($n)) | .id ]' versions.json)
+          if [ "$ids" = "[]" ] || [ -z "$CF_GAME_VERSIONS" ]; then
+            echo "No CurseForge game version matches '$CF_GAME_VERSIONS'. Available:"
+            jq -r '.[] | "\(.id)  \(.name)"' versions.json | sort -k2 -V | tail -60
+            exit 1
+          fi
+          type=release
+          case "$GITHUB_REF_NAME" in *alpha*) type=alpha ;; *-*) type=beta ;; esac
+          jq -n --rawfile notes notes.md --argjson ids "$ids" --arg name "Issues with Tissues ${GITHUB_REF_NAME}" --arg type "$type" \
+            '{changelog: $notes, changelogType: "markdown", displayName: $name, gameVersions: $ids, releaseType: $type}' > metadata.json
+          curl -sS --fail-with-body -H "X-Api-Token: $CF_TOKEN" \
+            -F "metadata=<metadata.json" \
+            -F "file=@IssuesWithTissues-${GITHUB_REF_NAME}.zip" \
+            "$api/projects/$CF_PROJECT/upload-file"
+          echo

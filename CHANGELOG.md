@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3
+
+- New versions reach CurseForge on their own: each GitHub release now uploads its zip to CurseForge straight away. Nothing changes in game.
+
 ## 1.2.2
 
 - **Faster first sync:** a new install keeps asking the guild every minute until someone answers, and asks straight away when a guildmate with the addon logs in. Before, it asked twice: at login and 10 minutes later.

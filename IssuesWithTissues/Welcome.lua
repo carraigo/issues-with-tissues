@@ -10,6 +10,9 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.2.3", lines = {
+		"Behind the scenes: new versions now reach CurseForge automatically.",
+	} },
 	{ version = "1.2.2", lines = {
 		"New installs catch up with the guild much faster.",
 		"Home shows sync progress, and Settings has a Sync now button.",
