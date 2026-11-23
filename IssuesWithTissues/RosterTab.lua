@@ -131,67 +131,36 @@ function Tab.Rows(state)
 end
 
 ---------------------------------------------------------------------------
--- The page
+-- The page (the shared list builder; Tab.Rows does the filtering, grouping and sorting)
 ---------------------------------------------------------------------------
-local ROWS, ROW_H = 17, 18
-local lines, headerButtons, filterButtons, countText = {}, {}, {}, nil
+local ROWS = 17
+local list
 
-local CLASS_COLORS = RAID_CLASS_COLORS
+local function ClassColor(token) return ns.UI.ClassColor(token) end -- the theme's, when it has its own
 
-local function ClassColor(token)
-	local c = CLASS_COLORS and token and CLASS_COLORS[token]
-	if c then return c.r, c.g, c.b end
-	return 1, 1, 1
+local function Cell(row, key)
+	if key == "name" then
+		local text
+		if row.mainName then
+			text = row.name .. " |cff999999(" .. row.mainName .. ")|r"
+		else
+			text = row.name .. (#row.alts > 0 and (" |cff999999+" .. #row.alts .. "|r") or "")
+		end
+		return text, ClassColor(row.classFile)
+	end
+	local shade = row.online and 1 or 0.6
+	local text
+	if key == "rankIndex" then text = row.rank
+	elseif key == "hk" then text = row.hk >= 0 and ns.Kills.Format(row.hk) or "|cff666666-|r"
+	else text = tostring(row[key] or "") end
+	return text, shade, shade, shade
 end
 
 -- rebuild: the data changed. Scrolling only repaints the rows already built; filters, sorting
 -- and opening the page rebuild them too.
-local cached
 function Tab.Refresh(rebuild)
-	if not Tab.panel or not Tab.panel:IsShown() then return end
-	if rebuild ~= false or not cached then cached = Tab.Rows() end
-	local rows = cached
-	local maxOffset = math.max(0, #rows - ROWS)
-	if Tab.state.offset > maxOffset then Tab.state.offset = maxOffset end
-	for i = 1, ROWS do
-		local line, row = lines[i], rows[i + Tab.state.offset]
-		if row then
-			local x = 0
-			for c, col in ipairs(Tab.COLUMNS) do
-				local text
-				if col.key == "name" then
-					if row.mainName then
-						text = row.name .. " |cff999999(" .. row.mainName .. ")|r"
-					else
-						text = row.name .. (#row.alts > 0 and (" |cff999999+" .. #row.alts .. "|r") or "")
-					end
-				elseif col.key == "rankIndex" then
-					text = row.rank
-				elseif col.key == "hk" then
-					text = row.hk >= 0 and ns.Kills.Format(row.hk) or "|cff666666-|r"
-				else
-					text = tostring(row[col.key] or "")
-				end
-				line.cells[c]:SetText(text)
-				x = x + col.width
-			end
-			line.cells[1]:SetTextColor(ClassColor(row.classFile))
-			local shade = row.online and 1 or 0.6
-			for c = 2, #Tab.COLUMNS do line.cells[c]:SetTextColor(shade, shade, shade) end
-			line.row = row
-			line:Show()
-		else
-			line.row = nil
-			line:Hide()
-		end
-	end
-	for _, b in ipairs(filterButtons) do
-		ns.UI.SetSelected(b, b.key == Tab.state.filter)
-	end
-	local online = 0
-	for _, r in ipairs(rows) do if r.online then online = online + 1 end end
-	countText:SetText(string.format("%d shown, %d online. Guild: %d members, %d online.",
-		#rows, online, ns.Roster.count, ns.Roster.online))
+	if not Tab.panel or not Tab.panel:IsShown() or not list then return end
+	if rebuild == false then list:Draw() else list:Refresh() end
 end
 
 -- Enter in the search: whisper the first match.
@@ -229,113 +198,55 @@ function Tab.Whisper(key)
 	return target
 end
 
+local function Tooltip(_, r)
+	GameTooltip:AddLine(r.name, ClassColor(r.classFile))
+	if r.mainName then GameTooltip:AddLine("Alt of " .. r.mainName .. " (" .. (r.mainRank or "") .. ")", 0.7, 0.7, 0.7) end
+	GameTooltip:AddLine(string.format("Level %d %s, %s", r.level, r.class, r.rank), 1, 1, 1)
+	GameTooltip:AddLine(r.online and ("Online: " .. (r.zone or "")) or ("Last online: " .. r.where), 1, 1, 1)
+	GameTooltip:AddLine(r.hk >= 0 and ("Honourable kills: " .. ns.Kills.Format(r.hk)) or "Honourable kills: not shared (no addon)", 1, 0.56, 0.31)
+	if #r.otherAlts > 0 then
+		GameTooltip:AddLine((r.mainName and "Other alts: " or "Alts: ") .. table.concat(r.otherAlts, ", "), 0.7, 0.7, 0.7, true)
+	end
+	for _, p in ipairs(ns.Professions.Of(r.tell or r.full)) do
+		GameTooltip:AddLine(string.format("%s %d/%d", p.name, p.rank, p.max), 0.6, 0.9, 1)
+	end
+	for _, n in ipairs(Tab.Notes(r.tell or r.full)) do GameTooltip:AddLine(n[1], n[2], n[3], n[4], true) end
+	GameTooltip:AddLine("Right-click to whisper, invite" .. (Tab.CanManage() and ", promote or demote" or ""), 0.5, 0.5, 0.5)
+end
+
 local function Build(panel)
 	Tab.panel = panel
-	-- Filters
-	local x = 0
-	for _, f in ipairs(Tab.FILTERS) do
-		local b = ns.UI.Button(panel)
-		b:SetSize(72, 22)
-		b:SetPoint("TOPLEFT", x, 0)
-		b:SetText(f.label)
-		b.key = f.key
-		b:SetScript("OnClick", function() Tab.state.filter = f.key; Tab.state.offset = 0; Tab.Refresh() end)
-		filterButtons[#filterButtons + 1] = b
-		x = x + 76
+	local columns = {}
+	for i, col in ipairs(Tab.COLUMNS) do
+		columns[i] = { key = col.key, label = col.label, width = col.width, sort = true,
+			desc = col.key == "level" or col.key == "hk" }
 	end
-	-- Search by name (Ctrl+F); Enter whispers the first match.
-	local search = ns.UI.CreateInput(panel, 136, "Search names")
-	search:SetPoint("TOPRIGHT", -4, 0)
-	search.onChange = function(text)
-		Tab.state.search = text:match("^%s*(.-)%s*$")
-		Tab.state.offset = 0
-		Tab.Refresh()
-	end
-	search.onEnter = function() Tab.PickFirst() end
-	ns.UI.SetSearch(panel, search)
-	Tab.searchBox = search
+	local filters = {}
+	for i, f in ipairs(Tab.FILTERS) do filters[i] = { key = f.key, label = f.label } end
+	list = ns.UI.CreateList(panel, {
+		top = -32, rows = ROWS, columns = columns, filters = filters,
+		state = Tab.state, save = "roster",
+		-- Search by name (Ctrl+F); Enter whispers the first match.
+		search = { width = 136, hint = "Search names", onEnter = function(first) return Tab.Whisper(first.tell or first.full) end },
+		source = function(state) return Tab.Rows(state) end,
+		cell = Cell,
+		count = function(rows)
+			local online = 0
+			for _, r in ipairs(rows) do if r.online then online = online + 1 end end
+			return string.format("%d shown, %d online. Guild: %d members, %d online.",
+				#rows, online, ns.Roster.count, ns.Roster.online)
+		end,
+		onClick = function(row, button, line) if button == "RightButton" then Tab.ShowMenu(row, line) end end,
+		onEnter = Tooltip,
+	})
+	Tab.list, Tab.searchBox = list, list.searchBox
 	local group = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-	group:SetPoint("TOPLEFT", x + 4, 1)
+	group:SetPoint("TOPLEFT", list.toolbarX, 1)
 	local gl = group:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	gl:SetPoint("LEFT", group, "RIGHT", 0, 0)
 	gl:SetText("Group alts")
 	group:SetChecked(Tab.state.groupAlts)
 	group:SetScript("OnClick", function(self) Tab.state.groupAlts = self:GetChecked() and true or false; Tab.Refresh() end)
-
-	-- Column titles (click to sort; click again to reverse)
-	x = 4
-	for _, col in ipairs(Tab.COLUMNS) do
-		local h = CreateFrame("Button", nil, panel)
-		h:SetSize(col.width, 18)
-		h:SetPoint("TOPLEFT", x, -30)
-		local t = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		t:SetPoint("LEFT")
-		t:SetText(col.label)
-		h:SetScript("OnClick", function()
-			if Tab.state.sort == col.key then Tab.state.desc = not Tab.state.desc
-			else Tab.state.sort, Tab.state.desc = col.key, (col.key == "level" or col.key == "hk") end
-			Tab.Refresh()
-		end)
-		headerButtons[#headerButtons + 1] = h
-		x = x + col.width
-	end
-
-	local rule = ns.UI.Fill(panel:CreateTexture(nil, "BORDER"), ns.UI.COLORS.dim)
-	rule:SetPoint("TOPLEFT", 0, -47)
-	rule:SetPoint("TOPRIGHT", 0, -47)
-	rule:SetHeight(1)
-
-	-- Rows
-	for i = 1, ROWS do
-		local line = CreateFrame("Button", nil, panel)
-		line:SetSize(606, ROW_H)
-		line:SetPoint("TOPLEFT", 4, -50 - (i - 1) * ROW_H)
-		ns.UI.StyleRow(line, i)
-		line.cells = {}
-		local cx = 0
-		for c, col in ipairs(Tab.COLUMNS) do
-			local fs = line:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			fs:SetPoint("LEFT", cx, 0)
-			fs:SetWidth(col.width - 4)
-			fs:SetJustifyH("LEFT")
-			fs:SetWordWrap(false)
-			line.cells[c] = fs
-			cx = cx + col.width
-		end
-		line:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-		line:SetScript("OnClick", function(self, button)
-			if not self.row then return end
-			if button == "RightButton" then Tab.ShowMenu(self.row, self) end
-		end)
-		line:SetScript("OnEnter", function(self)
-			local r = self.row
-			if not r then return end
-			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-			GameTooltip:AddLine(r.name, ClassColor(r.classFile))
-			if r.mainName then GameTooltip:AddLine("Alt of " .. r.mainName .. " (" .. (r.mainRank or "") .. ")", 0.7, 0.7, 0.7) end
-			GameTooltip:AddLine(string.format("Level %d %s, %s", r.level, r.class, r.rank), 1, 1, 1)
-			GameTooltip:AddLine(r.online and ("Online: " .. (r.zone or "")) or ("Last online: " .. r.where), 1, 1, 1)
-			GameTooltip:AddLine(r.hk >= 0 and ("Honourable kills: " .. ns.Kills.Format(r.hk)) or "Honourable kills: not shared (no addon)", 1, 0.56, 0.31)
-			if #r.otherAlts > 0 then
-				GameTooltip:AddLine((r.mainName and "Other alts: " or "Alts: ") .. table.concat(r.otherAlts, ", "), 0.7, 0.7, 0.7, true)
-			end
-			for _, p in ipairs(ns.Professions.Of(r.tell or r.full)) do
-				GameTooltip:AddLine(string.format("%s %d/%d", p.name, p.rank, p.max), 0.6, 0.9, 1)
-			end
-			for _, n in ipairs(Tab.Notes(r.tell or r.full)) do GameTooltip:AddLine(n[1], n[2], n[3], n[4], true) end
-			GameTooltip:AddLine("Right-click to whisper, invite" .. (Tab.CanManage() and ", promote or demote" or ""), 0.5, 0.5, 0.5)
-			GameTooltip:Show()
-		end)
-		line:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		lines[i] = line
-	end
-	panel:EnableMouseWheel(true)
-	panel:SetScript("OnMouseWheel", function(_, delta)
-		Tab.state.offset = math.max(0, Tab.state.offset - delta * 3)
-		Tab.Refresh(false)
-	end)
-	countText = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	countText:SetPoint("BOTTOMLEFT", 4, 2)
 	panel:SetScript("OnShow", function() ns.Roster.Request(); Tab.Refresh() end)
 	panel:HookScript("OnHide", Tab.HideMenu)
 	Tab.Refresh()
@@ -398,6 +309,29 @@ function Tab.ChangeRank(target, up)
 	return command
 end
 
+-- Removing someone: officers, only for a rank below their own, the same way as rank changes
+-- (the game's /gremove command typed into chat; Enter confirms).
+function Tab.CanRemove(target)
+	if not Tab.CanManage() then return false end
+	local me = ns.Roster.Get(ns.Roster.me)
+	local them = ns.Roster.Get(target)
+	if not them or ns.FullName(target) == ns.Roster.me or them.rankIndex == nil or me.rankIndex == nil then return false end
+	return them.rankIndex > me.rankIndex and GameAllows(CanGuildRemove or (C_GuildInfo and C_GuildInfo.CanGuildRemove))
+end
+
+function Tab.Remove(target)
+	if not Tab.CanRemove(target) then return false end
+	local name = ns.Roster.DisplayName(target)
+	local command = "/gremove " .. name
+	if not ChatFrame_OpenChat then
+		ns.Print("Type %s to remove them from the guild.", command)
+		return false
+	end
+	ChatFrame_OpenChat(command)
+	ns.Print("Press Enter to remove %s from the guild (or Escape to keep them).", name)
+	return command
+end
+
 local menu
 function Tab.HideMenu()
 	if menu then menu:Hide() end
@@ -418,16 +352,20 @@ function Tab.MenuItems(row)
 	if demote then
 		items[#items + 1] = { "Demote to " .. RankName(them.rankIndex + 1), function() Tab.ChangeRank(who, false) end }
 	end
+	if Tab.CanRemove(who) then
+		items[#items + 1] = { "Remove from guild", function() Tab.Remove(who) end }
+	end
 	return items
 end
 
-function Tab.ShowMenu(row, line)
-	if not Tab.panel then return end
+function Tab.ShowMenu(row, line, parent)
+	parent = parent or Tab.panel
+	if not parent then return end
 	if not menu then
-		menu = CreateFrame("Frame", nil, Tab.panel)
+		menu = CreateFrame("Frame", nil, parent)
 		menu:SetFrameStrata("DIALOG")
 		menu:EnableMouse(true)
-		ns.UI.Skin(menu)
+		ns.UI.Skin(menu, ns.UI.COLORS.bg, ns.UI.COLORS.edge)
 		menu.title = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		menu.title:SetPoint("TOPLEFT", 8, -6)
 		menu.buttons = {}
@@ -438,6 +376,8 @@ function Tab.ShowMenu(row, line)
 			if self.away > 1 then self:Hide() end
 		end)
 	end
+	if menu.SetParent then menu:SetParent(parent) end
+	menu:SetFrameStrata("DIALOG")
 	local items = Tab.MenuItems(row)
 	menu.title:SetText(row.name)
 	for i, item in ipairs(items) do
@@ -454,7 +394,7 @@ function Tab.ShowMenu(row, line)
 	for i = #items + 1, #menu.buttons do menu.buttons[i]:Hide() end
 	menu:SetSize(162, 12 + (#items + 1) * 22)
 	menu:ClearAllPoints()
-	menu:SetPoint("TOPLEFT", line or Tab.panel, "TOPLEFT", line and 180 or 200, line and -4 or -60)
+	menu:SetPoint("TOPLEFT", line or parent, "TOPLEFT", line and 180 or 200, line and -4 or -60)
 	menu.away, menu.row = 0, row
 	menu:Show()
 	return items

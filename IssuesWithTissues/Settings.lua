@@ -1,23 +1,45 @@
--- The Settings tab: a toggle per option, the theme, the officer rank, and the tools.
--- Later features add their own toggles with ns.Settings.AddToggle(key, label, onChange).
+-- The Settings tab, built from the declared settings (ns.SETTINGS in Core.lua): tick boxes in two
+-- columns, then each drop-down, slider and row of choices in the order declared, the officer
+-- ranks and the tools. A feature reacts to its setting with Settings.OnChange(key, fn).
 
 local _, ns = ...
 
 local Settings = ns.RegisterModule("Settings", {})
 ns.Settings = Settings
 
-Settings.toggles = {
-	{ key = "minimap", label = "Show the minimap button", onChange = function() ns.UI.UpdateMinimapButton() end },
-	{ key = "guildButton", label = "Show the button on the guild window", onChange = function() ns.UI.UpdateGuildButton() end },
-	{ key = "sounds", label = "Play alert sounds" },
-	{ key = "windowSounds", label = "Sounds when the window opens and closes" },
-	{ key = "hideInCombat", label = "Hide the window in combat (back after)" },
-	{ key = "debug", label = "Print addon errors in chat" },
-}
-
-function Settings.AddToggle(key, label, onChange)
-	Settings.toggles[#Settings.toggles + 1] = { key = key, label = label, onChange = onChange }
+local listeners = {}
+function Settings.OnChange(key, fn)
+	listeners[key] = listeners[key] or {}
+	table.insert(listeners[key], fn)
 end
+
+-- Change a setting the way the page does: checked against its declaration, saved, then the
+-- feature told. Returns the value kept (nil when the key or value isn't allowed).
+function Settings.Set(key, value)
+	local def = ns.SETTING[key]
+	if not def then return nil end
+	if def.kind == "toggle" then
+		value = value and true or false
+	elseif def.kind == "range" then
+		value = tonumber(value)
+		if not value then return nil end
+		value = math.max(def.min, math.min(def.max, value))
+		value = math.floor(value / def.step + 0.5) * def.step
+		value = math.floor(value * 1000 + 0.5) / 1000
+	elseif def.kind == "choice" or def.kind == "dropdown" then
+		local choices = type(def.choices) == "function" and def.choices() or def.choices
+		local ok = false
+		for _, c in ipairs(choices) do if c.id == value then ok = true end end
+		if not ok then return nil end
+	end
+	ns.db.settings[key] = value
+	for _, fn in ipairs(listeners[key] or {}) do fn(value) end
+	return value
+end
+
+Settings.OnChange("minimap", function() ns.UI.UpdateMinimapButton() end)
+Settings.OnChange("guildButton", function() ns.UI.UpdateGuildButton() end)
+Settings.OnChange("scale", function(v) ns.UI.SetScale(v) end)
 
 -- Officers are rankIndex 0..officerMaxRank. Default 1 = Guild Master and Officer.
 function Settings.OfficerRankText()
@@ -28,115 +50,149 @@ function Settings.OfficerRankText()
 	return table.concat(list, ", ")
 end
 
-local function Build(panel)
-	local y = -4
-	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", 4, y)
-	title:SetText("Settings")
-	y = y - 30
-	-- Toggles in two columns.
-	local half = math.ceil(#Settings.toggles / 2)
-	for i, t in ipairs(Settings.toggles) do
-		local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-		local col, row = i > half and 1 or 0, (i - 1) % half
-		cb:SetPoint("TOPLEFT", col * 308, y - row * 28)
-		local label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-		label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-		label:SetText(t.label)
-		cb:SetChecked(ns.db.settings[t.key] and true or false)
-		cb:SetScript("OnClick", function(self)
-			ns.db.settings[t.key] = self:GetChecked() and true or false
-			if t.onChange then t.onChange(ns.db.settings[t.key]) end
-		end)
-		t.check = cb
-	end
-	y = y - half * 28
+---------------------------------------------------------------------------
+-- One builder per kind: (panel, def, y) -> the height used.
+---------------------------------------------------------------------------
+Settings.checks = {}
+local Kinds = {}
 
-	-- Theme: one button per theme; the change shows after a reload.
-	y = y - 8
-	local themeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	themeLabel:SetPoint("TOPLEFT", 4, y)
-	themeLabel:SetText("Theme")
+function Kinds.dropdown(panel, def, y)
+	local label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	label:SetPoint("TOPLEFT", 4, y)
+	label:SetText(def.label)
 	y = y - 20
-	local themeNote = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	local note = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	local reload = ns.UI.Button(panel, "Reload now", 100, 22, "primary")
+	-- The chosen value on a button; clicking it lists them all beneath.
+	local pick = ns.UI.Button(panel, "", 200, 22)
+	pick:SetPoint("TOPLEFT", 0, y)
+	local choices = def.choices()
+	local list = CreateFrame("Frame", nil, panel)
+	list:SetFrameStrata("DIALOG")
+	list:EnableMouse(true)
+	ns.UI.Skin(list, ns.UI.COLORS.bg, ns.UI.COLORS.edge)
+	list:SetPoint("TOPLEFT", pick, "BOTTOMLEFT", 0, -2)
+	list:SetSize(200, 6 + #choices * 24)
+	list:Hide()
 	local buttons = {}
-	local function MarkThemes()
-		for id, b in pairs(buttons) do ns.UI.SetSelected(b, id == ns.db.settings.theme) end
-		local changed = ns.db.settings.theme ~= ns.UI.theme.id
-		themeNote:SetText(changed and "Reload to switch to the new theme." or "")
-		reload:SetShown(changed)
+	local active = def.key == "theme" and ns.UI.theme.id or ns.db.settings[def.key] -- what's in use now
+	local function Mark()
+		local id = ns.db.settings[def.key]
+		local name = id
+		for cid, b in pairs(buttons) do ns.UI.SetSelected(b, cid == id) end
+		for _, c in ipairs(choices) do if c.id == id then name = c.name end end
+		pick:SetText(tostring(name) .. "  v")
+		local changed = def.reload and id ~= active
+		note:SetText(changed and "Reload to switch." or "")
+		reload:SetShown(changed and true or false)
 	end
-	local tx = 0
-	for _, t in ipairs(ns.UI.THEMES) do
-		local b = ns.UI.Button(panel, t.name, 112, 22)
-		b:SetPoint("TOPLEFT", tx, y)
+	for i, c in ipairs(choices) do
+		local b = ns.UI.Button(list, c.name, 192, 22)
+		b:SetPoint("TOPLEFT", 4, -3 - (i - 1) * 24)
 		b:SetScript("OnClick", function()
-			ns.db.settings.theme = t.id
-			MarkThemes()
+			Settings.Set(def.key, c.id)
+			list:Hide()
+			Mark()
 		end)
-		buttons[t.id] = b
-		tx = tx + 116
+		buttons[c.id] = b
 	end
-	y = y - 28
-	themeNote:SetPoint("TOPLEFT", 4, y - 4)
-	reload:SetPoint("TOPLEFT", 260, y)
+	pick:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
+	panel:HookScript("OnHide", function() list:Hide() end)
+	note:SetPoint("LEFT", pick, "RIGHT", 12, 0)
+	reload:SetPoint("LEFT", pick, "RIGHT", 230, 0)
 	reload:SetScript("OnClick", function() if ReloadUI then ReloadUI() end end)
-	MarkThemes()
-	y = y - 28
+	Mark()
+	if def.key == "theme" then Settings.themeButtons, Settings.themePick, Settings.themeList = buttons, pick, list end
+	return 48
+end
 
-	-- Window size: applied when the slider is let go, so the window doesn't resize under the mouse.
-	local sizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	sizeLabel:SetPoint("TOPLEFT", 4, y)
-	sizeLabel:SetText("Window size")
+-- A slider in percent, applied when it is let go (the window doesn't resize under the mouse).
+function Kinds.range(panel, def, y)
+	local label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	label:SetPoint("TOPLEFT", 4, y)
+	label:SetText(def.label)
 	local slider = CreateFrame("Slider", nil, panel)
-	slider:SetPoint("LEFT", sizeLabel, "RIGHT", 16, 0)
+	slider:SetPoint("LEFT", label, "RIGHT", 16, 0)
 	slider:SetSize(220, 16)
 	slider:SetOrientation("HORIZONTAL")
-	slider:SetMinMaxValues(ns.UI.SCALE_MIN * 100, ns.UI.SCALE_MAX * 100)
-	slider:SetValueStep(5)
+	slider:SetMinMaxValues(def.min * 100, def.max * 100)
+	slider:SetValueStep(def.step * 100)
 	if slider.SetObeyStepOnDrag then slider:SetObeyStepOnDrag(true) end
 	local track = ns.UI.Fill(slider:CreateTexture(nil, "BACKGROUND"), ns.UI.COLORS.dim)
 	track:SetPoint("LEFT"); track:SetPoint("RIGHT"); track:SetHeight(4)
 	local thumb = ns.UI.Fill(slider:CreateTexture(nil, "OVERLAY"), ns.UI.COLORS.edge)
 	thumb:SetSize(10, 16)
 	slider:SetThumbTexture(thumb)
-	local sizeText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	sizeText:SetPoint("LEFT", slider, "RIGHT", 10, 0)
-	local reset = ns.UI.Button(panel, "100%", 50, 20)
-	reset:SetPoint("LEFT", sizeText, "RIGHT", 10, 0)
-	local function Apply(v) sizeText:SetText(math.floor(ns.UI.SetScale(v / 100) * 100 + 0.5) .. "%") end
+	local text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	text:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+	local reset = ns.UI.Button(panel, math.floor(def.default * 100 + 0.5) .. "%", 50, 20)
+	reset:SetPoint("LEFT", text, "RIGHT", 10, 0)
+	local function Pct(v) return math.floor(v * 100 + 0.5) .. "%" end
+	local function Apply(v)
+		local kept = Settings.Set(def.key, v / 100)
+		if kept then text:SetText(Pct(kept)) end
+	end
 	slider:SetScript("OnValueChanged", function(_, v)
-		sizeText:SetText(math.floor(v / 5 + 0.5) * 5 .. "%")
+		text:SetText(Pct(math.floor(v / (def.step * 100) + 0.5) * def.step))
 		if not slider.dragging then Apply(v) end
 	end)
 	slider:SetScript("OnMouseDown", function() slider.dragging = true end)
 	slider:SetScript("OnMouseUp", function() slider.dragging = false; Apply(slider:GetValue()) end)
-	reset:SetScript("OnClick", function() slider:SetValue(100); Apply(100) end)
-	slider:SetValue((ns.db.settings.scale or 1) * 100)
-	sizeText:SetText(math.floor((ns.db.settings.scale or 1) * 100 + 0.5) .. "%")
-	Settings.scaleSlider = slider
-	y = y - 30
+	reset:SetScript("OnClick", function() slider:SetValue(def.default * 100); Apply(def.default * 100) end)
+	slider:SetValue((ns.db.settings[def.key] or def.default) * 100)
+	text:SetText(Pct(ns.db.settings[def.key] or def.default))
+	if def.key == "scale" then Settings.scaleSlider = slider end
+	return 30
+end
 
-	-- Which tab the window opens on (the "Open guild chat" key always opens Chat).
-	local openLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	openLabel:SetPoint("TOPLEFT", 4, y - 4)
-	openLabel:SetText("Open the window on")
-	local openButtons = {}
-	local function MarkOpen()
-		for id, b in pairs(openButtons) do ns.UI.SetSelected(b, id == (ns.db.settings.openOn or "last")) end
+function Kinds.choice(panel, def, y)
+	local label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	label:SetPoint("TOPLEFT", 4, y - 4)
+	label:SetText(def.label)
+	local buttons = {}
+	local function Mark()
+		for id, b in pairs(buttons) do ns.UI.SetSelected(b, id == ns.db.settings[def.key]) end
 	end
-	local ox = 150
-	for _, o in ipairs(ns.UI.OPEN_ON) do
-		local b = ns.UI.Button(panel, o.name, 90, 22)
-		b:SetPoint("TOPLEFT", ox, y)
-		b:SetScript("OnClick", function() ns.db.settings.openOn = o.id; MarkOpen() end)
-		openButtons[o.id] = b
-		ox = ox + 94
+	local x = 150
+	for _, c in ipairs(def.choices) do
+		local b = ns.UI.Button(panel, c.name, 90, 22)
+		b:SetPoint("TOPLEFT", x, y)
+		b:SetScript("OnClick", function() Settings.Set(def.key, c.id); Mark() end)
+		buttons[c.id] = b
+		x = x + 94
 	end
-	MarkOpen()
-	Settings.openButtons = openButtons
+	Mark()
+	if def.key == "openOn" then Settings.openButtons = buttons end
+	return 30
+end
+
+local function Build(panel)
+	local y = -4
+	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 4, y)
+	title:SetText("Settings")
 	y = y - 30
+	-- Tick boxes in two columns.
+	local toggles = {}
+	for _, def in ipairs(ns.SETTINGS) do if def.kind == "toggle" then toggles[#toggles + 1] = def end end
+	local half = math.ceil(#toggles / 2)
+	for i, def in ipairs(toggles) do
+		local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		local col, row = i > half and 1 or 0, (i - 1) % half
+		cb:SetPoint("TOPLEFT", col * 308, y - row * 28)
+		local label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+		label:SetText(def.label)
+		cb:SetChecked(ns.db.settings[def.key] and true or false)
+		cb:SetScript("OnClick", function(self) Settings.Set(def.key, self:GetChecked()) end)
+		Settings.checks[def.key] = cb
+	end
+	y = y - half * 28 - 8
+
+	-- The rest, in the order declared.
+	for _, def in ipairs(ns.SETTINGS) do
+		if Kinds[def.kind] then y = y - Kinds[def.kind](panel, def, y) end
+	end
 
 	y = y - 10
 	local officers = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

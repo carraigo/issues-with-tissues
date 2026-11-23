@@ -20,6 +20,9 @@ local Alts = ns.RegisterModule("Alts", {})
 ns.Alts = Alts
 
 ns.Sync.Define("alts", { writer = "owner" })
+-- Record: the main's name ("Large Joseph").
+ns.Record.Define("alts", { encode = function(main) return ns.Record.Clean(main, 60) end,
+	decode = function(data) return data ~= "" and data or nil end, sample = "Large Joseph" })
 
 local function Me() return ns.PlayerName() end
 
@@ -202,7 +205,7 @@ end
 ns.Listen("ROSTER_UPDATED", CheckOnce)
 
 function Alts:OnLogin()
-	ns.After(11, function() checked = false; CheckOnce() end) -- a second after the chat history (10s)
+	ns.Later("alts", function() checked = false; CheckOnce() end)
 end
 
 ns.RegisterCommand("alt", "alt links: main, add Name, remove Name, ask, or list", function(rest)

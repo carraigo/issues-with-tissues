@@ -22,7 +22,7 @@ function Tip.Index()
 		items, names = {}, {}
 		for _, r in ipairs(all) do
 			if r.item and r.item > 0 then items[r.item] = true end
-			names[r.lower] = true
+			if r.lower ~= "" then names[r.lower] = true end
 		end
 		builtFrom = all
 	end
@@ -84,4 +84,3 @@ function Tip:OnLogin()
 	Tip.Hook()
 end
 
-ns.Settings.AddToggle("tooltipCraftable", "\"Guild craftable\" on item tooltips")

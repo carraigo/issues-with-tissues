@@ -29,15 +29,19 @@ function Kills.Creatures()
 	return 0, "none"
 end
 
-function Kills.Encode(hk, mobs, source)
-	return string.format("%d;%d;%s", hk, mobs, source == "stat" and "s" or "c")
+-- Record: "hk;mobs;s|c" (s: from the game's statistic, c: counted)
+function Kills.Encode(k)
+	return string.format("%d;%d;%s", k.hk or 0, k.mobs or 0, k.source == "stat" and "s" or "c")
 end
 
 function Kills.Decode(data)
-	local hk, mobs, src = tostring(data or ""):match("^(%d+);(%d+);(%a)$")
-	if not hk then return nil end
-	return { hk = tonumber(hk), mobs = tonumber(mobs), source = src == "s" and "stat" or "counted" }
+	local hk, mobs, src = ns.Record.Fields(data, 3)
+	hk, mobs = tonumber(hk), tonumber(mobs)
+	if not hk or not mobs or (src ~= "s" and src ~= "c") then return nil end
+	return { hk = hk, mobs = mobs, source = src == "s" and "stat" or "counted" }
 end
+ns.Record.Define("kills", { encode = Kills.Encode, decode = Kills.Decode,
+	sample = { hk = 12, mobs = 1500, source = "stat" } })
 
 -- Share this character's numbers (only when they changed).
 function Kills.Share()
@@ -45,7 +49,7 @@ function Kills.Share()
 	local me = ns.PlayerName()
 	if not me then return false end
 	local mobs, source = Kills.Creatures()
-	local data = Kills.Encode(Kills.Honor(), mobs, source)
+	local data = Kills.Encode({ hk = Kills.Honor(), mobs = mobs, source = source })
 	if data == ns.Sync.Get("kills", me) then return false end
 	return ns.Sync.Set("kills", me, data)
 end
@@ -54,7 +58,7 @@ end
 local function Soon()
 	if Kills.pending then return end
 	Kills.pending = true
-	ns.After(120, Kills.Share)
+	ns.Later("killsEvery", Kills.Share)
 end
 Kills.Soon = Soon
 
@@ -98,5 +102,5 @@ pcall(ns.On, "PLAYER_REGEN_ENABLED", Soon)
 pcall(ns.On, "PLAYER_PVP_KILLS_CHANGED", Soon)
 
 function Kills:OnLogin()
-	ns.After(15, Kills.Share)
+	ns.Later("kills", Kills.Share)
 end

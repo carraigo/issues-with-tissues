@@ -10,7 +10,7 @@
 --   "officer" the sender's rank in OUR roster is GM or Officer (ns.Roster.IsOfficer)
 --   "any"     anyone (whispers from outside the guild, e.g. a version check)
 -- Outgoing packets are queued and sent a few per second so the game never drops them. In
--- combat they wait until it ends; in a raid they go out slowly (one a second), so the addon
+-- combat they wait until it ends; in a raid or dungeon they go out slowly (one a second), so the addon
 -- never competes with the fight.
 
 local _, ns = ...
@@ -21,7 +21,7 @@ ns.Comm = Comm
 Comm.PREFIX = "IWT"
 Comm.MAX_PACKET = 250          -- the game allows 255 bytes
 Comm.SEND_INTERVAL = 0.1       -- seconds between queued packets
-Comm.RAID_INTERVAL = 1         -- in a raid
+Comm.RAID_INTERVAL = 1         -- in a raid or a dungeon
 Comm.HOLD_CHECK = 2            -- in combat: how often to look again
 Comm.THROTTLE_WAIT = 1.5       -- the game said "too fast": wait this long, then send it again
 Comm.MAX_TRIES = 4             -- give up on a packet the game keeps refusing
@@ -29,7 +29,27 @@ Comm.PARTIAL_TIMEOUT = 30      -- seconds to wait for the rest of a split messag
 Comm.MAX_PIECES = 64
 
 Comm.handlers = {}
-Comm.queue = {}
+-- Outgoing packets, first to last: a ring of indexes (qhead..qtail), so taking the next packet
+-- doesn't shift the whole list (a big catch-up can queue hundreds).
+Comm.queue, Comm.qhead, Comm.qtail = {}, 1, 0
+function Comm.Queued() return Comm.qtail - Comm.qhead + 1 end
+local function Push(item)
+	Comm.qtail = Comm.qtail + 1
+	Comm.queue[Comm.qtail] = item
+end
+local function PushFront(item)
+	Comm.qhead = Comm.qhead - 1
+	Comm.queue[Comm.qhead] = item
+end
+local function Pop()
+	if Comm.qhead > Comm.qtail then return nil end
+	local item = Comm.queue[Comm.qhead]
+	Comm.queue[Comm.qhead] = nil
+	Comm.qhead = Comm.qhead + 1
+	if Comm.qhead > Comm.qtail then Comm.qhead, Comm.qtail = 1, 0 end -- empty: start again at 1
+	return item
+end
+function Comm.Peek() return Comm.queue[Comm.qhead] end
 Comm.partial = {}              -- sender .. "\1" .. id -> { total, got, parts, started }
 Comm.sendHook = nil            -- tests replace the real send with this
 local nextId = math.random(0, 9998) -- two guildmates with one first name rarely pick the same ids
@@ -73,34 +93,42 @@ function Comm.Refused(result)
 	return type(result) == "number"
 end
 
--- "combat" (hold everything), "raid" (go slowly) or nil.
+-- "combat" (hold everything), "raid" (go slowly: in a raid or a dungeon) or nil.
+Comm.SLOW_INSTANCES = { raid = true, party = true }
 function Comm.Held()
 	if InCombatLockdown and InCombatLockdown() then return "combat" end
 	if IsInInstance then
 		local inside, kind = IsInInstance()
-		if inside and kind == "raid" then return "raid" end
+		if inside and Comm.SLOW_INSTANCES[kind] then return "raid" end
 	end
 end
 
+local HELD_TEXT = { combat = "Sending paused: in combat", raid = "Sending slowly: in a raid or dungeon" }
 function Comm.Pump()
 	local held = Comm.Held()
+	if held ~= Comm.lastHeld then
+		ns.Trace("comm", "%s", HELD_TEXT[held] or "Sending at the normal pace")
+		Comm.lastHeld = held
+	end
 	if held == "combat" then
 		ns.After(Comm.HOLD_CHECK, Comm.Pump)
 		return
 	end
-	local item = table.remove(Comm.queue, 1)
+	local item = Pop()
 	local wait = held == "raid" and Comm.RAID_INTERVAL or Comm.SEND_INTERVAL
 	if item and Comm.Refused(RawSend(item.packet, item.distribution, item.target)) then
 		item.tries = (item.tries or 0) + 1
 		Comm.throttled = (Comm.throttled or 0) + 1
 		if item.tries < Comm.MAX_TRIES then
-			table.insert(Comm.queue, 1, item) -- keep the order: a split message needs every piece
+			PushFront(item) -- keep the order: a split message needs every piece
 			wait = Comm.THROTTLE_WAIT
+			ns.Trace("comm", "The game refused a packet (try %d of %d): sending again in %ss", item.tries, Comm.MAX_TRIES, Comm.THROTTLE_WAIT)
 		else
 			Comm.dropped = (Comm.dropped or 0) + 1
+			ns.Trace("error", "A packet was refused %d times and dropped", Comm.MAX_TRIES)
 		end
 	end
-	if #Comm.queue > 0 then
+	if Comm.Queued() > 0 then
 		ns.After(wait, Comm.Pump)
 	else
 		Comm.pumping = false
@@ -117,12 +145,17 @@ function Comm.Send(msgType, payload, distribution, target)
 		return false
 	end
 	for _, p in ipairs(packets) do
-		Comm.queue[#Comm.queue + 1] = { packet = p, distribution = distribution, target = target }
+		Push({ packet = p, distribution = distribution, target = target })
 	end
+	Comm.sentCount, Comm.sentBytes = (Comm.sentCount or 0) + 1, (Comm.sentBytes or 0) + #payload
+	Comm.peakQueue = math.max(Comm.peakQueue or 0, Comm.Queued())
+	ns.Trace("send", "%s to %s, %d bytes in %d packet%s", msgType, distribution == "WHISPER" and tostring(target) or "the guild",
+		#payload, #packets, #packets == 1 and "" or "s")
 	if Comm.immediate then -- tests: deliver at once
-		while #Comm.queue > 0 do
-			local item = table.remove(Comm.queue, 1)
+		local item = Pop()
+		while item do
 			RawSend(item.packet, item.distribution, item.target)
+			item = Pop()
 		end
 	elseif not Comm.pumping then
 		Comm.pumping = true
@@ -175,6 +208,8 @@ local function Dispatch(rawSender, body, distribution)
 		ns.Log("comm: dropped %s from %s (not allowed)", msgType, tostring(sender))
 		return
 	end
+	Comm.heardCount, Comm.heardBytes = (Comm.heardCount or 0) + 1, (Comm.heardBytes or 0) + #payload
+	ns.Trace("recv", "%s from %s, %d bytes%s", msgType, sender, #payload, distribution == "WHISPER" and " (whispered)" or "")
 	ns.Measure("comm " .. msgType, h.fn, sender, payload, distribution, forged, verified)
 end
 
@@ -264,6 +299,7 @@ Comm.Register("HELLO", function(sender, payload, distribution)
 	version = version or ""
 	local new = Comm.versions[sender] == nil
 	Comm.versions[sender] = version
+	ns.Trace("roster", "%s is running %s", sender, tostring(version))
 	ns.Send("VERSION_SEEN", sender, version)
 	ns.Send("ADDON_HELLO", sender, reply == "r")
 	if new and reply ~= "r" and sender ~= ns.PlayerName() then
@@ -271,5 +307,5 @@ Comm.Register("HELLO", function(sender, payload, distribution)
 	end
 end)
 function Comm:OnLogin()
-	ns.After(5, function() Comm.Send("HELLO", ns.VERSION) end)
+	ns.Later("hello", function() Comm.Send("HELLO", ns.VERSION) end)
 end

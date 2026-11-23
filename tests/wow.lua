@@ -138,10 +138,18 @@ function W.NewClient(baseDir, name, guild, opts)
 		end,
 		GetRecipeOutputItemData = function(id)
 			for _, r in ipairs(c.tradeSkill.recipes) do
-				if r[1] == id then return { itemID = r[3] } end
+				if r[1] == id then
+					if r[3] then W.itemNames[r[3]] = W.itemNames[r[3]] or r[2] end -- the game knows its items
+					return { itemID = r[3] }
+				end
 			end
 		end,
 	}
+	-- Item names the game has loaded (shared by every client); c.unknownItems hides some.
+	env.GetItemInfo = function(id)
+		if c.unknownItems and c.unknownItems[id] then return nil end
+		return W.itemNames[id]
+	end
 	c.popups = {}
 	env.StaticPopupDialogs = {}
 	env.StaticPopup_Show = function(which, a, b, data) table.insert(c.popups, { which = which, arg = a, arg2 = b, data = data }) end
@@ -184,6 +192,7 @@ function W.NewClient(baseDir, name, guild, opts)
 	return c
 end
 
+W.itemNames = {}
 function W.Reset()
 	W.clients = {}
 end

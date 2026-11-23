@@ -19,7 +19,7 @@ flowchart LR
 ## Messages (`Comm.lua`)
 
 - Everything goes over the `IWT` prefix, to the guild or as a whisper to one guildmate.
-- The game caps a message at 255 bytes, so longer ones are split into numbered pieces and put back together on arrival. Outgoing pieces are queued and sent a few per second, so the game never drops them. In combat the queue waits; in a raid it sends one piece a second.
+- The game caps a message at 255 bytes, so longer ones are split into numbered pieces and put back together on arrival. Outgoing pieces are queued and sent a few per second, so the game never drops them. In combat the queue waits; in a raid or a dungeon it sends one piece a second.
 - Each handler states who may send it: any guild member, officers only, or anyone. Officer checks use the receiver's own copy of the roster, never what the sender claims.
 - On Forever, characters have a first name and a surname, and two guildmates can share a first name. When the game only stamps the first name, the sender's claimed full name is accepted only if the first names match.
 
@@ -39,21 +39,31 @@ Every feature that shares data defines a *set*. Each set has a rule for who may 
 - **Catching up:** at login, the addon sends a fingerprint of each set (`SQ`): a count plus a hash of every key and revision. Anyone online whose fingerprint differs answers with their records (`SR`), after a short random wait. That way usually only one guildmate answers, and a whole guild doesn't flood the channel.
 - **Smaller answers:** a set with 32 or more records also sends 16 bucket fingerprints (`set~...`), and an answerer sends only the records in buckets that differ. Before its records, an answerer sends a one-packet claim (`SC`) naming the sets it's answering. A set the asker holds nothing of takes the first claim only; the others wait for the next round. Older clients ignore both.
 - **Rounds:** a catch-up is judged 20 seconds after the ask (later while answers are still arriving). If it brought anything new, the addon asks again 10 seconds later, up to 5 rounds. A fresh install nobody answered asks again every minute (up to 10 times), and also when a guildmate's addon says hello at login. A catch-up runs at login and 10 minutes later; `/iwt sync` or Settings > Sync now starts one by hand.
+- **Private answers:** an answer only for sets the asker holds nothing of (a new install) is whispered to the asker, so the rest of the guild doesn't unpack records it already has.
+- **Recipes as ids:** a recipe record is `i` + the item ids and `s` + the spell ids (enchants), each sorted and written as base 36 gaps, plus `n` + name as a last resort (data version 3). Names are looked up in game and remembered on each PC, so each name is stored once rather than once per crafter. Names the game hasn't loaded are asked for in batches of 100, and the Crafting list is rebuilt once when they're all in. Records from 1.2 (with names) are upgraded as they arrive (data version 2).
+- **Clean-up:** each player's votes record keeps only polls still listed and is deleted when empty. Profession, recipe, kill, vote and character sheet records of characters who left the guild are dropped after 3 days.
 - **Refused packets:** if the game refuses a packet (it limits how fast an addon may send), the queue waits 1.5 seconds and sends it again, so a split message never loses a piece.
 - **Data versions:** each record carries its set's data version (missing means 1). A set that changes its format is defined with a higher `version` and an `upgrade` function: older records are upgraded as they arrive and at load, and a client leaves alone any record from a newer version than it knows.
-- **Quiet in fights:** catch-ups aren't asked for or answered in combat or a raid, and records that arrive in combat are stored after it ends.
+- **Quiet in fights:** catch-ups aren't asked for or answered in combat, a raid or a dungeon, and records that arrive in combat are stored after it ends.
+- **Character sheet (`Sheet.lua`):** one small owner-written record per character (`sheet` set) holds its attunements and keys (quest completion or a key item in the bags, keyring or bank) and its saved raids with reset time and bosses killed: `mc.ony.ubrs;Molten Core:<resetAt>:7:10`. It's read at login, after a quest hand-in, a bag change or a boss kill, and sent only when it changed; reset times are rounded to 5 minutes so a re-read never looks like a change. New per-character facts (resistances, reputations) belong in this record rather than in a set of their own. The Raid page (`RaidTab.lua`) reads it.
 - **Forgery:** if a record arrives claiming to be yours but you didn't write it, your addon sends your real version back with a newer revision.
 
 ## Modules and UI
 
 - Each feature is a module (`ns.RegisterModule`) with `OnLoad` and `OnLogin` hooks, loaded in the order the `.toc` lists them.
+- Every timed job is in one table, `ns.TIMERS` in `Core.lua` (`ns.Later("kills", fn)`). The login jobs are spread from 5 to 15 seconds so the addon never does everything in one frame.
+- A page can be hidden from some players: `AddPage(..., { visible = fn })`. The Officers page (away 30+ days, addon versions) uses it.
+- **Record formats (`Record.lua`):** each shared set registers a codec (`ns.Record.Define(set, { encode, decode, sample })`) built from shared helpers (`Fields`, `Split`, `Clean`, `B36`, `Gaps`). A test round-trips every set's sample, so a set without a codec fails.
+- **Declared settings:** `ns.SETTINGS` in `Core.lua` lists every setting with its default, label and kind (toggle, choice, dropdown, range, hidden). The defaults and the Settings page come from it; features react with `ns.Settings.OnChange(key, fn)`, and `ns.Settings.Set` checks values.
+- **List page builder:** `UI.CreateList` (Widgets.lua) builds every list page: column titles, rows, scrolling and an empty message, plus optional sortable columns (`sort = true` or a function), filter buttons, a search box, a count line and a remembered sort and filter (`save = "raid"`, in `IwTDB.lists`). A page either gives it all its rows (the list filters, searches and sorts) or a `source(state)` function that does that itself (the Roster, whose alt grouping needs it).
+- **Session stats:** at logout `Diag.SessionStats()` (Diagnostics.lua) saves `IwTDB.stats`: numbers only (memory, start-up ms, catch-up counts from `Sync.stats`, Comm traffic counters, errors, records and saved bytes per set, top profiler entries). The site's exporter appends each new one to its `perf.json` history.
 - Pages register themselves into tabs (Home, Chat, Members, Crafting, Guild life), so adding a feature doesn't touch the window code.
 - Guild news (`News.lua`) is never shared: each PC compares the roster with the copy it saw last, so joins, leavers, level 60s and promotions show up even when they happened while you were offline.
 - Redraws are batched (`ns.Coalesce`). A burst of 300 incoming records with a page open costs about 1.5 ms instead of 2.5 s.
-- Every colour lives in one table (`UI.COLORS`). A theme (`Themes.lua`) is another set of those colours, copied in at load before any frame exists, so features never need to know about themes. In every theme but Default, text that would be too faint on the panels is shaded toward the theme's ink colour until it reaches a 4.5:1 contrast.
+- Every colour lives in one table (`UI.COLORS`). A theme (`Themes.lua`) is another set of those colours, copied in at load before any frame exists, so features never need to know about themes. In every theme but Default, text that would be too faint on the panels is shaded toward the theme's ink colour until it reaches a 4.5:1 contrast. Light themes (Kawaii Day, Solarized Light) also carry hand-picked class colours, since darkening the game's own made several classes look alike.
 - The addon never assigns Blizzard's global variables, because one stray assignment "taints" the secure UI and breaks other addons' macros. A test enforces this.
 
-## Guild chat (`Chat.lua`)
+## Guild chat (`Chat.lua`, `ChatHistory.lua`, `ChatOnline.lua`, `ChatBox.lua`)
 
 Chat isn't shared data: it never goes over addon messages, and it's never put in the report or the website.
 

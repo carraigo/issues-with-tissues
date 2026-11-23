@@ -20,15 +20,40 @@ Don.DEFAULT_TITLE = "Guild bank"
 
 local Clean = ns.CleanText
 
+-- Goal record: "id;targetCopper;title;owner" (no owner before 0.6.0)
+function Don.EncodeGoal(g)
+	return string.format("%d;%d;%s;%s", g.id, g.target, Clean(g.title, 40), Clean(g.owner, 60))
+end
+
+function Don.DecodeGoal(data)
+	local id, target, title, owner = ns.Record.Fields(data, 4)
+	if not id then id, target, title = ns.Record.Fields(data, 3) end
+	id, target = tonumber(id), tonumber(target)
+	if not id or not target then return nil end
+	return { id = id, target = target, title = title, owner = owner ~= "" and owner or nil }
+end
+
+-- Donated record: "goalId;copper"
+function Don.EncodeDonated(d) return string.format("%d;%d", d.id, d.copper) end
+function Don.DecodeDonated(data)
+	local id, copper = ns.Record.Fields(data, 2)
+	id, copper = tonumber(id), tonumber(copper)
+	if id and copper then return { id = id, copper = copper } end
+end
+
+ns.Record.Define("dgoal", { encode = Don.EncodeGoal, decode = Don.DecodeGoal,
+	sample = { id = 1795000000, target = 5000000, title = "Guild bank", owner = "Large Joseph" } })
+ns.Record.Define("donated", { encode = Don.EncodeDonated, decode = Don.DecodeDonated,
+	sample = { id = 1795000000, copper = 123456 } })
+
 function Don.Goal()
 	local data, rec = ns.Sync.Get("dgoal", "goal")
-	local id, target, rest = (data or ""):match("^(%d+);(%d+);(.*)$")
-	if not id then return { id = 0, target = 0, title = Don.DEFAULT_TITLE } end
+	local g = Don.DecodeGoal(data)
+	if not g then return { id = 0, target = 0, title = Don.DEFAULT_TITLE } end
 	-- Before 0.6.0 there was no owner field: the officer who wrote it owns it.
-	local title, owner = rest:match("^(.*);([^;]*)$")
-	if not title then title, owner = rest, nil end
-	if not owner or owner == "" then owner = rec and rec.by end
-	return { id = tonumber(id), target = tonumber(target), title = title ~= "" and title or Don.DEFAULT_TITLE, owner = owner }
+	g.owner = g.owner or (rec and rec.by)
+	if g.title == "" then g.title = Don.DEFAULT_TITLE end
+	return g
 end
 
 -- The Guild Master (rank 0) skips the owner's say-so.
@@ -54,7 +79,7 @@ local function Write(title, targetGold, fresh, owner)
 	local target = math.max(0, math.floor((tonumber(targetGold) or 0) * 10000))
 	title = Clean(title, 40)
 	if title == "" then title = g.title end
-	return ns.Sync.Set("dgoal", "goal", string.format("%d;%d;%s;%s", id, target, title, Clean(owner, 60)))
+	return ns.Sync.Set("dgoal", "goal", Don.EncodeGoal({ id = id, target = target, title = title, owner = owner }))
 end
 
 -- Officers: change the goal's title and target (gold). fresh: start a new goal from zero.
@@ -130,8 +155,8 @@ if StaticPopupDialogs then
 end
 
 local function Decode(data)
-	local id, copper = tostring(data or ""):match("^(%d+);(%d+)$")
-	if id then return tonumber(id), tonumber(copper) end
+	local d = Don.DecodeDonated(data)
+	if d then return d.id, d.copper end
 end
 
 function Don.Mine()
@@ -145,7 +170,7 @@ function Don.Add(copper)
 	copper = math.floor(tonumber(copper) or 0)
 	if copper <= 0 then return false end
 	local total = Don.Mine() + copper
-	local ok = ns.Sync.Set("donated", ns.PlayerName(), string.format("%d;%d", Don.Goal().id, total))
+	local ok = ns.Sync.Set("donated", ns.PlayerName(), Don.EncodeDonated({ id = Don.Goal().id, copper = total }))
 	if ok then ns.Print("Thank you! %s noted towards %s.", ns.UI.Money(copper), Don.Goal().title) end
 	return ok
 end
