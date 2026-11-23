@@ -144,7 +144,7 @@ function W.NewClient(baseDir, name, guild, opts)
 	}
 	c.popups = {}
 	env.StaticPopupDialogs = {}
-	env.StaticPopup_Show = function(which, a) table.insert(c.popups, { which = which, arg = a }) end
+	env.StaticPopup_Show = function(which, a, b, data) table.insert(c.popups, { which = which, arg = a, arg2 = b, data = data }) end
 	env.GuildControlGetNumRanks = function() return 5 end
 	env.GuildControlGetRankName = function(i)
 		return ({ "Guild Master", "Officer", "Veteran", "Member", "Initiate" })[i]

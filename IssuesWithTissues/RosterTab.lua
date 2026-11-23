@@ -19,19 +19,14 @@ Tab.COLUMNS = {
 	{ key = "level", label = "Lvl", width = 36 },
 	{ key = "class", label = "Class", width = 80 },
 	{ key = "hk", label = "Honourable kills", width = 110 },
-	{ key = "profs", label = "Professions", width = 180 },
+	{ key = "rankIndex", label = "Rank", width = 90 },
+	{ key = "where", label = "Last seen", width = 90 },
 }
 Tab.state = { filter = "all", sort = "rankIndex", desc = false, groupAlts = true, offset = 0, search = "" }
 
 -- Display name: the roster's own spelling ("Clane Stocious"), without the realm.
 local function Short(key)
 	return ns.Roster.DisplayName(key)
-end
-
-local function ProfText(name)
-	local parts = {}
-	for _, p in ipairs(ns.Professions.Of(name)) do parts[#parts + 1] = p.name .. " " .. p.rank end
-	return table.concat(parts, ", ")
 end
 
 local function Where(m)
@@ -42,7 +37,7 @@ local function Where(m)
 end
 
 -- The rows to show, filtered, grouped and sorted. Each row: the roster entry plus name,
--- alts (when grouped), where, profs.
+-- alts (when grouped), where.
 function Tab.Rows(state)
 	state = state or Tab.state
 	local filter
@@ -115,7 +110,6 @@ function Tab.Rows(state)
 			end
 			table.sort(row.otherAlts)
 			row.where = Where(row)
-			row.profs = ProfText(shown)
 			-- Honorable kills of the character shown; -1 (shown as "-") until it shares them.
 			local k = ns.Kills.Of(shown)
 			row.hk = k and k.hk or -1
@@ -171,6 +165,8 @@ function Tab.Refresh(rebuild)
 					else
 						text = row.name .. (#row.alts > 0 and (" |cff999999+" .. #row.alts .. "|r") or "")
 					end
+				elseif col.key == "rankIndex" then
+					text = row.rank
 				elseif col.key == "hk" then
 					text = row.hk >= 0 and ns.Kills.Format(row.hk) or "|cff666666-|r"
 				else
@@ -295,7 +291,7 @@ local function Build(panel)
 		line:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 		line:SetScript("OnClick", function(self, button)
 			if not self.row then return end
-			if button == "RightButton" then Tab.Whisper(self.row.tell or self.row.full) end
+			if button == "RightButton" then Tab.ShowMenu(self.row, self) end
 		end)
 		line:SetScript("OnEnter", function(self)
 			local r = self.row
@@ -312,7 +308,7 @@ local function Build(panel)
 			for _, p in ipairs(ns.Professions.Of(r.tell or r.full)) do
 				GameTooltip:AddLine(string.format("%s %d/%d", p.name, p.rank, p.max), 0.6, 0.9, 1)
 			end
-			GameTooltip:AddLine("Right-click to whisper", 0.5, 0.5, 0.5)
+			GameTooltip:AddLine("Right-click to whisper, invite" .. (Tab.CanManage() and ", promote or demote" or ""), 0.5, 0.5, 0.5)
 			GameTooltip:Show()
 		end)
 		line:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -326,7 +322,155 @@ local function Build(panel)
 	countText = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	countText:SetPoint("BOTTOMLEFT", 4, 2)
 	panel:SetScript("OnShow", function() ns.Roster.Request(); Tab.Refresh() end)
+	panel:HookScript("OnHide", Tab.HideMenu)
 	Tab.Refresh()
+end
+
+---------------------------------------------------------------------------
+-- Right-click menu: whisper, invite, and for officers promote and demote.
+---------------------------------------------------------------------------
+
+-- Officers and the Guild Master only, and only when the game lets this rank change ranks.
+function Tab.CanManage()
+	local me = ns.Roster.me
+	return me ~= nil and ns.Roster.IsOfficer(me) and ns.Roster.Get(me) ~= nil
+end
+
+local function GameAllows(fn)
+	if type(fn) ~= "function" then return true end -- not in this client: the server decides
+	local ok, yes = pcall(fn)
+	return not ok or yes and true or false
+end
+
+-- What this player may do to a character: can promote, can demote. The game's own rules: never
+-- to your own rank or above, never someone at or above your rank, never below the lowest rank.
+function Tab.RankActions(target)
+	if not Tab.CanManage() then return false, false end
+	local me = ns.Roster.Get(ns.Roster.me)
+	local them = ns.Roster.Get(target)
+	if not them or ns.FullName(target) == ns.Roster.me or them.rankIndex == nil or me.rankIndex == nil then
+		return false, false
+	end
+	local lowest = (GuildControlGetNumRanks and GuildControlGetNumRanks() or 10) - 1
+	local promote = them.rankIndex - 1 > me.rankIndex
+		and GameAllows(CanGuildPromote or (C_GuildInfo and C_GuildInfo.CanGuildPromote))
+	local demote = them.rankIndex > me.rankIndex and them.rankIndex < lowest
+		and GameAllows(CanGuildDemote or (C_GuildInfo and C_GuildInfo.CanGuildDemote))
+	return promote, demote
+end
+
+local function RankName(index)
+	return GuildControlGetRankName and GuildControlGetRankName(index + 1) or ("rank " .. (index + 1))
+end
+
+-- Ask first ("Promote Sara Exe to Officer?"); the change happens on Yes.
+function Tab.AskRank(target, up)
+	local promote, demote = Tab.RankActions(target)
+	if (up and not promote) or (not up and not demote) then return false end
+	local them = ns.Roster.Get(target)
+	local to = RankName(them.rankIndex + (up and -1 or 1))
+	if StaticPopup_Show then
+		StaticPopup_Show(up and "IWT_PROMOTE" or "IWT_DEMOTE", ns.Roster.DisplayName(target), to,
+			{ target = ns.FullName(target), up = up })
+	end
+	return true
+end
+
+-- The change itself. The server finds the character by "First Surname", as for whispers.
+-- Checked again here: the roster may have changed while the question was open.
+function Tab.ChangeRank(target, up)
+	local promote, demote = Tab.RankActions(target)
+	if (up and not promote) or (not up and not demote) then return false end
+	local fn = up and (GuildPromote or (C_GuildInfo and C_GuildInfo.Promote))
+		or (GuildDemote or (C_GuildInfo and C_GuildInfo.Demote))
+	if type(fn) ~= "function" then
+		ns.Print("This game client can't change ranks from an addon. Use the guild window instead.")
+		return false
+	end
+	local ok, err = pcall(fn, ns.Roster.DisplayName(target))
+	if not ok then
+		ns.Print("Couldn't change %s's rank. Use the guild window instead.", ns.Roster.DisplayName(target))
+		if ns.ReportError then ns.ReportError("rank change: " .. tostring(err)) end
+		return false
+	end
+	ns.Roster.Request()
+	return true
+end
+
+if StaticPopupDialogs then
+	for which, verb in pairs({ IWT_PROMOTE = "Promote", IWT_DEMOTE = "Demote" }) do
+		StaticPopupDialogs[which] = {
+			text = verb .. " %s to %s?",
+			button1 = YES or "Yes",
+			button2 = NO or "No",
+			OnAccept = function(_, data) if data then Tab.ChangeRank(data.target, data.up) end end,
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+		}
+	end
+end
+
+local menu
+function Tab.HideMenu()
+	if menu then menu:Hide() end
+end
+
+-- The menu's entries for a row: { label, action }. Officers' entries only when allowed.
+function Tab.MenuItems(row)
+	local who = row.tell or row.full
+	local items = {
+		{ "Whisper", function() Tab.Whisper(who) end },
+		{ "Invite to group", function() ns.UI.Invite(who) end },
+	}
+	local promote, demote = Tab.RankActions(who)
+	local them = ns.Roster.Get(who)
+	if promote then
+		items[#items + 1] = { "Promote to " .. RankName(them.rankIndex - 1), function() Tab.AskRank(who, true) end }
+	end
+	if demote then
+		items[#items + 1] = { "Demote to " .. RankName(them.rankIndex + 1), function() Tab.AskRank(who, false) end }
+	end
+	return items
+end
+
+function Tab.ShowMenu(row, line)
+	if not Tab.panel then return end
+	if not menu then
+		menu = CreateFrame("Frame", nil, Tab.panel)
+		menu:SetFrameStrata("DIALOG")
+		menu:EnableMouse(true)
+		ns.UI.Skin(menu)
+		menu.title = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		menu.title:SetPoint("TOPLEFT", 8, -6)
+		menu.buttons = {}
+		-- Closes once the mouse has been away from it for a moment.
+		menu:SetScript("OnUpdate", function(self, elapsed)
+			if self.IsMouseOver and self:IsMouseOver() then self.away = 0 return end
+			self.away = (self.away or 0) + (elapsed or 0)
+			if self.away > 1 then self:Hide() end
+		end)
+	end
+	local items = Tab.MenuItems(row)
+	menu.title:SetText(row.name)
+	for i, item in ipairs(items) do
+		local b = menu.buttons[i]
+		if not b then
+			b = ns.UI.Button(menu, "", 150, 20)
+			b:SetPoint("TOPLEFT", 6, -6 - i * 22)
+			menu.buttons[i] = b
+		end
+		b:SetText(item[1])
+		b:SetScript("OnClick", function() menu:Hide(); item[2]() end)
+		b:Show()
+	end
+	for i = #items + 1, #menu.buttons do menu.buttons[i]:Hide() end
+	menu:SetSize(162, 12 + (#items + 1) * 22)
+	menu:ClearAllPoints()
+	menu:SetPoint("TOPLEFT", line or Tab.panel, "TOPLEFT", line and 180 or 200, line and -4 or -60)
+	menu.away, menu.row = 0, row
+	menu:Show()
+	return items
 end
 
 ns.UI.AddPage("Members", "Roster", Build, { order = 10 })

@@ -1,9 +1,9 @@
-## Interface: 16001, 16002, 16003, 16004, 16005, 16010, 16100
+## Interface: 16001, 11509, 16002, 16003, 16004, 16005, 16010, 16100
 ## Title: |cff7fd4ffIssues with Tissues|r
 ## Notes: Guild tools for Issues with Tissues on WoW: Forever.
 ## Author: Issues with Tissues
 ## IconTexture: Interface\Icons\INV_Misc_Bandage_15
-## Version: 1.0.2
+## Version: 1.1.0
 ## X-Website: https://github.com/carraigo/issues-with-tissues
 ## SavedVariables: IwTDB
 ## SavedVariablesPerCharacter: IwTCharDB

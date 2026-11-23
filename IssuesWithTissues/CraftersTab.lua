@@ -224,7 +224,7 @@ local function Build(panel)
 	Crafters.Refresh()
 end
 
-ns.UI.AddPage("Members", "Crafters", Build, { order = 20 })
+ns.UI.AddPage("Crafting", "Crafters", Build)
 local Soon = ns.Coalesce(function() Crafters.Refresh() end)
 ns.Listen("SYNC_CHANGED", function(set) if set == "recipes" or set == "profs" then Soon() end end)
 ns.Listen("ROSTER_UPDATED", Soon)

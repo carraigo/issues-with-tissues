@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0
+
+- **Crafting tab:** Crafters has its own tab, between Members and Guild life, so Members is just the roster.
+- **Roster:** the Professions column is replaced by Rank and Last seen (where someone is, or how long ago they were on). Both sort. Professions still show when you hover over someone.
+- **Right-click menu on the roster:** whisper or invite to group. Officers and the Guild Master also get Promote and Demote, following the game's rules (never to your own rank or above). Each asks before changing anything.
+- The TOC also lists interface 11509, so CurseForge's packager can match the file to a game version.
+
 ## 1.0.2
 
 - New versions are packaged for CurseForge automatically when they're tagged (`.pkgmeta`), so the CurseForge app picks up updates. The package holds only the addon folder.

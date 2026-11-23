@@ -42,7 +42,7 @@ Every feature that shares data defines a *set*. Each set has a rule for who may 
 ## Modules and UI
 
 - Each feature is a module (`ns.RegisterModule`) with `OnLoad` and `OnLogin` hooks, loaded in the order the `.toc` lists them.
-- Pages register themselves into tabs (Home, Chat, Members, Guild life), so adding a feature doesn't touch the window code.
+- Pages register themselves into tabs (Home, Chat, Members, Crafting, Guild life), so adding a feature doesn't touch the window code.
 - Redraws are batched (`ns.Coalesce`). A burst of 300 incoming records with a page open costs about 1.5 ms instead of 2.5 s.
 - Every colour lives in one table (`UI.COLORS`). A theme (`Themes.lua`) is another set of those colours, copied in at load before any frame exists, so features never need to know about themes. In every theme but Default, text that would be too faint on the panels is shaded toward the theme's ink colour until it reaches a 4.5:1 contrast.
 - The addon never assigns Blizzard's global variables, because one stray assignment "taints" the secure UI and breaks other addons' macros. A test enforces this.
