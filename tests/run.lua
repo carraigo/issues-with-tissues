@@ -462,7 +462,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster),Crafting(Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -538,6 +538,49 @@ test("alt link: No is remembered per character; outside the guild nothing is off
 	eq(#again.popups, 1, "/iwt alt ask offers again")
 	local stranger = W.NewClient(base, "Elsewhere", g, { account = main })
 	eq(stranger.ns.Alts.CheckPending(), false, "not in the guild")
+end)
+
+test("roster: officers and the Guild Master can promote and demote, following the game's rules", function()
+	local gm = W.NewClient(base, "Gm", Guild2())
+	local off = W.NewClient(base, "Offi", Guild2())
+	local mem = W.NewClient(base, "Mem", Guild2())
+	local function Acts(c, who) local p, d = c.ns.RosterTab.RankActions(who); return tostring(p) .. "," .. tostring(d) end
+	-- Guild Master: anyone below Officer can go up; nobody goes below the lowest rank
+	eq(Acts(gm, "Offi"), "false,true", "nobody becomes a second Guild Master")
+	eq(Acts(gm, "Vet"), "true,true")
+	eq(Acts(gm, "Gone"), "true,false", "already the lowest rank")
+	eq(Acts(gm, "Gm"), "false,false", "not yourself")
+	-- Officer: never to their own rank, never someone at or above it
+	eq(Acts(off, "Vet"), "false,true")
+	eq(Acts(off, "Mem"), "true,true")
+	eq(Acts(off, "Gm"), "false,false")
+	-- Members see neither, and their menu is whisper and invite only
+	eq(mem.ns.RosterTab.CanManage(), false)
+	eq(Acts(mem, "Gone"), "false,false")
+	eq(#mem.ns.RosterTab.MenuItems({ full = "Gone", name = "Gone" }), 2)
+	-- The game's own permission wins
+	gm.env.CanGuildPromote = function() return false end
+	eq(Acts(gm, "Vet"), "false,true")
+	gm.env.CanGuildPromote = nil
+	-- The menu, the question, then the change
+	gm.ns.UI.Open("Roster")
+	local items = gm.ns.RosterTab.ShowMenu({ full = "Vet", name = "Vet" })
+	eq(#items, 4); eq(items[3][1], "Promote to Officer"); eq(items[4][1], "Demote to Member")
+	items[3][2]()
+	local pop = gm.popups[#gm.popups]
+	eq(pop.which, "IWT_PROMOTE"); eq(pop.arg, "Vet"); eq(pop.arg2, "Officer")
+	local promoted
+	gm.env.GuildPromote = function(name) promoted = name end
+	gm.env.StaticPopupDialogs.IWT_PROMOTE.OnAccept(nil, pop.data)
+	eq(promoted, "Vet")
+	-- No demote function in this client: says so, changes nothing
+	eq(gm.ns.RosterTab.ChangeRank("Vet", false), false)
+	-- Members can't get there even by calling it directly
+	mem.env.GuildPromote = function() error("should not be called") end
+	eq(mem.ns.RosterTab.AskRank("Gone", true), false)
+	eq(mem.ns.RosterTab.ChangeRank("Gone", true), false)
+	gm.ns.RosterTab.HideMenu()
+	eq(#gm.env.IwTDB.errors, 0); eq(#mem.env.IwTDB.errors, 0)
 end)
 
 test("roster: online on an alt shows that alt with the main beside it", function()
@@ -802,7 +845,9 @@ test("guild kills: each character shares its kills and Home adds them up", funct
 	eq(elite.who, "Mem"); eq(elite.hk, 12)
 	local rows = mem.ns.RosterTab.Rows({ filter = "all", sort = "hk", desc = true, groupAlts = false })
 	eq(rows[1].name, "Mem"); eq(rows[1].hk, 12); eq(rows[2].hk, 3); eq(rows[3].hk, -1, "Gone hasn't shared")
-	for _, col in ipairs(mem.ns.RosterTab.COLUMNS) do assert(col.key ~= "rankIndex" and col.key ~= "where", "rank and zone columns are gone") end
+	local keys = {}
+	for _, col in ipairs(mem.ns.RosterTab.COLUMNS) do keys[#keys + 1] = col.key end
+	eq(table.concat(keys, ","), "name,level,class,hk,rankIndex,where", "professions moved to the Crafting tab (1.1.0)")
 	mem.ns.UI.Open("Roster")
 	mem.ns.GeneralTab.Refresh()
 	eq(#mem.env.IwTDB.errors, 0)
@@ -913,7 +958,7 @@ test("home: what's on shows open polls and the donation goal; the calendar is go
 	eq(f.nextEvent, nil); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
 	mem.ns.UI.Toggle()
 	mem.ns.GeneralTab.Refresh()
-	eq(mem.ns.UI.tabs[4].title, "Guild life"); eq(mem.ns.UI.tabs[5], nil, "no Hop tab since 0.9.0")
+	eq(mem.ns.UI.tabs[5].title, "Guild life"); eq(mem.ns.UI.tabs[6], nil, "no Hop tab since 0.9.0")
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
@@ -1066,17 +1111,19 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 	local UI = c.ns.UI
 	UI.Open("Crafters")
 	eq(c.ns.CraftersTab.panel:IsShown(), true)
-	eq(UI.tabs[UI.current].title, "Members")
+	eq(UI.tabs[UI.current].title, "Crafting")
+	UI.Open("Donations")
+	eq(UI.tabs[UI.current].title, "Guild life")
 	UI.Open("Home")
-	UI.SelectTab(3) -- Members again: back on Crafters
-	eq(UI.tabs[3].pages[UI.tabs[3].current].title, "Crafters")
-	eq(c.env.IwTDB.window.pages.Members, "Crafters", "remembered across sessions")
+	UI.SelectTab(5) -- Guild life again: back on Donations
+	eq(UI.tabs[5].pages[UI.tabs[5].current].title, "Donations")
+	eq(c.env.IwTDB.window.pages["Guild life"], "Donations", "remembered across sessions")
 	UI.Open("Settings")
 	eq(UI.settings.panel:IsShown(), true)
-	eq(UI.tabs[3].frame:IsShown(), false)
+	eq(UI.tabs[5].frame:IsShown(), false)
 	UI.cog:GetScript("OnClick")()
 	UI.Open("Polls")
-	eq(UI.tabs[4].title, "Guild life"); eq(UI.tabs[4].frame:IsShown(), true)
+	eq(UI.tabs[5].title, "Guild life"); eq(UI.tabs[5].frame:IsShown(), true)
 	eq(#c.env.IwTDB.errors, 0)
 end)
 

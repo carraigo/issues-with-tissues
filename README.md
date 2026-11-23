@@ -18,9 +18,8 @@ Open it with `/iwt`, the minimap button, the **Tissues** button on the guild win
 
 - **Home**: the guild at a glance (members online, players with alts counted once, how many use the addon, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
 - **Chat**: guild and officer chat in the window, with item links, class colours, a Newest button when you've scrolled up, and a list of who's online by rank. Earlier chat loads from the game's own guild chat history, and the addon keeps a copy of the last 300 lines on your PC (never shared with anyone).
-- **Members**
-  - **Roster**: the whole guild with level, class, honourable kills and professions, a name search, filters (online, away 7, 14 or 30 days) and alts grouped under their main.
-  - **Crafters**: search who can make an item, or browse by profession. Only crafting professions are tracked (Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring and Cooking).
+- **Members**: the whole guild with level, class, honourable kills, rank and when they were last on, a name search, filters (online, away 7, 14 or 30 days) and alts grouped under their main. Right-click someone to whisper or invite them. Officers can also promote and demote from here.
+- **Crafting**: search who can make an item, or browse by profession. Only crafting professions are tracked (Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring and Cooking).
 - **Guild life**
   - **Polls**: officers ask, everyone votes once.
   - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically. Only the officer who set a goal can change it, or allow another officer to. The Guild Master can always change it.

@@ -10,6 +10,11 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.1.0", lines = {
+		"Crafters has its own Crafting tab.",
+		"The roster shows rank and when people were last on. Right-click someone to whisper or invite them.",
+		"Officers can promote and demote from the roster's right-click menu.",
+	} },
 	{ version = "1.0.2", lines = {
 		"New versions now reach CurseForge automatically, so the CurseForge app keeps the addon up to date.",
 	} },
@@ -48,7 +53,8 @@ Welcome.WELCOME = {
 	"Everything for the guild in one window. Open it with /iwt, the minimap button, or a key (Key Bindings, Issues with Tissues).",
 	"Home: the guild at a glance and your professions.",
 	"Chat: guild and officer chat, and who's online.",
-	"Members: the roster and who can craft what.",
+	"Members: the roster. Officers can promote and demote from it.",
+	"Crafting: who can craft what.",
 	"Guild life: polls, donations and loot notes.",
 	"The cog opens Settings, with themes. Everything is shared only with guildmates who run the addon.",
 }

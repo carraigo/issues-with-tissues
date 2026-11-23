@@ -1,4 +1,4 @@
--- The main window: four tabs along the bottom (Home, Chat, Members, Guild life), each holding
+-- The main window: five tabs along the bottom (Home, Chat, Members, Crafting, Guild life), each holding
 -- pages behind a row of sub-tabs, and Settings behind the cog in the title bar. Features add a
 -- page with ns.UI.AddPage("Members", "Roster", function(panel) ... end); the builder runs the
 -- first time the page is shown. A tab with no pages is not shown. Also the window's sounds,
@@ -12,7 +12,7 @@ ns.UI = UI
 
 -- The tabs, in order. UI.tabs is the ones with pages, set when the window is made.
 UI.groups = {}
-for _, title in ipairs({ "Home", "Chat", "Members", "Guild life" }) do
+for _, title in ipairs({ "Home", "Chat", "Members", "Crafting", "Guild life" }) do
 	UI.groups[#UI.groups + 1] = { title = title, pages = {} }
 end
 UI.tabs = {}
