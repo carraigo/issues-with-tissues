@@ -10,6 +10,8 @@ Settings.toggles = {
 	{ key = "minimap", label = "Show the minimap button", onChange = function() ns.UI.UpdateMinimapButton() end },
 	{ key = "guildButton", label = "Show the button on the guild window", onChange = function() ns.UI.UpdateGuildButton() end },
 	{ key = "sounds", label = "Play alert sounds" },
+	{ key = "windowSounds", label = "Sounds when the window opens and closes" },
+	{ key = "hideInCombat", label = "Hide the window in combat (back after)" },
 	{ key = "debug", label = "Print addon errors in chat" },
 }
 
@@ -32,9 +34,12 @@ local function Build(panel)
 	title:SetPoint("TOPLEFT", 4, y)
 	title:SetText("Settings")
 	y = y - 30
-	for _, t in ipairs(Settings.toggles) do
+	-- Toggles in two columns.
+	local half = math.ceil(#Settings.toggles / 2)
+	for i, t in ipairs(Settings.toggles) do
 		local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-		cb:SetPoint("TOPLEFT", 0, y)
+		local col, row = i > half and 1 or 0, (i - 1) % half
+		cb:SetPoint("TOPLEFT", col * 308, y - row * 28)
 		local label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
 		label:SetText(t.label)
@@ -43,8 +48,9 @@ local function Build(panel)
 			ns.db.settings[t.key] = self:GetChecked() and true or false
 			if t.onChange then t.onChange(ns.db.settings[t.key]) end
 		end)
-		y = y - 28
+		t.check = cb
 	end
+	y = y - half * 28
 
 	-- Theme: one button per theme; the change shows after a reload.
 	y = y - 8
@@ -78,6 +84,39 @@ local function Build(panel)
 	reload:SetScript("OnClick", function() if ReloadUI then ReloadUI() end end)
 	MarkThemes()
 	y = y - 28
+
+	-- Window size: applied when the slider is let go, so the window doesn't resize under the mouse.
+	local sizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	sizeLabel:SetPoint("TOPLEFT", 4, y)
+	sizeLabel:SetText("Window size")
+	local slider = CreateFrame("Slider", nil, panel)
+	slider:SetPoint("LEFT", sizeLabel, "RIGHT", 16, 0)
+	slider:SetSize(220, 16)
+	slider:SetOrientation("HORIZONTAL")
+	slider:SetMinMaxValues(ns.UI.SCALE_MIN * 100, ns.UI.SCALE_MAX * 100)
+	slider:SetValueStep(5)
+	if slider.SetObeyStepOnDrag then slider:SetObeyStepOnDrag(true) end
+	local track = ns.UI.Fill(slider:CreateTexture(nil, "BACKGROUND"), ns.UI.COLORS.dim)
+	track:SetPoint("LEFT"); track:SetPoint("RIGHT"); track:SetHeight(4)
+	local thumb = ns.UI.Fill(slider:CreateTexture(nil, "OVERLAY"), ns.UI.COLORS.edge)
+	thumb:SetSize(10, 16)
+	slider:SetThumbTexture(thumb)
+	local sizeText = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	sizeText:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+	local reset = ns.UI.Button(panel, "100%", 50, 20)
+	reset:SetPoint("LEFT", sizeText, "RIGHT", 10, 0)
+	local function Apply(v) sizeText:SetText(math.floor(ns.UI.SetScale(v / 100) * 100 + 0.5) .. "%") end
+	slider:SetScript("OnValueChanged", function(_, v)
+		sizeText:SetText(math.floor(v / 5 + 0.5) * 5 .. "%")
+		if not slider.dragging then Apply(v) end
+	end)
+	slider:SetScript("OnMouseDown", function() slider.dragging = true end)
+	slider:SetScript("OnMouseUp", function() slider.dragging = false; Apply(slider:GetValue()) end)
+	reset:SetScript("OnClick", function() slider:SetValue(100); Apply(100) end)
+	slider:SetValue((ns.db.settings.scale or 1) * 100)
+	sizeText:SetText(math.floor((ns.db.settings.scale or 1) * 100 + 0.5) .. "%")
+	Settings.scaleSlider = slider
+	y = y - 30
 
 	y = y - 10
 	local officers = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -113,3 +152,9 @@ end
 ns.UI.SetSettings(Build)
 
 ns.RegisterCommand("settings", "open the settings", function() ns.UI.Open("Settings") end)
+ns.RegisterCommand("scale", "window size in percent: /iwt scale 90 (70 to 130)", function(rest)
+	local v = tonumber((rest or ""):match("%d+"))
+	if not v then return ns.Print("Window size: %d%%. Type /iwt scale 70 to 130.", math.floor((ns.db.settings.scale or 1) * 100 + 0.5)) end
+	ns.Print("Window size: %d%%.", math.floor(ns.UI.SetScale(v / 100) * 100 + 0.5))
+	if Settings.scaleSlider then Settings.scaleSlider:SetValue(ns.db.settings.scale * 100) end
+end)

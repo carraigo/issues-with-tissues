@@ -4,7 +4,7 @@
 [![Latest release](https://img.shields.io/github/v/release/carraigo/issues-with-tissues?label=release)](https://github.com/carraigo/issues-with-tissues/releases/latest)
 ![WoW: Forever](https://img.shields.io/badge/WoW-Forever%201.60-c79a3c)
 
-A guild addon for the Issues with Tissues guild on WoW: Forever. It puts guild chat, the roster, crafters, layer hopping, polls and donations in one window, and shares everything between guildmates who run it.
+A guild addon for the Issues with Tissues guild on WoW: Forever. It puts guild chat, the roster, crafters, polls and donations in one window, and shares everything between guildmates who run it.
 
 ## Install
 
@@ -17,16 +17,17 @@ Open it with `/iwt`, the minimap button, the **Tissues** button on the guild win
 ## Features
 
 - **Home**: the guild at a glance (members online, players with alts counted once, how many use the addon, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
-- **Chat**: guild and officer chat in the window, with item links, class colours and a list of who's online by rank. Earlier chat loads from the game's own guild chat history, and the addon keeps a copy of the last 300 lines on your PC (never shared with anyone).
+- **Chat**: guild and officer chat in the window, with item links, class colours, a Newest button when you've scrolled up, and a list of who's online by rank. Earlier chat loads from the game's own guild chat history, and the addon keeps a copy of the last 300 lines on your PC (never shared with anyone).
 - **Members**
-  - **Roster**: the whole guild with level, class, honourable kills and professions, filters (online, away 7, 14 or 30 days) and alts grouped under their main.
-  - **Crafters**: search who can make an item, or browse by profession.
-- **Hop**: see which layer you and guildmates are on, and ask a guildmate for a layer-hop invite.
+  - **Roster**: the whole guild with level, class, honourable kills and professions, a name search, filters (online, away 7, 14 or 30 days) and alts grouped under their main.
+  - **Crafters**: search who can make an item, or browse by profession. Only crafting professions are tracked (Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring and Cooking).
 - **Guild life**
   - **Polls**: officers ask, everyone votes once.
-  - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically. Only the officer who set a goal can change it, or allow another officer to.
+  - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically. Only the officer who set a goal can change it, or allow another officer to. The Guild Master can always change it.
   - **Loot notes**: a shared record of who received which item.
-- **Settings** (the cog): themes (Default, Kawaii Night, Kawaii Day, Midnight, High contrast), the minimap and guild window buttons, alert sounds, layer-hop requests, saving chat between sessions, and the bug report, profiler, self-test and diagnostics report.
+- **Settings** (the cog): themes (Default, Kawaii Night, Kawaii Day, Midnight, High contrast), window size, the minimap and guild window buttons, alert and window sounds, hiding the window in combat, saving chat between sessions, 12 or 24-hour chat times, and the bug report, profiler, self-test and diagnostics report.
+
+Ctrl+F jumps to the search on Roster, Crafters and Loot notes, and Enter picks the first result.
 
 Officers (Guild Master and Officer ranks) can add polls, donation goals and loot notes. Everyone else can read them and take part.
 
@@ -38,14 +39,13 @@ The addon only talks to guildmates, over hidden guild addon messages.
 | --- | --- |
 | `/iwt` | open or close the window |
 | `/iwt settings` | open the settings |
+| `/iwt scale 90` | window size in percent (70 to 130) |
 | `/iwt chat` | open guild chat |
 | `/iwt roster` | open the roster |
 | `/iwt inactive 7\|14\|30` | members away that many days or more |
 | `/iwt alt main` · `/iwt alt add Name` · `/iwt alt remove Name` · `/iwt alt` | set this character as your main, link an alt, unlink it, or list your links |
 | `/iwt craft <name>` | who in the guild can make an item |
-| `/iwt layer` | your layer and guildmates' layers |
-| `/iwt hop Name` | ask a guildmate for a layer-hop invite |
-| `/iwt bug` | copyable bug report |
+| `/iwt bug` | copyable bug report, with memory use |
 | `/iwt selftest` | check the addon works on your client |
 | `/iwt perf on\|off\|reset` · `/iwt perf` | turn the profiler on or off, reset it, or show its report |
 | `/iwt report` | diagnostics report to send (paste it at [iwt-stats](https://carraigo.github.io/iwt-stats/#report)) |

@@ -10,6 +10,13 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "0.9.0", lines = {
+		"Layer hopping is gone: Blizzard turns it off after 25 November.",
+		"Settings: window size, window sounds, hide the window in combat, and 12 or 24-hour chat times.",
+		"Ctrl+F jumps to the search on Roster, Crafters and Loot notes. Enter picks the first result.",
+		"Scrolled up in chat? A Newest button shows how many lines came in and takes you back down.",
+		"Professions list only the crafting ones, and the addon is quicker to log in and search.",
+	} },
 	{ version = "0.8.2", lines = {
 		"This card now fits its text, so the buttons no longer cover the last lines.",
 	} },
@@ -31,7 +38,6 @@ Welcome.WELCOME = {
 	"Home: the guild at a glance and your professions.",
 	"Chat: guild and officer chat, and who's online.",
 	"Members: the roster and who can craft what.",
-	"Hop: layers, and asking a guildmate for an invite.",
 	"Guild life: polls, donations and loot notes.",
 	"The cog opens Settings, with themes. Everything is shared only with guildmates who run the addon.",
 }

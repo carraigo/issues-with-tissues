@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "0.8.2"
+ns.VERSION = "0.9.0"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
@@ -15,9 +15,12 @@ ns.DEFAULTS = {
 		sounds = true,
 		officerMaxRank = 1,    -- rankIndex 0 = Guild Master, 1 = Officer (game ranks 1 and 2)
 		debug = false,
-		hopRequests = true,    -- let guildmates ask you for a layer-hop invite
 		chatHistory = true,    -- keep guild chat between sessions (this PC only)
 		theme = "default",     -- window colours (Themes.lua), applied at /reload
+		windowSounds = true,   -- a sound when the window opens, closes or changes tab
+		scale = 1,             -- window size, 0.7 to 1.3
+		hideInCombat = false,  -- hide the window when combat starts, back after
+		clock24 = true,        -- chat times as 14:05 (false: 2:05pm)
 	},
 	minimapAngle = 220,
 	errors = {},               -- Diagnostics
@@ -141,14 +144,48 @@ function ns.RegisterModule(name, mod)
 	return mod
 end
 
+-- How long each module's OnLoad and OnLogin took, in ms (shown in /iwt bug and /iwt perf).
+ns.startup = { OnLoad = {}, OnLogin = {} }
+local clock = debugprofilestop or function() return os.clock() * 1000 end
+
 local function EachModule(method, ...)
+	local times = ns.startup[method]
 	for _, name in ipairs(ns.moduleOrder) do
 		local mod = ns.modules[name]
 		if type(mod[method]) == "function" then
+			local start = clock()
 			local ok, err = pcall(mod[method], mod, ...)
+			if times then times[name] = clock() - start end
 			if not ok and ns.ReportError then ns.ReportError(name .. "." .. method .. ": " .. tostring(err)) end
 		end
 	end
+end
+
+-- "OnLoad 4.1 ms, OnLogin 0.6 ms; slowest: Chat 2.3, Sync 1.1"
+function ns.StartupText()
+	local parts, all = {}, {}
+	for _, method in ipairs({ "OnLoad", "OnLogin" }) do
+		local total = 0
+		for name, ms in pairs(ns.startup[method]) do
+			total = total + ms
+			all[name] = (all[name] or 0) + ms
+		end
+		parts[#parts + 1] = string.format("%s %.1f ms", method, total)
+	end
+	local list = {}
+	for name, ms in pairs(all) do list[#list + 1] = { name = name, ms = ms } end
+	table.sort(list, function(a, b) return a.ms > b.ms end)
+	local slow = {}
+	for i = 1, math.min(3, #list) do slow[i] = string.format("%s %.1f", list[i].name, list[i].ms) end
+	return table.concat(parts, ", ") .. (#slow > 0 and ("; slowest: " .. table.concat(slow, ", ")) or "")
+end
+
+-- This addon's memory in KB (the game's count; refreshing it costs a moment, so only on demand).
+function ns.MemoryKB()
+	if not (UpdateAddOnMemoryUsage and GetAddOnMemoryUsage) then return nil end
+	pcall(UpdateAddOnMemoryUsage)
+	local ok, kb = pcall(GetAddOnMemoryUsage, ns.ADDON)
+	return ok and type(kb) == "number" and kb or nil
 end
 ns.EachModule = EachModule
 
@@ -157,6 +194,7 @@ ns.On("ADDON_LOADED", function(_, name)
 	IwTDB = CopyDefaults(type(IwTDB) == "table" and IwTDB or {}, ns.DEFAULTS)
 	IwTCharDB = CopyDefaults(type(IwTCharDB) == "table" and IwTCharDB or {}, ns.CHAR_DEFAULTS)
 	ns.db, ns.char = IwTDB, IwTCharDB
+	IwTDB.settings.hopRequests = nil -- layer hopping was removed in 0.9.0
 	EachModule("OnLoad")
 end)
 

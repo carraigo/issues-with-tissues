@@ -378,11 +378,12 @@ test("professions: skills are shared with the guild", function()
 	local g = Guild2()
 	local mem = W.NewClient(base, "Mem", g)
 	local gm = W.NewClient(base, "Gm", g)
-	mem.skills = { { "Tailoring", 225, 300 }, { "First Aid", 150, 150 } }
+	mem.skills = { { "Tailoring", 225, 300 }, { "First Aid", 150, 150 }, { "Cooking", 75, 150 }, { "Mining", 100, 150 } }
 	assert(mem.ns.Professions.UpdateSkills())
 	local p = gm.ns.Professions.Of("Mem")
-	eq(#p, 2)
-	eq(p[1].name, "First Aid"); eq(p[2].name, "Tailoring"); eq(p[2].rank, 225)
+	eq(#p, 2, "only crafting professions (0.9.0)")
+	eq(p[1].name, "Cooking"); eq(p[2].name, "Tailoring"); eq(p[2].rank, 225)
+	eq(mem.ns.Sync.Get("profs", "Mem"), "Cooking:75:150,Tailoring:225:300", "gathering ones aren't shared")
 	eq(mem.ns.Professions.UpdateSkills(), false, "unchanged skills are not sent again")
 end)
 
@@ -461,7 +462,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Crafters),Hop(Layers),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -638,8 +639,8 @@ test("general tab: guild overview, this character and its professions", function
 	eq(f.guild, "Issues with Tissues")
 	eq(f.members, 4); eq(f.online, 2); eq(f.players, 3, "alt counted once"); eq(f.away30, 1)
 	eq(f.isMain, true); eq(f.accountMain, "Mem"); eq(f.alts[1], "Memalt")
-	eq(#f.profs, 2)
-	eq(f.profs[1].recipes, nil); eq(f.profs[2].noRecipes, true)
+	eq(#f.profs, 1, "Skinning isn't tracked")
+	eq(f.profs[1].name, "Tailoring"); eq(f.profs[1].recipes, nil)
 	local fa = alt.ns.GeneralTab.Facts()
 	eq(fa.isMain, false); eq(fa.main, "Mem"); eq(fa.alts[1], "Mem (main)")
 	-- The window opens on General without errors
@@ -676,10 +677,10 @@ test("same first name: two Saras are two characters everywhere", function()
 	eq(exe.ns.PlayerName(), "Sara Exe"); eq(best.ns.PlayerName(), "Sara Best")
 	eq(exe.ns.Roster.meHow, "guid")
 	exe.skills = { { "Tailoring", 100, 150 } }
-	best.skills = { { "Mining", 50, 75 } }
+	best.skills = { { "Alchemy", 50, 75 } }
 	assert(exe.ns.Professions.UpdateSkills()); assert(best.ns.Professions.UpdateSkills())
 	eq(gm.ns.Professions.Of("Sara Exe")[1].name, "Tailoring")
-	eq(gm.ns.Professions.Of("Sara Best")[1].name, "Mining")
+	eq(gm.ns.Professions.Of("Sara Best")[1].name, "Alchemy")
 	local rows = gm.ns.RosterTab.Rows({ filter = "all", groupAlts = true, sort = "name" })
 	local names = {}
 	for _, r in ipairs(rows) do names[r.name] = true end
@@ -731,13 +732,13 @@ test("names: 0.2 saved data keyed by first name becomes first name and surname",
 	local c = W.NewClient(base, "Magia Musculorum", g)
 	local db = c.env.IwTDB
 	db.sync.alts = { records = { Clane = { rev = 1, data = "Large", by = "Clane" } } }
-	db.sync.profs = { records = { Large = { rev = 1, data = "Mining:195:225", by = "Large" } } }
+	db.sync.profs = { records = { Large = { rev = 1, data = "Alchemy:195:225", by = "Large" } } }
 	db.sync.recipes = { records = { ["Magia#Cooking"] = { rev = 1, data = "2681:Roasted Boar Meat", by = "Magia" } } }
 	db.accountMain = "Large"
 	db.altPending = { Clane = { main = "Large", at = 1 } }
 	c.ns.Sync.MigrateNames(); c.ns.Alts.MigrateNames()
 	eq(c.ns.Alts.MainOf("Clane Stocious"), "Large Joseph")
-	eq(c.ns.Professions.Of("Large Joseph")[1].name, "Mining")
+	eq(c.ns.Professions.Of("Large Joseph")[1].name, "Alchemy")
 	eq(c.ns.Professions.SharedCount("Cooking"), 1)
 	eq(db.accountMain, "Large Joseph")
 	assert(db.altPending["Clane Stocious"]); eq(db.altPending["Clane Stocious"].main, "Large Joseph")
@@ -837,7 +838,7 @@ test("donations: officers set and edit the goal, deposits are noted, a new goal 
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
-test("donations: only the officer who set the goal changes it, unless they allow it", function()
+test("donations: only the officer who set the goal changes it, unless they allow it or the Guild Master does", function()
 	local g = { members = { { "Mem", 3, true }, { "Gm", 0, true }, { "Off", 1, true } } }
 	local mem = W.NewClient(base, "Mem", g)
 	local gm = W.NewClient(base, "Gm", g)
@@ -859,7 +860,11 @@ test("donations: only the officer who set the goal changes it, unless they allow
 	local goal = mem.ns.Donations.Goal()
 	eq(goal.title, "Mounts"); eq(goal.target, 1000 * 10000); eq(goal.owner, "Off", "handed over")
 	assert(off.ns.Donations.SetGoal("Mounts", 1200))
-	eq(select(2, gm.ns.Donations.SetGoal("Back to bank", 5)), "owned", "now Gm has to ask")
+	-- The Guild Master can always change it (0.9.0) and then owns it; officers still have to ask.
+	W.now = W.now + 1
+	assert(gm.ns.Donations.SetGoal("Back to bank", 5), "Guild Master overrides")
+	eq(mem.ns.Donations.Goal().title, "Back to bank"); eq(mem.ns.Donations.Goal().owner, "Gm")
+	eq(select(2, off.ns.Donations.SetGoal("Mounts again", 5)), "owned", "an officer still asks")
 	-- a goal saved before 0.6.0 (no owner field) belongs to whoever wrote it
 	W.now = W.now + 1
 	mem.ns.Sync.Accept("dgoal", "goal", { rev = W.now, by = "Gm", data = "7;100;Old goal" })
@@ -908,7 +913,7 @@ test("home: what's on shows open polls and the donation goal; the calendar is go
 	eq(f.nextEvent, nil); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
 	mem.ns.UI.Toggle()
 	mem.ns.GeneralTab.Refresh()
-	eq(mem.ns.UI.tabs[4].title, "Hop"); eq(mem.ns.UI.tabs[5].title, "Guild life")
+	eq(mem.ns.UI.tabs[4].title, "Guild life"); eq(mem.ns.UI.tabs[5], nil, "no Hop tab since 0.9.0")
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
@@ -1050,59 +1055,6 @@ test("crafters board: search shows crafters online first, empty search lists by 
 	eq(#gm.env.IwTDB.errors, 0)
 end)
 
-test("layers: an NPC's GUID gives the layer, guildmates share it and get numbered", function()
-	local g = Guild2()
-	local mem = W.NewClient(base, "Mem", g)
-	local gm = W.NewClient(base, "Gm", g)
-	local L = mem.ns.Layers
-	eq(L.FromGUID("Creature-0-5250-0-1458-6491-00001A2B3C"), 1458)
-	eq(L.FromGUID("Player-5250-0ABCDEF0"), nil)
-	eq(L.FromGUID("Pet-0-5250-0-1458-416-0100A2B3C4"), nil)
-	-- secret GUIDs (in combat) are skipped without an error
-	mem.env.issecretvalue = function(v) return v == "Creature-0-5250-0-1458-6491-00001A2B3D" end
-	eq(L.FromGUID("Creature-0-5250-0-1458-6491-00001A2B3D"), nil)
-	mem.env.issecretvalue = nil
-	mem.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1458-6491-00001A2B3C" end end
-	mem.env.__fire("PLAYER_TARGET_CHANGED")
-	eq(L.mine.id, 1458)
-	gm.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1012-6491-00001A2B3C" end end
-	gm.env.__fire("PLAYER_TARGET_CHANGED")
-	local rows = L.Guildmates()
-	eq(#rows, 1); eq(rows[1].who, "Gm"); eq(rows[1].same, "other")
-	eq(rows[1].label, "Layer 1", "1012 sorts before 1458"); eq(L.Label(0, 1458), "Layer 2")
-	-- a guildmate logging in later asks and hears back
-	local late = W.NewClient(base, "Vet", g)
-	late.ns.Comm.Send("LAYERQ", "")
-	eq(#late.ns.Layers.Guildmates(), 2)
-end)
-
-test("layer hop: ask, the guildmate invites, and after the hop you can leave", function()
-	local g = Guild2()
-	local mem = W.NewClient(base, "Mem", g)
-	local gm = W.NewClient(base, "Gm", g)
-	local invited, left
-	gm.env.C_PartyInfo = { InviteUnit = function(n) invited = n end }
-	mem.env.C_PartyInfo = { LeaveParty = function() left = true end }
-	mem.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1458-6491-00001A2B3C" end end
-	mem.env.__fire("PLAYER_TARGET_CHANGED")
-	assert(mem.ns.Layers.AskHop("Gm"))
-	eq(gm.popups[#gm.popups].which, "IWT_HOP"); eq(gm.popups[#gm.popups].arg, "Mem")
-	assert(gm.ns.Layers.AnswerHop(true))
-	eq(invited, "Mem")
-	-- the hop happens: a new id on the same map
-	mem.env.UnitGUID = function(u) if u == "target" then return "Creature-0-5250-0-1012-6491-00001A2B3C" end end
-	mem.env.__fire("PLAYER_TARGET_CHANGED")
-	eq(mem.popups[#mem.popups].which, "IWT_HOP_DONE")
-	mem.env.StaticPopupDialogs.IWT_HOP_DONE.OnAccept()
-	eq(left, true)
-	-- requests can be turned off
-	gm.env.IwTDB.settings.hopRequests = false
-	local before = #gm.popups
-	mem.ns.Layers.AskHop("Gm")
-	eq(#gm.popups, before)
-	eq(mem.ns.Layers.hop, nil, "told it is off")
-end)
-
 test("every tab builds without errors", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	for _, t in ipairs(c.ns.UI.tabs) do c.ns.UI.Open(t.title) end
@@ -1123,16 +1075,13 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 	eq(UI.settings.panel:IsShown(), true)
 	eq(UI.tabs[3].frame:IsShown(), false)
 	UI.cog:GetScript("OnClick")()
-	c.env.UnitGUID = function(u) if u == "target" then return "Creature-0-1-0-77-6491-00001A2B3C" end end
-	c.env.__fire("PLAYER_TARGET_CHANGED")
-	UI.Open("Layers")
-	eq(UI.tabs[4].title, "Hop"); eq(UI.tabs[4].frame:IsShown(), true)
-	eq(c.ns.Layers.panel:IsShown(), true, "the Hop tab opens straight on layer hopping")
+	UI.Open("Polls")
+	eq(UI.tabs[4].title, "Guild life"); eq(UI.tabs[4].frame:IsShown(), true)
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
 test("no file assigns a Blizzard global like SlashCmdList (that taints every macro)", function()
-	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Layers.lua", "Diagnostics.lua", "Chat.lua", "Themes.lua", "Settings.lua", "Welcome.lua", "Updates.lua", "GameOptions.lua" }) do
+	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Diagnostics.lua", "Chat.lua", "Themes.lua", "Settings.lua", "Welcome.lua", "Updates.lua", "GameOptions.lua" }) do
 		local src = io.open(base .. "/IssuesWithTissues/" .. f):read("*a")
 		for _, g in ipairs({ "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames", "ChatFrame_OpenChat", "ChatEdit_InsertLink" }) do
 			assert(not src:find("\n%s*" .. g .. "%s*=[^=]"), f .. " assigns " .. g)
@@ -1563,6 +1512,205 @@ test("game options: a page under AddOns that opens the addon's settings", functi
 	c.env.InterfaceOptions_AddCategory = function(p) added = p end
 	c.ns.GameOptions.Register()
 	eq(added.name, "Issues with Tissues")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("professions: a guildmate's older record with gathering skills shows only the crafting ones", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	mem.env.IwTDB.sync.profs = { records = { Gm = { rev = 1, data = "Herbalism:300:300,Mining:250:300,Tailoring:300:300", by = "Gm" } } }
+	mem.env.IwTDB.sync.recipes = { records = { ["Gm#Mining"] = { rev = 1, data = "2840:Smelt Copper", by = "Gm" } } }
+	local p = mem.ns.Professions.Of("Gm")
+	eq(#p, 1); eq(p[1].name, "Tailoring")
+	eq(#mem.ns.Professions.WhoCanMake("copper"), 0, "smelting isn't listed")
+end)
+
+test("feel: window sounds follow their setting", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local played = {}
+	c.env.PlaySound = function(id) played[#played + 1] = id end
+	local UI = c.ns.UI
+	eq(UI.Sound("open"), true); eq(played[1], 839)
+	c.env.SOUNDKIT = { IG_CHARACTER_INFO_CLOSE = 12345 }
+	UI.Sound("close"); eq(played[2], 12345, "SOUNDKIT when the client has it")
+	c.env.IwTDB.settings.windowSounds = false
+	eq(UI.Sound("tab"), false); eq(#played, 2)
+end)
+
+test("feel: window size is kept between 70% and 130% in steps of 5", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	local f = UI.Create()
+	local got
+	f.SetScale = function(_, v) got = v end
+	eq(UI.SetScale(2), 1.3); eq(got, 1.3)
+	eq(UI.SetScale(0.83), 0.85)
+	eq(UI.SetScale(0.1), 0.7)
+	c.ns.HandleSlash("scale 90")
+	eq(c.env.IwTDB.settings.scale, 0.9); eq(got, 0.9)
+	UI.Open("Settings")
+	assert(c.ns.Settings.scaleSlider, "the slider is on the Settings page")
+end)
+
+test("feel: with the option on, the window hides in combat and comes back after", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	local played = 0
+	c.env.PlaySound = function() played = played + 1 end
+	UI.Open("Home")
+	c.env.__fire("PLAYER_REGEN_DISABLED")
+	eq(UI.window:IsShown(), true, "off by default")
+	c.env.__fire("PLAYER_REGEN_ENABLED")
+	c.env.IwTDB.settings.hideInCombat = true
+	c.env.__fire("PLAYER_REGEN_DISABLED")
+	eq(UI.window:IsShown(), false)
+	c.env.__fire("PLAYER_REGEN_ENABLED")
+	eq(UI.window:IsShown(), true, "back after combat")
+	-- Closed before combat: stays closed after.
+	UI.window:Hide()
+	c.env.__fire("PLAYER_REGEN_DISABLED"); c.env.__fire("PLAYER_REGEN_ENABLED")
+	eq(UI.window:IsShown(), false)
+	eq(UI.quiet, false)
+end)
+
+test("keyboard: Ctrl+F jumps to the search on Roster, Crafters and Loot notes; Enter picks the first result", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	local UI = gm.ns.UI
+	UI.Open("Roster")
+	assert(UI.keys, "the window listens for Ctrl+F")
+	local focused
+	local function Watch(box) box.SetFocus = function(self) focused = self end end
+	Watch(gm.ns.RosterTab.searchBox)
+	gm.env.IsControlKeyDown = function() return true end
+	UI.window.scripts.OnKeyDown(UI.window, "F")
+	eq(focused, gm.ns.RosterTab.searchBox)
+	-- Searching names, then Enter
+	local told
+	gm.env.ChatFrame_SendTell = function(n) told = n end
+	gm.ns.RosterTab.searchBox.onChange(" VE ")
+	local rows = gm.ns.RosterTab.Rows()
+	eq(#rows, 1); eq(rows[1].full, "Vet", "any case, spaces trimmed")
+	gm.ns.RosterTab.searchBox.onEnter("ve")
+	eq(told, "Vet")
+	-- Crafters
+	UI.Open("Crafters")
+	Watch(gm.ns.CraftersTab.searchBox)
+	UI.window.scripts.OnKeyDown(UI.window, "F")
+	eq(focused, gm.ns.CraftersTab.searchBox)
+	-- Plain F (no Ctrl) does nothing
+	focused = nil
+	gm.env.IsControlKeyDown = function() return false end
+	UI.window.scripts.OnKeyDown(UI.window, "F")
+	eq(focused, nil)
+	UI.Open("Loot notes")
+	eq(UI.FocusSearch(), true, "loot notes search too")
+	-- Chat has no search: nothing happens
+	gm.env.IsControlKeyDown = function() return true end
+	UI.Open("Chat")
+	eq(UI.FocusSearch(), false)
+end)
+
+test("keyboard: opened in combat, the window starts listening after combat", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.InCombatLockdown = function() return true end
+	c.ns.UI.Open("Home")
+	eq(c.ns.UI.keys, nil); eq(c.ns.UI.keyboardPending, true)
+	c.env.InCombatLockdown = function() return false end
+	c.env.__fire("PLAYER_REGEN_ENABLED")
+	eq(c.ns.UI.keys, true)
+end)
+
+test("chat: scrolled up, a Newest button counts new lines and jumps back down", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	c.ns.UI.Open("Chat")
+	local box = Chat.messages
+	local offset = 0
+	box.GetScrollOffset = function() return offset end
+	box.ScrollToBottom = function() offset = 0 end
+	c.env.__fire("CHAT_MSG_GUILD", "one", "Gm-Realm")
+	eq(Chat.jump:IsShown(), false, "at the bottom: no button")
+	offset = 3
+	c.env.__fire("CHAT_MSG_GUILD", "two", "Gm-Realm")
+	c.env.__fire("CHAT_MSG_GUILD", "three", "Gm-Realm")
+	eq(Chat.unseen, 2); eq(Chat.jump:IsShown(), true)
+	Chat.jump.scripts.OnClick(Chat.jump)
+	eq(offset, 0); eq(Chat.unseen, 0); eq(Chat.jump:IsShown(), false)
+end)
+
+test("chat: 12 or 24-hour times", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	local t = os.time({ year = 2026, month = 11, day = 23, hour = 14, min = 5 })
+	eq(Chat.Time(t), "14:05")
+	c.env.IwTDB.settings.clock24 = false
+	eq(Chat.Time(t), "2:05pm")
+	eq(Chat.Time(os.time({ year = 2026, month = 11, day = 23, hour = 0, min = 30 })), "12:30am")
+	eq(Chat.Time(os.time({ year = 2026, month = 11, day = 23, hour = 12, min = 0 })), "12:00pm")
+	assert(Chat.Format("guild", { t = t, k = "msg", a = "Gm-Realm", m = "hi" }):find("2:05pm", 1, true))
+end)
+
+test("bug report: memory use and startup times", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.UpdateAddOnMemoryUsage = function() end
+	c.env.GetAddOnMemoryUsage = function(name) if name == "IssuesWithTissues" then return 1234.4 end end
+	local report = c.ns.Diagnostics.BuildReport()
+	assert(report:find("Memory: 1234 KB", 1, true), "memory line")
+	assert(report:find("Startup: OnLoad %d"), "startup line")
+	assert(c.ns.Perf.Report():find("Memory: 1234 KB", 1, true))
+	assert(c.ns.startup.OnLoad.Chat, "each module timed")
+end)
+
+test("smoother login: a big catch-up is taken a batch per frame", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	for i = 1, 60 do gm.ns.Sync.Set("loot", "n" .. i, string.format("%d;Mem;0;Item %d;", W.now, i)) end
+	local mem = W.NewClient(base, "Mem", g)
+	mem.ns.Comm.immediate = false
+	local recs = gm.ns.Sync.BuildAnswer({ loot = { since = 0 } })
+	eq(#recs, 60)
+	gm.ns.Comm.Send("SR", "x1\2" .. "\30" .. table.concat(recs, "\30", 1, 30))
+	gm.ns.Comm.Send("SR", "x2\2" .. "\30" .. table.concat(recs, "\30", 31, 60))
+	local function Count() local n = 0; for _ in mem.ns.Sync.Each("loot") do n = n + 1 end; return n end
+	eq(Count(), 0, "nothing taken in the same frame")
+	eq(mem.ns.Sync.Pending(), 60)
+	mem.flush(); eq(Count(), 40)
+	mem.flush(); eq(Count(), 60); eq(mem.ns.Sync.Pending(), 0)
+end)
+
+test("bug log: errors and log lines clear themselves after 24 hours", function()
+	local t0 = W.now
+	local c = W.NewClient(base, "Mem", Guild2())
+	local D = c.ns.Diagnostics
+	c.ns.ReportError("old problem")
+	c.ns.Log("something happened")
+	W.now = W.now + 3600
+	c.ns.ReportError("newer problem")
+	W.now = W.now + 23 * 3600 + 60 -- the first error is now a day old, the second 23 hours
+	D.BuildReport()
+	local db = c.env.IwTDB
+	eq(#db.errors, 1); eq(db.errors[1].text, "newer problem")
+	eq(#db.log, 0, "a day-old log starts afresh")
+	c.ns.Log("fresh line")
+	eq(#db.log, 1)
+	-- at the next login too
+	W.now = W.now + 2 * 86400
+	c.env.__fire("ADDON_LOADED", "IssuesWithTissues")
+	eq(#db.errors, 0); eq(#db.log, 0)
+	W.now = t0
+end)
+
+test("layer hopping is gone (0.9.0): no Hop tab, no commands, its setting dropped, old messages ignored", function()
+	local first = W.NewClient(base, "Mem", Guild2())
+	first.env.IwTDB.settings.hopRequests = true
+	local c = W.NewClient(base, "Mem", Guild2(), { account = first })
+	eq(c.ns.Layers, nil)
+	eq(c.env.IwTDB.settings.hopRequests, nil, "old setting dropped")
+	for _, g in ipairs(c.ns.UI.groups) do assert(g.title ~= "Hop") end
+	c.ns.HandleSlash("layer"); c.ns.HandleSlash("hop Gm")
+	local gm = W.NewClient(base, "Gm", Guild2())
+	gm.ns.Comm.Send("LAYER", "1;2;Elwynn") -- from someone still on 0.8
 	eq(#c.env.IwTDB.errors, 0)
 end)
 

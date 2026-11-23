@@ -4,7 +4,8 @@
 -- "dgoal" (officers): key "goal" = "id;target;title;owner". Saving keeps the id; a new goal gets
 --   a new id, which starts everyone's total from zero. The owner is the officer who set the goal:
 --   only they change it. Another officer asks, and the owner's Allow writes the change and hands
---   the goal over. Anyone may change it once the owner has left the guild.
+--   the goal over. Anyone may change it once the owner has left the guild. The Guild Master
+--   may always change it (0.9.0), and then owns it.
 -- "donated" (owner):  key = character, data = "goalId;copper" given towards that goal.
 
 local _, ns = ...
@@ -30,11 +31,19 @@ function Don.Goal()
 	return { id = tonumber(id), target = tonumber(target), title = title ~= "" and title or Don.DEFAULT_TITLE, owner = owner }
 end
 
--- May this character change the goal? Officers only; once set, only its owner (unless they left).
+-- The Guild Master (rank 0) skips the owner's say-so.
+function Don.IsGuildMaster(who)
+	local m = ns.Roster.Get(who or ns.PlayerName())
+	return m ~= nil and m.rankIndex == 0
+end
+
+-- May this character change the goal? Officers only; once set, only its owner (unless they
+-- left) or the Guild Master.
 function Don.CanEdit(who)
 	who = who or ns.PlayerName()
 	if not ns.Roster.IsOfficer(who) then return false, "officers only" end
 	local g = Don.Goal()
+	if Don.IsGuildMaster(who) then return true end
 	if g.id == 0 or not g.owner or g.owner == who or not ns.Roster.IsMember(g.owner) then return true end
 	return false, "owned"
 end
@@ -194,8 +203,10 @@ function Don.Refresh()
 	officerRow:SetShown(officer)
 	local g = Don.Goal()
 	if g.owner and g.id > 0 then
+		local gmOverride = officer and Don.IsGuildMaster() and g.owner ~= ns.PlayerName() and ns.Roster.IsMember(g.owner)
 		ownerText:SetText("Set by " .. ns.Roster.DisplayName(g.owner)
-			.. ((officer and not Don.CanEdit()) and ": saving asks them first" or ""))
+			.. ((officer and not Don.CanEdit()) and ": saving asks them first"
+				or gmOverride and ": as Guild Master you can change it" or ""))
 	else
 		ownerText:SetText("")
 	end

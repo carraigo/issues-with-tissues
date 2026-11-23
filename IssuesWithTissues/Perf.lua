@@ -49,6 +49,10 @@ function Perf.Report()
 		lines[#lines + 1] = string.format("%8.2f | %5d | %6.2f | %s", r.s.total, r.s.calls, r.s.max, r.label)
 	end
 	if #rows == 0 then lines[#lines + 1] = "(nothing measured yet: /iwt perf on)" end
+	lines[#lines + 1] = ""
+	local kb = ns.MemoryKB()
+	lines[#lines + 1] = "Memory: " .. (kb and string.format("%.0f KB", kb) or "unknown")
+	lines[#lines + 1] = "Startup: " .. ns.StartupText()
 	return table.concat(lines, "\n")
 end
 

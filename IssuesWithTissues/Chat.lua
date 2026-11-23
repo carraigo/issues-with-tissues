@@ -111,9 +111,16 @@ function Chat.ChannelColor(channel)
 end
 
 -- "[18:04] [Vatic Cane]: hello" with the name in its class colour and clickable.
+-- "14:05", or "2:05pm" with 24-hour times off.
+function Chat.Time(t)
+	if ns.db.settings.clock24 ~= false then return date("%H:%M", t) end
+	local h = tonumber(date("%H", t))
+	return string.format("%d:%s%s", (h % 12 == 0) and 12 or h % 12, date("%M", t), h < 12 and "am" or "pm")
+end
+
 function Chat.Format(channel, e)
 	local C = ns.UI.COLORS
-	local stamp = "|cff" .. Hex(C.stamp[1], C.stamp[2], C.stamp[3]) .. date("%H:%M", e.t) .. "|r "
+	local stamp = "|cff" .. Hex(C.stamp[1], C.stamp[2], C.stamp[3]) .. Chat.Time(e.t) .. "|r "
 	local sys = "|cff" .. Hex(C.sys[1], C.sys[2], C.sys[3])
 	local r, g, b = Chat.ChannelColor(channel)
 	if e.k == "motd" then
@@ -341,15 +348,30 @@ function Chat.View(channel)
 	end
 	local used = {}
 	local function First(a) return (ns.Roster.FirstName(a or "") or ""):lower() end
+	-- Worked out once per saved line, not once per pair (300 x 300 lines at login).
+	local mHidden, mPlain, mFirst = {}, {}, {}
+	local function Info(i)
+		if mHidden[i] == nil then
+			local m = mine[i]
+			mHidden[i] = Chat.Hidden(m.m)
+			mPlain[i] = mHidden[i] and "" or Chat.Plain(m.m)
+			mFirst[i] = First(m.a)
+		end
+	end
 	local function Match(e)
-		local hidden, plain, first = Chat.Hidden(e.m), Chat.Plain(e.m), First(e.a)
+		local hidden, plain, first = Chat.Hidden(e.m), nil, nil
 		for i, m in ipairs(mine) do
 			if not used[i] and m.k == "msg" then
 				local d = math.abs((m.t or 0) - e.t)
-				if hidden or Chat.Hidden(m.m) then
-					if d <= Chat.HIDDEN_WINDOW and first ~= "" and First(m.a) == first then return i end
-				elseif d <= Chat.SAME_WINDOW and Chat.Plain(m.m) == plain then
-					return i
+				if d <= Chat.SAME_WINDOW or d <= Chat.HIDDEN_WINDOW then
+					Info(i)
+					if hidden or mHidden[i] then
+						first = first or First(e.a)
+						if d <= Chat.HIDDEN_WINDOW and first ~= "" and mFirst[i] == first then return i end
+					elseif d <= Chat.SAME_WINDOW then
+						plain = plain or Chat.Plain(e.m)
+						if mPlain[i] == plain then return i end
+					end
 				end
 			end
 		end
@@ -418,7 +440,35 @@ function Chat.Redraw()
 	local lines = Chat.View(Chat.channel)
 	for _, e in ipairs(lines) do box:AddMessage(Chat.Format(Chat.channel, e)) end
 	box:ScrollToBottom()
+	Chat.unseen = 0
+	Chat.UpdateJump()
 	if Chat.hint then Chat.hint:SetShown(#lines == 0) end
+end
+
+-- Scrolled up: a "Newest" button, with how many lines came in since, takes you back down.
+Chat.unseen = 0
+function Chat.ScrolledUp()
+	local box = Chat.messages
+	local offset = box and box.GetScrollOffset and box:GetScrollOffset()
+	return type(offset) == "number" and offset > 0
+end
+
+function Chat.UpdateJump()
+	local b = Chat.jump
+	if not b then return end
+	if Chat.ScrolledUp() then
+		b:SetText(Chat.unseen > 0 and string.format("Newest (%d new)", math.min(Chat.unseen, 999)) or "Newest")
+		b:Show()
+	else
+		Chat.unseen = 0
+		b:Hide()
+	end
+end
+
+function Chat.JumpToNewest()
+	if Chat.messages then Chat.messages:ScrollToBottom() end
+	Chat.unseen = 0
+	Chat.UpdateJump()
 end
 
 function Chat.SetChannel(channel)
@@ -595,6 +645,7 @@ local function Build(panel)
 		if IsShiftKeyDown and IsShiftKeyDown() then
 			if delta > 0 then self:ScrollToTop() else self:ScrollToBottom() end
 		elseif delta > 0 then self:ScrollUp() else self:ScrollDown() end
+		Chat.UpdateJump()
 	end)
 	-- Item, spell and player links work as in the game's chat (player: left-click whispers,
 	-- right-click opens the usual menu).
@@ -611,6 +662,13 @@ local function Build(panel)
 	end)
 	box:SetScript("OnHyperlinkLeave", function() GameTooltip:Hide() end)
 	Chat.messages = box
+
+	local jump = UI.Button(frame, "Newest", 130, 20, "primary")
+	jump:SetPoint("BOTTOMRIGHT", -10, 8)
+	jump:SetFrameLevel((box.GetFrameLevel and box:GetFrameLevel() or 1) + 5)
+	jump:SetScript("OnClick", Chat.JumpToNewest)
+	jump:Hide()
+	Chat.jump = jump
 
 	local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisable")
 	hint:SetPoint("CENTER")
@@ -675,6 +733,8 @@ ns.Listen("CHAT_LINE", function(channel, entry)
 	if Chat.messages and channel == Chat.channel then
 		Chat.messages:AddMessage(Chat.Format(channel, entry))
 		if Chat.hint then Chat.hint:Hide() end
+		if Chat.ScrolledUp() then Chat.unseen = Chat.unseen + 1 end
+		Chat.UpdateJump()
 	end
 end)
 
@@ -687,7 +747,8 @@ if hooksecurefunc and ChatEdit_InsertLink then
 	end)
 end
 
-ns.Settings.AddToggle("chatHistory", "Keep guild chat between sessions (stays on this PC)", function(on) Chat.SetHistory(on) end)
+ns.Settings.AddToggle("chatHistory", "Keep guild chat between sessions (this PC)", function(on) Chat.SetHistory(on) end)
+ns.Settings.AddToggle("clock24", "24-hour times in chat (off: 2:05pm)", function() Chat.Redraw() end)
 
 ns.RegisterCommand("chat", "open guild chat", function() ns.UI.Open("Chat") end)
 

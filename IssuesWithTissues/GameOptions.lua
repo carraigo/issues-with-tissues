@@ -27,7 +27,7 @@ function GameOptions.Build()
 	text:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -12)
 	text:SetPoint("RIGHT", panel, "RIGHT", -16, 0)
 	text:SetJustifyH("LEFT")
-	text:SetText("The guild's roster, chat, crafters, layer hopping, polls and donations in one window. "
+	text:SetText("The guild's roster, chat, crafters, polls and donations in one window. "
 		.. "Its settings, themes included, are in the window behind the cog.")
 	local function Button(label, x, fn)
 		local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")

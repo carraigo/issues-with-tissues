@@ -135,6 +135,11 @@ local function Build(panel)
 	searchBox = ns.UI.CreateInput(panel, 250, "Search player, item or note")
 	searchBox:SetPoint("TOPLEFT", 4, -30)
 	searchBox.onChange = function(text) Loot.search = text; Loot.Refresh() end
+	searchBox.onEnter = function() -- Enter: select the first match
+		local first = Loot.List(Loot.search)[1]
+		if first then Loot.selected = first.key; Loot.Refresh() end
+	end
+	ns.UI.SetSearch(panel, searchBox)
 	status = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	status:SetPoint("LEFT", searchBox, "RIGHT", 10, 0)
 
