@@ -239,7 +239,95 @@ test("sync: guildmates holding different records each answer, the same records o
 	local late = W.NewClient(base, "Mem", g)
 	DefineSets(late)
 	late.ns.Sync.Ask()
+	-- An empty set takes one answer; the next round brings what that one lacked.
+	local first = (late.ns.Sync.Get("notes", "x") and 1 or 0) + (late.ns.Sync.Get("notes", "y") and 1 or 0)
+	eq(first, 1, "one guildmate answers an empty set")
+	late.ns.Sync.CheckRound()
+	late.ns.Sync.Ask()
 	eq(late.ns.Sync.Get("notes", "x"), "only offi"); eq(late.ns.Sync.Get("notes", "y"), "only vet")
+end)
+
+test("sync: a big set sends only the buckets that differ", function()
+	local g = Guild()
+	local offi = W.NewClient(base, "Offi", g)
+	DefineSets(offi)
+	for i = 1, 200 do offi.ns.Sync.Set("notes", "n" .. i, "note " .. i) end
+	local late = W.NewClient(base, "Mem", g)
+	DefineSets(late)
+	late.ns.Sync.Ask()
+	eq(late.ns.Sync.round.got, 200, "a fresh install gets everything")
+	late.ns.Sync.CheckRound()
+	-- One record changes while Mem doesn't hear it.
+	local saved = late.ns.Comm.handlers.SU.fn
+	late.ns.Comm.handlers.SU.fn = function() end
+	offi.ns.Sync.Set("notes", "n7", "changed")
+	late.ns.Comm.handlers.SU.fn = saved
+	late.ns.Sync.Ask()
+	eq(late.ns.Sync.Get("notes", "n7"), "changed")
+	local got = late.ns.Sync.round.got
+	assert(got < 40, "only one bucket's records come back, got " .. got)
+	eq(late.ns.Sync.round.new, 1)
+	eq(late.ns.Sync.round.expected.Offi, got, "the answer says how many records it brings")
+end)
+
+test("sync: catch-up asks again while rounds bring news, and a fresh install keeps trying", function()
+	local g = Guild()
+	local alone = W.NewClient(base, "Mem", g)
+	DefineSets(alone)
+	alone.ns.Sync.StartCatchUp()
+	eq(alone.ns.Sync.Status(), "Asking the guild for shared data...")
+	alone.ns.Sync.CheckRound() -- nobody answered
+	eq(alone.ns.Sync.catching, true, "a fresh install keeps catching up")
+	eq(alone.ns.Sync.tries, 1)
+	-- A guildmate with the addon logs in: the fresh install asks them (once a re-ask isn't waiting).
+	local offi = W.NewClient(base, "Offi", g)
+	DefineSets(offi)
+	local saved = alone.ns.Comm.handlers.SU.fn
+	alone.ns.Comm.handlers.SU.fn = function() end -- (written before Mem was online)
+	offi.ns.Sync.Set("notes", "n1", "hello")
+	alone.ns.Comm.handlers.SU.fn = saved
+	alone.timers = {}
+	alone.ns.Sync.CheckRound() -- (no round open: nothing happens)
+	local before = #alone.timers
+	alone.ns.Send("ADDON_HELLO", "Offi", false)
+	eq(#alone.timers, before, "a re-ask is already waiting, so no second one")
+	alone.ns.Sync.Ask()
+	eq(alone.ns.Sync.Get("notes", "n1"), "hello")
+	alone.ns.Sync.CheckRound()
+	eq(alone.ns.Sync.catching, true, "that round brought news: one more round")
+	alone.ns.Sync.Ask()
+	alone.ns.Sync.CheckRound()
+	eq(alone.ns.Sync.catching, false, "a round with nothing new ends the catch-up")
+	eq(alone.ns.Sync.Status(), nil)
+end)
+
+test("sync: Sync now waits out a recent ask", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	DefineSets(c)
+	c.ns.Sync.StartCatchUp()
+	local ok, why = c.ns.Sync.AskNow()
+	eq(ok, false); eq(why, "already syncing")
+	c.ns.Sync.CheckRound()
+	W.now = W.now + 60
+	eq(c.ns.Sync.AskNow(), true)
+end)
+
+test("comm: a packet the game refuses for speed is sent again, in order", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local C = c.ns.Comm
+	eq(C.Refused(true), false); eq(C.Refused(nil), false); eq(C.Refused(0), false)
+	eq(C.Refused(3), true); eq(C.Refused(false), true)
+	C.immediate = false
+	local calls = 0
+	C.sendHook = function() calls = calls + 1 return calls == 1 and 3 or 0 end
+	C.Send("TEST", "hi")
+	eq(calls, 1)
+	eq(#C.queue, 1, "kept for another try")
+	eq(C.queue[1].tries, 1)
+	C.Pump()
+	eq(#C.queue, 0)
+	eq(C.throttled, 1)
+	C.immediate, C.sendHook = true, nil
 end)
 
 test("bug report lists errors once with a count", function()

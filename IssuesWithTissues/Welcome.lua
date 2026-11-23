@@ -10,6 +10,10 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.2.2", lines = {
+		"New installs catch up with the guild much faster.",
+		"Home shows sync progress, and Settings has a Sync now button.",
+	} },
 	{ version = "1.2.1", lines = {
 		"Kawaii Day: guild chat is easy to read again.",
 		"Your guild key can open this window instead of the game's guild window: press the button below.",

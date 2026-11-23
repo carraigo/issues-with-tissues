@@ -202,6 +202,10 @@ function Diag.BuildReport()
 		end
 		table.sort(counts)
 		add("Shared data: " .. table.concat(counts, " "))
+		local S, C = ns.Sync, ns.Comm
+		add(string.format("Sync: last ask %s, last answer %s, rounds %d, catching up %s, queue %d, refused %d, dropped %d",
+			S.lastAsk and (ns.Now() - S.lastAsk .. "s ago") or "never", S.lastAnswer and (ns.Now() - S.lastAnswer .. "s ago") or "never",
+			S.rounds or 0, tostring(S.catching), #C.queue, C.throttled or 0, C.dropped or 0))
 		add("Saved data: " .. Diag.SizesText())
 	end
 	add("")

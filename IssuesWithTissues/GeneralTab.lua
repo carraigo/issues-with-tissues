@@ -116,7 +116,8 @@ function General.Refresh()
 	texts.guild:SetText(table.concat({
 		string.format("%d characters, %d players (alts counted once)", f.members, f.players),
 		string.format("|cff40ff40%d online now|r, %d away 30 days or more", f.online, f.away30),
-		string.format("%d using Issues with Tissues this session", f.addonUsers),
+		ns.Sync.Status() and ("|cffffd100" .. ns.Sync.Status() .. "|r")
+			or string.format("%d using Issues with Tissues this session", f.addonUsers),
 		string.format("|cffff9050Enemy Kills: %s|r", ns.Kills.Format(f.kills.mobs)),
 		string.format("|cffff9050%s Kills: %s|r", f.enemyFaction, ns.Kills.Format(f.kills.hk)),
 		string.format("|cff999999(added up from %d characters using the addon)|r", f.kills.chars),
@@ -237,6 +238,6 @@ end
 ns.UI.AddPage("Home", "Home", Build)
 
 local Soon = ns.Coalesce(function() General.Refresh() end)
-for _, msg in ipairs({ "ROSTER_UPDATED", "SYNC_CHANGED", "SCAN_CHANGED", "VERSION_SEEN", "GUILD_LIFE_CHANGED", "NEWS_CHANGED" }) do
+for _, msg in ipairs({ "ROSTER_UPDATED", "SYNC_CHANGED", "SCAN_CHANGED", "VERSION_SEEN", "GUILD_LIFE_CHANGED", "NEWS_CHANGED", "SYNC_PROGRESS" }) do
 	ns.Listen(msg, Soon)
 end

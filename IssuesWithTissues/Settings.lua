@@ -153,15 +153,16 @@ local function Build(panel)
 		{ "Profiler report", function() ns.HandleSlash("perf") end },
 		{ "Self-test", function() ns.HandleSlash("selftest") end },
 		{ "Diagnostics report", function() ns.HandleSlash("report") end },
+		{ "Sync now", function() ns.HandleSlash("sync") end },
 	}
 	local x = 0
 	for _, t in ipairs(tools) do
 		local b = ns.UI.Button(panel)
-		b:SetSize(130, 24)
+		b:SetSize(116, 24)
 		b:SetPoint("TOPLEFT", x, y)
 		b:SetText(t[1])
 		b:SetScript("OnClick", t[2])
-		x = x + 140
+		x = x + 122
 	end
 
 	local version = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -171,6 +172,10 @@ end
 
 ns.UI.SetSettings(Build)
 
+ns.RegisterCommand("sync", "ask the guild for any shared data you're missing", function()
+	local ok, why = ns.Sync.AskNow()
+	ns.Print(ok and "Asking the guild for shared data. Home shows how it's going." or ("Not now: " .. why .. "."))
+end)
 ns.RegisterCommand("settings", "open the settings", function() ns.UI.Open("Settings") end)
 ns.RegisterCommand("scale", "window size in percent: /iwt scale 90 (70 to 130)", function(rest)
 	local v = tonumber((rest or ""):match("%d+"))

@@ -199,7 +199,8 @@ function Report.Data(opts)
 		for _ in ns.Sync.Each(name) do n = n + 1 end
 		sync[name] = n
 	end
-	d.sync = { records = sync, lastAsk = ns.Sync.lastAsk, lastAnswer = ns.Sync.lastAnswer }
+	d.sync = { records = sync, lastAsk = ns.Sync.lastAsk, lastAnswer = ns.Sync.lastAnswer,
+		rounds = ns.Sync.rounds, refused = ns.Comm.throttled, dropped = ns.Comm.dropped }
 
 	local u = Usage() or {}
 	d.usage = { since = u.since, logins = u.logins or 0, pages = u.pages or {}, commands = u.commands or {} }
