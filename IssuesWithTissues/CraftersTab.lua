@@ -108,6 +108,19 @@ local COLUMNS = {
 
 local GREY = 0.6
 
+-- What an empty list says, so it never looks broken.
+function Crafters.EmptyText(searching, onlineOnly)
+	if #ns.Professions.AllRecipes() == 0 then
+		return "Nobody has shared recipes yet. Open your profession window and click each profession tab, "
+			.. "or press Scan my recipes on Home, to share yours."
+	end
+	if searching then
+		return onlineOnly and "Nobody online knows a recipe like that. Untick Online only to see everyone."
+			or "Nobody in the guild has shared a recipe like that yet."
+	end
+	return onlineOnly and "No crafters online right now." or "No crafting professions shared yet."
+end
+
 function Crafters.Refresh()
 	if not Crafters.panel or not Crafters.panel:IsShown() then return end
 	local s = Crafters.state
@@ -115,6 +128,7 @@ function Crafters.Refresh()
 	local rows = searching and Crafters.Search(s.search, s.onlineOnly) or Crafters.Tree(s.onlineOnly)
 	local titles = searching and { "Item", "Crafter", "Profession", "Skill" } or { "Profession", "", "Skill", "Recipes shared" }
 	for i, t in ipairs(titles) do list.titles[i]:SetText(t) end
+	list:SetEmpty(Crafters.EmptyText(searching, s.onlineOnly))
 	list:SetRows(rows, function(r, key)
 		if r.header then
 			if key == "c1" then return (r.open and "[-] " or "[+] ") .. r.profession, 0.96, 0.82, 0.48 end

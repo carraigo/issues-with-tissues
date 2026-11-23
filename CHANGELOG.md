@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0
+
+- **"Guild craftable" on item tooltips:** a green line when someone in the guild has shared the recipe for the item, or already knows the recipe a Pattern, Plans, Formula or Schematic teaches. Nothing is shown otherwise. Settings can turn it off.
+- **Promote and demote fixed:** WoW: Forever doesn't let addons change ranks directly, so the roster's Promote and Demote now type the game's own command into the chat box (for example `/gpromote Sara Exe`). Press Enter to do it, or Escape to change your mind.
+- **Guild news on Home:** who joined, left, reached level 60 or was promoted this week, in a third column of What's on (hover for the whole week). It's worked out from roster changes on your own PC, including while you were offline, so nothing extra is shared.
+- **New member nudge:** officers get a line in chat when someone joins the guild, to say hi (with a sound when alert sounds are on).
+- **Notes on the roster:** hovering over someone shows their public note, and officers also see the officer note.
+- **Unread chat:** the Chat tab and the minimap button count guildmates' messages you haven't seen. Online and offline lines and your own messages don't count.
+- **Open on Home or Chat:** Settings chooses which tab the window opens on (minimap button, key binding, `/iwt`): the last one used (as before), Home or Chat.
+- **Minimap tooltip:** members online, open polls and the donation goal at a glance.
+- **Empty lists explain themselves:** Crafters and Loot notes say why they're empty and what to do, instead of showing nothing.
+- **Quieter in fights:** the addon's messages wait while you're in combat and go out slowly in a raid. Catching up with guildmates' data waits until you're out of the raid.
+- For developers: shared records carry a data version, so a future change to a record's format can upgrade older data, and older clients leave newer data alone.
+
 ## 1.1.0
 
 - **Crafting tab:** Crafters has its own tab, between Members and Guild life, so Members is just the roster.

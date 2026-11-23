@@ -89,7 +89,7 @@ function Chat.Add(channel, kind, author, text)
 		live[#live + 1] = entry
 		while #live > Chat.MAX_LINES do table.remove(live, 1) end
 	end
-	if not Chat.Visible() then
+	if not Chat.Visible() and Chat.CountsAsUnread(kind, author) then
 		Chat.unread = Chat.unread + 1
 		Chat.UpdateBadge()
 	end
@@ -418,12 +418,21 @@ function Chat.Visible()
 	return Chat.panel ~= nil and Chat.panel.IsVisible ~= nil and Chat.panel:IsVisible() and true or false
 end
 
+-- Unread: what guildmates said. Not online/offline lines, the message of the day or your own.
+function Chat.CountsAsUnread(kind, author)
+	if kind ~= "msg" then return false end
+	local who = author and ns.Roster.ParseName(author)
+	return not (who and ns.FullName(who) == ns.PlayerName())
+end
+
+-- On the Chat tab ("Chat (3)") and the minimap button.
 function Chat.UpdateBadge()
 	for _, g in ipairs(ns.UI.tabs or {}) do
 		if g.title == "Chat" and g.button then
 			g.button:SetText(Chat.unread > 0 and ("Chat (" .. math.min(Chat.unread, 99) .. ")") or "Chat")
 		end
 	end
+	if ns.UI.SetMinimapBadge then ns.UI.SetMinimapBadge(Chat.unread) end
 end
 
 function Chat.Redraw()

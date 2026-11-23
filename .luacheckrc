@@ -15,6 +15,7 @@ globals = {
 
 -- The game's API, as far as the addon uses it.
 read_globals = {
+	"ERR_GUILD_JOIN_S", "IsInInstance", "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2", "TooltipDataProcessor",
 	"CanGuildDemote", "CanGuildPromote", "GuildDemote", "GuildPromote",
 	"C_ChatInfo", "C_Club", "C_GuildInfo", "C_PartyInfo", "C_Timer", "C_TradeSkillUI", "Enum", "Settings", "SOUNDKIT",
 	"ChatEdit_InsertLink", "ChatFontNormal", "ChatFrame_OpenChat", "ChatFrame_SendTell", "ChatTypeInfo",

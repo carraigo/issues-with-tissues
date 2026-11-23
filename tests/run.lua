@@ -566,21 +566,34 @@ test("roster: officers and the Guild Master can promote and demote, following th
 	gm.ns.UI.Open("Roster")
 	local items = gm.ns.RosterTab.ShowMenu({ full = "Vet", name = "Vet" })
 	eq(#items, 4); eq(items[3][1], "Promote to Officer"); eq(items[4][1], "Demote to Member")
+	-- Forever forbids GuildPromote from addons: the game's own command goes in the chat box,
+	-- and the player's Enter runs it.
+	local typed
+	gm.env.GuildPromote = function() error("forbidden on Forever") end
+	gm.env.ChatFrame_OpenChat = function(text) typed = text end
 	items[3][2]()
-	local pop = gm.popups[#gm.popups]
-	eq(pop.which, "IWT_PROMOTE"); eq(pop.arg, "Vet"); eq(pop.arg2, "Officer")
-	local promoted
-	gm.env.GuildPromote = function(name) promoted = name end
-	gm.env.StaticPopupDialogs.IWT_PROMOTE.OnAccept(nil, pop.data)
-	eq(promoted, "Vet")
-	-- No demote function in this client: says so, changes nothing
-	eq(gm.ns.RosterTab.ChangeRank("Vet", false), false)
+	eq(typed, "/gpromote Vet")
+	items[4][2]()
+	eq(typed, "/gdemote Vet")
+	assert(gm.printed[#gm.printed]:find("Press Enter to demote Vet to Member", 1, true))
 	-- Members can't get there even by calling it directly
-	mem.env.GuildPromote = function() error("should not be called") end
-	eq(mem.ns.RosterTab.AskRank("Gone", true), false)
+	mem.env.ChatFrame_OpenChat = function() error("should not be called") end
 	eq(mem.ns.RosterTab.ChangeRank("Gone", true), false)
 	gm.ns.RosterTab.HideMenu()
 	eq(#gm.env.IwTDB.errors, 0); eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("roster tooltip: the public note for everyone, the officer note for officers", function()
+	local g = Guild2()
+	g.members[3][6], g.members[3][7] = "Tank, raids Fridays", "Trial until December"
+	local gm = W.NewClient(base, "Gm", g)
+	local mem = W.NewClient(base, "Mem", g)
+	local n = gm.ns.RosterTab.Notes("Vet")
+	eq(#n, 2); eq(n[1][1], "Note: Tank, raids Fridays"); eq(n[2][1], "Officer note: Trial until December")
+	n = mem.ns.RosterTab.Notes("Vet")
+	eq(#n, 1, "members see the public note only")
+	eq(#mem.ns.RosterTab.Notes("Offi"), 0, "no notes: no lines")
+	eq(gm.ns.Roster.Snapshot().members[1].note, nil, "notes never go in the web export")
 end)
 
 test("roster: online on an alt shows that alt with the main beside it", function()
@@ -1098,6 +1111,218 @@ test("crafters board: search shows crafters online first, empty search lists by 
 	eq(C.Tree()[2] == nil or C.Tree()[2].header, true, "closed again")
 	gm.ns.UI.Open("Crafters")
 	eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("tooltips: a green \"Guild craftable\" line when someone knows the recipe, nothing otherwise", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local off = W.NewClient(base, "Gm", g)
+	off.skills = { { "Tailoring", 200, 225 } }; off.ns.Professions.UpdateSkills()
+	off.tradeSkill = { name = "Tailoring", recipes = { { 1, "Bolt of Linen Cloth", 2996 }, { 2, "Linen Bag", 4238 } } }
+	off.ns.Professions.ReadOpenWindow(false)
+	local T = mem.ns.Tooltip
+	local function Tip(name, id)
+		local t = { lines = {} }
+		function t:GetItem() return name, id and ("|cffffffff|Hitem:" .. id .. "::::|h[" .. name .. "]|h|r") end
+		function t:AddLine(text, r, g, b) self.lines[#self.lines + 1] = { text, r, g, b } end
+		function t:Show() end
+		T.Add(t)
+		return t.lines, t
+	end
+	local lines = Tip("Linen Bag", 4238)
+	eq(#lines, 1); eq(lines[1][1], "Guild craftable"); eq(lines[1][3], 1, "green")
+	eq(#Tip("Pattern: Linen Bag", 5771), 1, "a pattern for a recipe someone knows")
+	eq(#Tip("Plans: Arcanite Reaper", 12345), 0, "nobody knows it: no line, not \"no\"")
+	eq(#Tip("Linen Cloth", 2589), 0)
+	-- once per item, even when the game asks twice
+	local _, t = Tip("Linen Bag", 4238)
+	T.Add(t)
+	eq(#t.lines, 1)
+	-- new recipes show up straight away
+	off.tradeSkill = { name = "Tailoring", recipes = { { 1, "Bolt of Linen Cloth", 2996 }, { 2, "Linen Bag", 4238 }, { 3, "Brown Linen Robe", 6238 } } }
+	off.ns.Professions.ReadOpenWindow(false)
+	eq(#Tip("Brown Linen Robe", 6238), 1)
+	-- Settings can turn it off
+	mem.env.IwTDB.settings.tooltipCraftable = false
+	eq(#Tip("Linen Bag", 4238), 0)
+	mem.env.IwTDB.settings.tooltipCraftable = true
+	eq(T.hooked, true, "hooked at login")
+	eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("sync: records carry a data version; older ones are upgraded, newer ones left alone", function()
+	local g = Guild2()
+	local old = W.NewClient(base, "Gm", g)
+	local new = W.NewClient(base, "Mem", g)
+	old.ns.Sync.Define("vtest", { writer = "member" })
+	new.ns.Sync.Define("vtest", { writer = "member", version = 2, upgrade = function(data, from)
+		return "v" .. from .. ">" .. data
+	end })
+	-- a version 1 record reaches the newer client and is upgraded on the way in
+	assert(old.ns.Sync.Set("vtest", "a", "hello"))
+	eq(new.ns.Sync.Get("vtest", "a"), "v1>hello")
+	eq(new.env.IwTDB.sync.vtest.records.a.v, 2)
+	-- a version 2 record is left alone by the older client
+	assert(new.ns.Sync.Set("vtest", "b", "fresh"))
+	eq(old.ns.Sync.Get("vtest", "b"), nil)
+	eq(old.ns.Sync.newer, 1)
+	-- saved version 1 records are upgraded at load; version 1 isn't written to saved data
+	eq(old.env.IwTDB.sync.vtest.records.a.v, nil)
+	local saved = new.env.IwTDB.sync.vtest.records
+	saved.c = { rev = 1, by = "Gm", data = "kept" }
+	saved.d = { rev = 1, by = "Gm", data = "future", v = 3 }
+	new.ns.Sync.UpgradeSaved()
+	eq(saved.c.data, "v1>kept"); eq(saved.c.v, 2)
+	eq(saved.d, nil, "from a newer version: dropped")
+	eq(#old.env.IwTDB.errors, 0); eq(#new.env.IwTDB.errors, 0)
+end)
+
+test("comms wait in combat, go slowly in a raid, and skip catch-ups in both", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Comm = c.ns.Comm
+	local sent = {}
+	Comm.sendHook = function(_, packet) sent[#sent + 1] = packet end
+	Comm.immediate = false
+	c.timers = {}
+	-- combat: nothing goes out; it looks again in a moment
+	c.env.InCombatLockdown = function() return true end
+	eq(Comm.Held(), "combat")
+	Comm.Send("X", "one")
+	eq(#sent, 0); eq(c.timers[#c.timers].sec, Comm.HOLD_CHECK)
+	local asked = 0
+	Comm.sendHook = function(_, packet) sent[#sent + 1] = packet; if packet:find("\tSQ\t") then asked = asked + 1 end end
+	c.ns.Sync.Ask()
+	eq(asked, 0, "no catch-up in combat")
+	-- out of combat, in a raid: one packet, then a second's wait
+	c.env.InCombatLockdown = function() return false end
+	c.env.IsInInstance = function() return true, "raid" end
+	eq(Comm.Held(), "raid")
+	Comm.Send("X", "two") -- already pumping: just queued
+	Comm.Pump()
+	eq(#sent, 1); eq(c.timers[#c.timers].sec, Comm.RAID_INTERVAL)
+	-- in a dungeon or the open world: the usual pace
+	c.env.IsInInstance = function() return true, "party" end
+	eq(Comm.Held(), nil)
+	Comm.Pump()
+	eq(#sent, 2)
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("guild news: joins, leaves, level 60s and promotions this week, from roster changes", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	local N = gm.ns.News
+	eq(#N.List(), 0, "the first roster is only remembered")
+	eq(gm.ns.GeneralTab.NewsText():find("Nothing new", 1, true) ~= nil, true)
+	-- a join, a leave, a 60 and a promotion
+	table.insert(g.members, { "Newbie", 4, true, 0, 5 })
+	table.remove(g.members, 6) -- Gone
+	g.members[4][5] = 60       -- Mem dings 60
+	g.members[3][2] = 1        -- Vet promoted to Officer
+	gm.env.__fire("GUILD_ROSTER_UPDATE")
+	local texts = {}
+	for _, e in ipairs(N.List()) do texts[#texts + 1] = e.text end
+	table.sort(texts)
+	eq(table.concat(texts, "|"), "Gone left the guild|Mem reached level 60|Newbie joined the guild|Vet was promoted to Rank1")
+	-- seen again: no repeats
+	gm.env.__fire("GUILD_ROSTER_UPDATE")
+	eq(#N.List(), 4)
+	-- Home shows three and "and 1 more"
+	local text = gm.ns.GeneralTab.NewsText()
+	assert(text:find("and 1 more", 1, true), text)
+	-- a roster that's still loading isn't taken as everyone leaving
+	local saved = g.members
+	g.members = { saved[1] }
+	gm.env.__fire("GUILD_ROSTER_UPDATE")
+	eq(#N.List(), 4)
+	g.members = saved
+	-- a week later it's gone
+	W.now = W.now + 8 * 86400
+	eq(#N.List(), 0)
+	eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("new member nudge: officers are told to say hi, members aren't", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	local mem = W.NewClient(base, "Mem", g)
+	eq(gm.ns.News.Joined("Sara Exe has joined the guild."), "Sara Exe")
+	eq(gm.ns.News.Joined("Sara Exe has come online."), nil)
+	local before = #(gm.printed or {})
+	gm.env.__fire("CHAT_MSG_SYSTEM", "Sara Exe has joined the guild.")
+	eq(#gm.printed, before + 1)
+	assert(gm.printed[#gm.printed]:find("Sara Exe just joined the guild. Say hi!", 1, true))
+	local mb = #(mem.printed or {})
+	mem.env.__fire("CHAT_MSG_SYSTEM", "Sara Exe has joined the guild.")
+	eq(#(mem.printed or {}), mb)
+	eq(#gm.env.IwTDB.errors, 0); eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("unread chat: guildmates' messages count on the Chat tab and minimap; online lines and your own don't", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	local Chat = mem.ns.Chat
+	mem.ns.UI.CreateMinimapButton()
+	Chat.unread = 0
+	mem.env.__fire("CHAT_MSG_GUILD", "hello", "Gm-Realm")
+	mem.env.__fire("CHAT_MSG_GUILD", "me again", "Mem-Realm")
+	mem.env.__fire("CHAT_MSG_SYSTEM", "Gm has gone offline.")
+	eq(Chat.unread, 1)
+	eq(Chat.CountsAsUnread("sys", nil), false); eq(Chat.CountsAsUnread("msg", "Mem-Realm"), false)
+	eq(Chat.CountsAsUnread("msg", "Gm-Realm"), true)
+	-- the minimap summary: online, open polls, the donation goal, unread chat
+	assert(gm.ns.Polls.Ask("Raid night?", "Fri, Sat"))
+	local lines = mem.ns.UI.MinimapSummary()
+	assert(lines[1]:find("online", 1, true) and lines[1]:find("1 open poll", 1, true), lines[1])
+	eq(lines[2], "|cffffd1001 unread in guild chat|r")
+	-- opening Chat clears it
+	mem.ns.UI.Open("Chat")
+	eq(Chat.unread, 0)
+	eq(#mem.ns.UI.MinimapSummary(), 1)
+	eq(#mem.env.IwTDB.errors, 0)
+end)
+
+test("empty lists say why, so they never look broken", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	local mem = W.NewClient(base, "Mem", g)
+	local C = mem.ns.CraftersTab
+	assert(C.EmptyText(false, false):find("Nobody has shared recipes yet", 1, true))
+	gm.skills = { { "Tailoring", 200, 225 } }; gm.ns.Professions.UpdateSkills()
+	gm.tradeSkill = { name = "Tailoring", recipes = { { 1, "Linen Bag", 4238 } } }
+	gm.ns.Professions.ReadOpenWindow(false)
+	assert(C.EmptyText(true, false):find("Nobody in the guild has shared a recipe like that", 1, true))
+	assert(C.EmptyText(true, true):find("Nobody online", 1, true))
+	mem.ns.UI.Open("Crafters")
+	C.state.search = "zzz"; C.Refresh()
+	assert(C.panel and true)
+	C.state.search = ""
+	-- loot notes: officers are told how to add one
+	assert(gm.ns.LootNotes.EmptyText(true):find("Shift-click", 1, true))
+	assert(mem.ns.LootNotes.EmptyText(false):find("Officers note", 1, true))
+	mem.ns.UI.Open("Loot notes")
+	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("settings: the window opens on the last tab, Home or Chat", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	local function Current() return UI.tabs[UI.current].title end
+	eq(c.env.IwTDB.settings.openOn, "last")
+	UI.Open("Crafters"); UI.Toggle(); UI.Toggle()
+	eq(Current(), "Crafting", "last used")
+	c.env.IwTDB.settings.openOn = "Chat"
+	UI.Toggle(); UI.Toggle()
+	eq(Current(), "Chat")
+	c.env.IwTDB.settings.openOn = "Home"
+	UI.Toggle(); UI.Toggle()
+	eq(Current(), "Home")
+	-- the buttons in Settings
+	UI.Open("Settings")
+	c.ns.Settings.openButtons.Chat:GetScript("OnClick")()
+	eq(c.env.IwTDB.settings.openOn, "Chat")
+	eq(#c.env.IwTDB.errors, 0)
 end)
 
 test("every tab builds without errors", function()

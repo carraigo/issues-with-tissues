@@ -202,6 +202,20 @@ function Tab.PickFirst()
 	return Tab.Whisper(first.tell or first.full)
 end
 
+-- The guild notes for a character's tooltip: { text, r, g, b }. The officer note only for
+-- officers (the game gives it only to ranks allowed to see it anyway).
+function Tab.Notes(who)
+	local m = ns.Roster.Get(who)
+	local out = {}
+	if not m then return out end
+	if m.note and m.note ~= "" then out[#out + 1] = { "Note: " .. m.note, 1, 0.82, 0 } end
+	local me = ns.Roster.me
+	if m.officerNote and m.officerNote ~= "" and me and ns.Roster.IsOfficer(me) then
+		out[#out + 1] = { "Officer note: " .. m.officerNote, 1, 0.5, 0.25 }
+	end
+	return out
+end
+
 -- Open a whisper to a guildmate. Forever's server finds a character by "First Surname"
 -- (the roster's spelling, without the realm); the first name alone reaches nobody.
 function Tab.Whisper(key)
@@ -308,6 +322,7 @@ local function Build(panel)
 			for _, p in ipairs(ns.Professions.Of(r.tell or r.full)) do
 				GameTooltip:AddLine(string.format("%s %d/%d", p.name, p.rank, p.max), 0.6, 0.9, 1)
 			end
+			for _, n in ipairs(Tab.Notes(r.tell or r.full)) do GameTooltip:AddLine(n[1], n[2], n[3], n[4], true) end
 			GameTooltip:AddLine("Right-click to whisper, invite" .. (Tab.CanManage() and ", promote or demote" or ""), 0.5, 0.5, 0.5)
 			GameTooltip:Show()
 		end)
@@ -363,52 +378,24 @@ local function RankName(index)
 	return GuildControlGetRankName and GuildControlGetRankName(index + 1) or ("rank " .. (index + 1))
 end
 
--- Ask first ("Promote Sara Exe to Officer?"); the change happens on Yes.
-function Tab.AskRank(target, up)
-	local promote, demote = Tab.RankActions(target)
-	if (up and not promote) or (not up and not demote) then return false end
-	local them = ns.Roster.Get(target)
-	local to = RankName(them.rankIndex + (up and -1 or 1))
-	if StaticPopup_Show then
-		StaticPopup_Show(up and "IWT_PROMOTE" or "IWT_DEMOTE", ns.Roster.DisplayName(target), to,
-			{ target = ns.FullName(target), up = up })
-	end
-	return true
-end
-
--- The change itself. The server finds the character by "First Surname", as for whispers.
--- Checked again here: the roster may have changed while the question was open.
+-- Forever forbids addons from calling GuildPromote and GuildDemote (ADDON_ACTION_FORBIDDEN), so
+-- the addon types the game's own command into the chat box: "/gpromote Sara Exe". Pressing
+-- Enter runs it as if typed, and that press is the confirmation. The server finds the
+-- character by "First Surname", as for whispers.
 function Tab.ChangeRank(target, up)
 	local promote, demote = Tab.RankActions(target)
 	if (up and not promote) or (not up and not demote) then return false end
-	local fn = up and (GuildPromote or (C_GuildInfo and C_GuildInfo.Promote))
-		or (GuildDemote or (C_GuildInfo and C_GuildInfo.Demote))
-	if type(fn) ~= "function" then
-		ns.Print("This game client can't change ranks from an addon. Use the guild window instead.")
+	local them = ns.Roster.Get(target)
+	local name = ns.Roster.DisplayName(target)
+	local command = (up and "/gpromote " or "/gdemote ") .. name
+	if not ChatFrame_OpenChat then
+		ns.Print("Type %s to %s.", command, up and "promote" or "demote")
 		return false
 	end
-	local ok, err = pcall(fn, ns.Roster.DisplayName(target))
-	if not ok then
-		ns.Print("Couldn't change %s's rank. Use the guild window instead.", ns.Roster.DisplayName(target))
-		if ns.ReportError then ns.ReportError("rank change: " .. tostring(err)) end
-		return false
-	end
-	ns.Roster.Request()
-	return true
-end
-
-if StaticPopupDialogs then
-	for which, verb in pairs({ IWT_PROMOTE = "Promote", IWT_DEMOTE = "Demote" }) do
-		StaticPopupDialogs[which] = {
-			text = verb .. " %s to %s?",
-			button1 = YES or "Yes",
-			button2 = NO or "No",
-			OnAccept = function(_, data) if data then Tab.ChangeRank(data.target, data.up) end end,
-			timeout = 0,
-			whileDead = true,
-			hideOnEscape = true,
-		}
-	end
+	ChatFrame_OpenChat(command)
+	ns.Print("Press Enter to %s %s to %s (or type %s).", up and "promote" or "demote", name,
+		RankName(them.rankIndex + (up and -1 or 1)), command)
+	return command
 end
 
 local menu
@@ -426,10 +413,10 @@ function Tab.MenuItems(row)
 	local promote, demote = Tab.RankActions(who)
 	local them = ns.Roster.Get(who)
 	if promote then
-		items[#items + 1] = { "Promote to " .. RankName(them.rankIndex - 1), function() Tab.AskRank(who, true) end }
+		items[#items + 1] = { "Promote to " .. RankName(them.rankIndex - 1), function() Tab.ChangeRank(who, true) end }
 	end
 	if demote then
-		items[#items + 1] = { "Demote to " .. RankName(them.rankIndex + 1), function() Tab.AskRank(who, false) end }
+		items[#items + 1] = { "Demote to " .. RankName(them.rankIndex + 1), function() Tab.ChangeRank(who, false) end }
 	end
 	return items
 end

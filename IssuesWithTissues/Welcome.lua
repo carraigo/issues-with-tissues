@@ -10,6 +10,15 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.2.0", lines = {
+		"Item tooltips say \"Guild craftable\" in green when someone in the guild can make it.",
+		"Promote and Demote on the roster now fill in the game's command in chat: press Enter to do it.",
+		"Guild news on Home: who joined, left, hit 60 or was promoted this week.",
+		"Hover over someone on the roster to see their guild note.",
+		"Unread guild chat shows on the Chat tab and the minimap button.",
+		"The addon stays quiet in combat and raids.",
+		"Settings: choose whether the window opens on Home, Chat or the last tab you used.",
+	} },
 	{ version = "1.1.0", lines = {
 		"Crafters has its own Crafting tab.",
 		"The roster shows rank and when people were last on. Right-click someone to whisper or invite them.",

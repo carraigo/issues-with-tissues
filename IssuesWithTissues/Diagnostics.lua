@@ -107,6 +107,7 @@ function Diag.Sizes()
 	local db = ns.db or {}
 	for name, set in pairs(db.sync or {}) do out[#out + 1] = { name = name, bytes = Size(set, {}) } end
 	out[#out + 1] = { name = "chat", bytes = Size(ns.char and ns.char.chat or {}, {}) }
+	out[#out + 1] = { name = "news", bytes = Size(db.news or {}, {}) + Size(db.newsRoster or {}, {}) }
 	out[#out + 1] = { name = "log", bytes = Size(db.log or {}, {}) + Size(db.errors or {}, {}) }
 	table.sort(out, function(a, b) return a.bytes > b.bytes end)
 	return out
