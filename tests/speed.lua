@@ -55,9 +55,12 @@ for i = 2, MEMBERS do
 		data = (i % 3 == 0 and "mc.ony.bwl.ubrs" or "mc") .. ";Molten Core:" .. (now + 86400) .. ":" .. (i % 10) .. ":10" }
 	store.profs.records[who] = { rev = now - i, by = who, data = a .. ":" .. (i % 300) .. ":300," .. b .. ":75:150" }
 	if i <= CRAFTERS + 1 then
-		local parts = {}
-		for r = 1, RECIPES do parts[r] = (2000 + r) .. ":" .. a .. " recipe " .. r end
-		store.recipes.records[who .. "#" .. a] = { rev = now - i, by = who, data = table.concat(parts, ";") }
+		local list = {}
+		for r = 1, RECIPES do
+			W.itemNames[2000 + r] = a .. " recipe " .. r
+			list[r] = { item = 2000 + r }
+		end
+		store.recipes.records[who .. "#" .. a] = { rev = now - i, by = who, data = gm.ns.Professions.EncodeRecipes(list), v = 3 }
 	end
 end
 local Chat = gm.ns.Chat

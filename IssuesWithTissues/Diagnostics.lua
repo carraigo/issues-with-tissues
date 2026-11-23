@@ -31,6 +31,7 @@ local pending = {} -- errors raised before saved variables load
 
 function ns.ReportError(err)
 	local text = tostring(err)
+	ns.Trace("error", "%s", text)
 	local stack = debugstack and debugstack(2, 8, 0) or ""
 	local db = ns.db
 	if not db then
@@ -54,6 +55,7 @@ function ns.Log(fmt, ...)
 	local db = ns.db
 	if not db then return end
 	local line = select("#", ...) > 0 and string.format(fmt, ...) or tostring(fmt)
+	ns.Trace("log", "%s", line)
 	if not db.logSince then db.logSince = ns.Now() end
 	table.insert(db.log, date("%H:%M:%S ") .. line)
 	while #db.log > Diag.MAX_LOG do table.remove(db.log, 1) end

@@ -84,4 +84,3 @@ function Tip:OnLogin()
 	Tip.Hook()
 end
 
-ns.Settings.AddToggle("tooltipCraftable", "\"Guild craftable\" on item tooltips")

@@ -19,13 +19,38 @@ Polls.SHOW_CLOSED = 7 * 86400 -- closed polls stay listed this long
 
 local function Clean(text, max) return ns.CleanText(text, max, "~=,") end
 
+-- Poll record: "closes;answer~answer~...;question"
+function Polls.Encode(p)
+	return string.format("%d;%s;%s", p.closes, table.concat(p.answers, "~"), Clean(p.question, 100))
+end
+
 function Polls.Decode(data)
-	local closes, answers, question = tostring(data or ""):match("^(%d+);([^;]*);(.*)$")
+	local closes, answers, question = ns.Record.Fields(data, 3)
+	closes = tonumber(closes)
 	if not closes then return nil end
 	local list = {}
 	for a in answers:gmatch("[^~]+") do list[#list + 1] = a end
-	return { closes = tonumber(closes), answers = list, question = question }
+	return { closes = closes, answers = list, question = question }
 end
+
+-- Votes record: "pollId=answer,..." (sorted)
+function Polls.EncodeVotes(votes)
+	local parts = {}
+	for id, n in pairs(votes) do parts[#parts + 1] = id .. "=" .. n end
+	table.sort(parts)
+	return table.concat(parts, ",")
+end
+
+function Polls.DecodeVotes(data)
+	local out = {}
+	for id, n in tostring(data or ""):gmatch("(%d+)=(%d+)") do out[id] = tonumber(n) end
+	return out
+end
+
+ns.Record.Define("polls", { encode = Polls.Encode, decode = Polls.Decode,
+	sample = { closes = 1795000000, answers = { "Yes", "No", "Maybe" }, question = "Raid on Friday?" } })
+ns.Record.Define("votes", { encode = Polls.EncodeVotes, decode = Polls.DecodeVotes,
+	sample = { ["1795000000"] = 2, ["1795000123"] = 1 } })
 
 -- Officers: ask. answers is "Yes, No, Maybe" (commas or slashes between answers).
 function Polls.Ask(question, answers, days)
@@ -41,36 +66,34 @@ function Polls.Ask(question, answers, days)
 	local id = tostring(ns.Now())
 	while ns.Sync.Get("polls", id) do id = tostring(tonumber(id) + 1) end
 	local closes = ns.Now() + (days or 3) * 86400
-	return ns.Sync.Set("polls", id, string.format("%d;%s;%s", closes, table.concat(list, "~"), question))
+	return ns.Sync.Set("polls", id, Polls.Encode({ closes = closes, answers = list, question = question }))
 end
 
 -- Officers: close now (results stay) or remove.
 function Polls.Close(id)
 	local p = Polls.Decode(ns.Sync.Get("polls", id))
 	if not p then return false end
-	return ns.Sync.Set("polls", id, string.format("%d;%s;%s", ns.Now() - 1, table.concat(p.answers, "~"), p.question))
+	p.closes = ns.Now() - 1
+	return ns.Sync.Set("polls", id, Polls.Encode(p))
 end
 function Polls.Remove(id) return ns.Sync.Delete("polls", id) end
 
 local function MyVotes(who)
-	local out = {}
-	for id, n in tostring(ns.Sync.Get("votes", who) or ""):gmatch("(%d+)=(%d+)") do out[id] = tonumber(n) end
-	return out
+	return Polls.DecodeVotes(ns.Sync.Get("votes", who))
 end
 Polls.VotesOf = MyVotes
 
 function Polls.Vote(id, answer)
 	local p = Polls.Decode(ns.Sync.Get("polls", id))
 	if not p or p.closes <= ns.Now() or not p.answers[answer] then return false end
-	local mine, parts = MyVotes(ns.PlayerName()), {}
+	local mine, keep = MyVotes(ns.PlayerName()), {}
 	mine[id] = answer
 	for pid, n in pairs(mine) do
 		local q = Polls.Decode(ns.Sync.Get("polls", pid))
 		-- keep votes on recently closed polls: their results are still shown
-		if q and q.closes + Polls.SHOW_CLOSED > ns.Now() then parts[#parts + 1] = pid .. "=" .. n end
+		if q and q.closes + Polls.SHOW_CLOSED > ns.Now() then keep[pid] = n end
 	end
-	table.sort(parts)
-	return ns.Sync.Set("votes", ns.PlayerName(), table.concat(parts, ","))
+	return ns.Sync.Set("votes", ns.PlayerName(), Polls.EncodeVotes(keep))
 end
 
 -- Our own votes record keeps only polls still listed (open, or closed under a week ago); once
@@ -80,12 +103,11 @@ function Polls.TidyMyVotes()
 	local data = ns.Sync.Get("votes", me)
 	if not data then return false end
 	local keep = {}
-	for id, n in tostring(data):gmatch("(%d+)=(%d+)") do
+	for id, n in pairs(Polls.DecodeVotes(data)) do
 		local p = Polls.Decode(ns.Sync.Get("polls", id))
-		if p and p.closes + Polls.SHOW_CLOSED > ns.Now() then keep[#keep + 1] = id .. "=" .. n end
+		if p and p.closes + Polls.SHOW_CLOSED > ns.Now() then keep[id] = n end
 	end
-	table.sort(keep)
-	local tidy = table.concat(keep, ",")
+	local tidy = Polls.EncodeVotes(keep)
 	if tidy == data then return false end
 	if tidy == "" then return ns.Sync.Delete("votes", me) end
 	return ns.Sync.Set("votes", me, tidy)

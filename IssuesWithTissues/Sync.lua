@@ -118,8 +118,29 @@ function Sync.Accept(name, key, rec)
 	store[key] = rec
 	Sync.gen = Sync.gen + 1
 	Sync.Trim(name)
+	Sync.NoteTaken(name, key, rec)
 	ns.Send("SYNC_CHANGED", name, key, rec)
 	return true
+end
+
+-- For the live log: new records are added up and logged once per burst ("Took 120 new records:
+-- recipes 80, profs 40"), not one line each.
+local tookSets, takenKeys, takenCount = {}, {}, 0
+local function LogTaken()
+	if takenCount == 0 then return end
+	local parts = {}
+	for set, n in pairs(tookSets) do parts[#parts + 1] = set .. " " .. n end
+	table.sort(parts)
+	local detail = takenCount <= 3 and (" (" .. table.concat(takenKeys, ", ") .. ")") or ""
+	ns.Trace("data", "Took %d new record%s: %s%s", takenCount, takenCount == 1 and "" or "s", table.concat(parts, ", "), detail)
+	tookSets, takenKeys, takenCount = {}, {}, 0
+end
+local logTakenSoon = ns.Coalesce(LogTaken, 1)
+function Sync.NoteTaken(name, key, rec)
+	tookSets[name] = (tookSets[name] or 0) + 1
+	takenCount = takenCount + 1
+	if takenCount <= 3 then takenKeys[takenCount] = name .. " " .. key .. (rec.deleted and " deleted" or "") .. " by " .. tostring(rec.by) end
+	logTakenSoon()
 end
 
 -- Keep a set under its size limit by dropping the oldest records.
@@ -156,6 +177,7 @@ local function Write(name, key, data, deleted, minRev)
 	end
 	store[key] = rec
 	Sync.gen = Sync.gen + 1
+	ns.Trace("mine", "%s your %s record (%s, %d bytes)", deleted and "Deleted" or "Shared", name, key, #rec.data)
 	ns.Send("SYNC_CHANGED", name, key, rec)
 	Comm.Send("SU", Serialize(name, key, rec))
 	return true
@@ -223,16 +245,7 @@ end
 
 Sync.BUCKETS = 16
 Sync.BUCKET_MIN = 32 -- sets smaller than this are just sent whole
-local B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
-local function Base36(n, width)
-	local out = {}
-	for i = width, 1, -1 do
-		local d = n % 36
-		out[i] = B36:sub(d + 1, d + 1)
-		n = math.floor(n / 36)
-	end
-	return table.concat(out)
-end
+local function Base36(n, width) return ns.Record.B36(n, width) end
 
 -- One pass gives the set's fingerprint, its 16 bucket fingerprints and each key's bucket.
 -- Cached until a record changes, so answering many asks costs one pass.
@@ -282,6 +295,7 @@ end
 function Sync.Ask()
 	-- A catch-up can bring hundreds of records: not during a fight, a raid or a dungeon.
 	if Comm.Held() then
+		ns.Trace("sync", "Catch-up waits: in combat, a raid or a dungeon (again in 30s)")
 		ns.After(30, Sync.Ask)
 		return
 	end
@@ -294,6 +308,7 @@ function Sync.Ask()
 	end
 	Sync.lastAsk = ns.Now()
 	Sync.round = { nonce = nonce, started = ns.Now(), expected = {}, got = 0, new = 0 }
+	ns.Trace("sync", "Asking the guild for anything newer (round %d, holding %d records)", (Sync.rounds or 0) + 1, Total())
 	if Sync.catching == nil then Sync.catching, Sync.fresh = true, Total() == 0 end
 	Comm.Send("SQ", table.concat(parts, ","))
 	ns.Send("SYNC_PROGRESS")
@@ -322,17 +337,26 @@ function Sync.CheckRound()
 	end
 	Sync.round = nil
 	Sync.rounds = Sync.rounds + 1
+	local who = {}
+	for name in pairs(r.expected) do who[#who + 1] = name end
+	table.sort(who)
+	local summary = string.format("Round %d done: %d records from %s, %d new", Sync.rounds, r.got,
+		#who > 0 and table.concat(who, ", ") or "nobody", r.new)
 	if r.lastHeard then
 		Sync.answeredEver = true
 		if r.new > 0 and Sync.rounds < Sync.MAX_ROUNDS then
+			ns.Trace("sync", "%s. Asking again in %ds.", summary, Sync.NEXT_ROUND)
 			AskLater(Sync.NEXT_ROUND)
 		else
+			ns.Trace("sync", "%s. Caught up with the guild.", summary)
 			Sync.catching = false
 		end
 	elseif Sync.fresh and not Sync.answeredEver and Sync.tries < Sync.MAX_FRESH_TRIES then
 		Sync.tries = Sync.tries + 1
+		ns.Trace("sync", "Nobody answered. Asking again in %ds (try %d of %d).", Sync.FRESH_RETRY, Sync.tries, Sync.MAX_FRESH_TRIES)
 		AskLater(Sync.FRESH_RETRY)
 	else
+		ns.Trace("sync", "%s. Done.", summary)
 		Sync.catching = false
 	end
 	ns.Send("SYNC_PROGRESS")
@@ -433,7 +457,10 @@ Comm.Register("SQ", function(sender, payload)
 		end
 	end
 	for name, w in pairs(wants) do if not w.since then wants[name] = nil end end
-	if #Sync.BuildAnswer(wants) == 0 then return end
+	if #Sync.BuildAnswer(wants) == 0 then
+		ns.Trace("sync", "%s asked for a catch-up: they have everything we have", sender)
+		return
+	end
 	-- Several guildmates may hold different records, so each one answers for the sets where
 	-- nobody with the same records has answered yet. A set the asker has nothing of takes one
 	-- answer: anything that one lacked comes in the asker's next round.
@@ -452,7 +479,10 @@ Comm.Register("SQ", function(sender, payload)
 			end
 		end
 		local records = Sync.BuildAnswer(wants, skip)
-		if #records == 0 then return end
+		if #records == 0 then
+			ns.Trace("sync", "%s asked for a catch-up: someone else already answered", sender)
+			return
+		end
 		for _, m in ipairs(mine) do heard[m] = true end
 		-- Only sets the asker has nothing of (a new install): whisper the answer to them alone,
 		-- so the rest of the guild doesn't unpack records it already holds.
@@ -463,6 +493,8 @@ Comm.Register("SQ", function(sender, payload)
 				if wants[name].digest ~= "0.0" then private = false end
 			end
 		end
+		ns.Trace("sync", "Answering %s's catch-up: %d records (%s)%s", sender, #records, table.concat(sets, ", "),
+			private and ", whispered" or "")
 		Comm.Send("SC", nonce .. "," .. table.concat(sets, ","))
 		mine[#mine + 1] = "#=" .. #records
 		local head = nonce .. "\2" .. table.concat(mine, ",")
@@ -485,9 +517,10 @@ Comm.Register("SQ", function(sender, payload)
 	if Comm.immediate then answer() else ns.After(math.random() * Sync.ANSWER_DELAY_MAX, answer) end
 end)
 
-Comm.Register("SC", function(_, payload)
+Comm.Register("SC", function(sender, payload)
 	local nonce, rest = tostring(payload):match("^([^,]+),?(.*)$")
 	if not nonce then return end
+	ns.Trace("sync", "%s is answering a catch-up (%s)", sender, rest ~= "" and rest:gsub(",", ", ") or "nothing")
 	local taken = claimed[nonce] or {}
 	claimed[nonce] = taken
 	for set in rest:gmatch("[^,]+") do taken[set] = true end
@@ -535,9 +568,16 @@ Comm.Register("SR", function(sender, payload)
 				round = Sync.round
 				round.lastHeard = ns.Now()
 				round.expected[sender] = tonumber(digests:match("#=(%d+)")) or round.expected[sender] or 0
+				Sync.peers = Sync.peers or {}
+				local p = Sync.peers[sender] or { records = 0 }
+				Sync.peers[sender], p.at = p, ns.Now()
+				ns.Trace("sync", "Answer from %s for our catch-up (%d records in all)", sender, round.expected[sender])
 			end
 		else
-			if round then round.got = round.got + 1 end
+			if round then
+				round.got = round.got + 1
+				Sync.peers[sender].records = Sync.peers[sender].records + 1
+			end
 			if Comm.immediate then
 				local name, key, rec = Deserialize(piece)
 				if name and Sync.Accept(name, key, rec) and round then round.new = round.new + 1 end

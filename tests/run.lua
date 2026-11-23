@@ -492,12 +492,12 @@ test("professions: skills are shared with the guild", function()
 	local g = Guild2()
 	local mem = W.NewClient(base, "Mem", g)
 	local gm = W.NewClient(base, "Gm", g)
-	mem.skills = { { "Tailoring", 225, 300 }, { "First Aid", 150, 150 }, { "Cooking", 75, 150 }, { "Mining", 100, 150 } }
+	mem.skills = { { "Tailoring", 225, 300 }, { "First Aid", 150, 150 }, { "Alchemy", 75, 150 }, { "Mining", 100, 150 }, { "Cooking", 75, 150 } }
 	assert(mem.ns.Professions.UpdateSkills())
 	local p = gm.ns.Professions.Of("Mem")
-	eq(#p, 2, "only crafting professions (0.9.0)")
-	eq(p[1].name, "Cooking"); eq(p[2].name, "Tailoring"); eq(p[2].rank, 225)
-	eq(mem.ns.Sync.Get("profs", "Mem"), "Cooking:75:150,Tailoring:225:300", "gathering ones aren't shared")
+	eq(#p, 2, "only crafting professions (0.9.0), and no Cooking (1.3.0)")
+	eq(p[1].name, "Alchemy"); eq(p[2].name, "Tailoring"); eq(p[2].rank, 225)
+	eq(mem.ns.Sync.Get("profs", "Mem"), "Alchemy:75:150,Tailoring:225:300", "gathering ones and Cooking aren't shared")
 	eq(mem.ns.Professions.UpdateSkills(), false, "unchanged skills are not sent again")
 end)
 
@@ -505,7 +505,7 @@ test("professions: skills refused before the roster loaded are shared once it ha
 	local g = Guild2()
 	local mem = W.NewClient(base, "Mem", g)
 	local gm = W.NewClient(base, "Gm", g)
-	mem.skills = { { "Cooking", 120, 150 } }
+	mem.skills = { { "Alchemy", 120, 150 } }
 	mem.env.__fire("GUILD_ROSTER_UPDATE")
 	mem.flush()
 	eq(#gm.ns.Professions.Of("Mem"), 1, "shared after the roster update")
@@ -576,9 +576,9 @@ test("recipes: shared as ids, names looked up in game, older records upgraded", 
 	} }
 	assert(mem.ns.Professions.ReadOpenWindow(false))
 	local data = mem.ns.Sync.Get("recipes", "Mem#Enchanting")
-	eq(data, "6218;s7418", "ids only")
+	eq(data, "i4sq;s5q2", "ids only, in base 36")
 	local _, rec = mem.ns.Sync.Get("recipes", "Mem#Enchanting")
-	eq(rec.v, 2)
+	eq(rec.v, 3)
 	-- Gm's game knows the item but has never seen the enchant's spell name: remembered names fill in.
 	gm.env.GetSpellInfo = function(id) if id == 7418 then return "Enchant Bracer - Minor Health" end end
 	eq(#gm.ns.Professions.WhoCanMake("runed copper"), 1)
@@ -594,10 +594,10 @@ test("recipes: shared as ids, names looked up in game, older records upgraded", 
 	late.env.__fire("GET_ITEM_INFO_RECEIVED", 6218, true)
 	eq(#late.ns.Professions.WhoCanMake("runed copper"), 1, "the last name in: refreshed at once")
 	-- A record from a 1.2 client (version 1, names inline) is upgraded as it arrives.
-	mem.ns.Comm.Send("SU", mem.ns.Comm.Pack("recipes", "Mem#Cooking", W.now + 5, "Mem", "", "2888:Roasted Boar Meat;0:Secret Stew", 1))
-	eq(gm.ns.Sync.Get("recipes", "Mem#Cooking"), "2888;nSecret Stew")
-	eq(#gm.ns.Professions.WhoCanMake("boar"), 1)
-	eq(#gm.ns.Professions.WhoCanMake("secret stew"), 1)
+	mem.ns.Comm.Send("SU", mem.ns.Comm.Pack("recipes", "Mem#Alchemy", W.now + 5, "Mem", "", "118:Minor Healing Potion;0:Secret Elixir", 1))
+	eq(gm.ns.Sync.Get("recipes", "Mem#Alchemy"), "i3a;nSecret Elixir")
+	eq(#gm.ns.Professions.WhoCanMake("minor healing"), 1)
+	eq(#gm.ns.Professions.WhoCanMake("secret elixir"), 1)
 end)
 
 test("recipes: a batch of missing names refreshes the list once, when they're all in", function()
@@ -878,34 +878,34 @@ test("recipe scan: clicking through the profession tabs reads each one", functio
 	local P = mem.ns.Professions
 	local booked = 0
 	mem.env.ToggleProfessionsBook = function() booked = booked + 1 end
-	mem.skills = { { "Tailoring", 225, 300, 197 }, { "Herbalism", 100, 150, 182 }, { "Cooking", 80, 150, 185 } }
+	mem.skills = { { "Tailoring", 225, 300, 197 }, { "Herbalism", 100, 150, 182 }, { "Alchemy", 80, 150, 171 } }
 	eq(P.SharedCount("Tailoring"), nil, "not scanned yet")
 	assert(P.Scan())
 	eq(booked, 1, "the profession book is opened")
 	eq(mem.opened, nil, "the protected profession window is never opened by the addon")
 	eq(P.scan.total, 2, "Herbalism has no recipes to scan")
 	eq(mem.ns.GeneralTab.ScanLabel(), "Scanning (0/2 done)")
-	-- The player clicks the Tailoring tab, then the Cooking tab
+	-- The player clicks the Tailoring tab, then the Alchemy tab
 	mem.tradeSkill = { name = "Tailoring", recipes = { { 1, "Bolt of Linen Cloth", 2996 } } }
 	mem.env.__fire("TRADE_SKILL_LIST_UPDATE"); mem.flush()
 	eq(P.scan.done, 1)
-	mem.tradeSkill = { name = "Cooking", recipes = { { 2, "Roasted Boar Meat", 2888 }, { 3, "Spiced Wolf Meat", 2680 } } }
+	mem.tradeSkill = { name = "Alchemy", recipes = { { 2, "Minor Healing Potion", 118 }, { 3, "Lesser Healing Potion", 858 } } }
 	mem.env.__fire("TRADE_SKILL_DATA_SOURCE_CHANGED"); mem.flush()
 	eq(P.scan, nil, "finished")
-	eq(P.SharedCount("Tailoring"), 1); eq(P.SharedCount("Cooking"), 2)
-	eq(#gm.ns.Professions.WhoCanMake("meat"), 2, "guildmates see the recipes")
+	eq(P.SharedCount("Tailoring"), 1); eq(P.SharedCount("Alchemy"), 2)
+	eq(#gm.ns.Professions.WhoCanMake("healing potion"), 2, "guildmates see the recipes")
 end)
 
 test("recipe scan: quick clicks read only the tab that ends up shown; already shared counts", function()
 	local mem = W.NewClient(base, "Mem", Guild2())
 	local P = mem.ns.Professions
-	mem.skills = { { "Tailoring", 225, 300 }, { "Cooking", 80, 150 } }
+	mem.skills = { { "Tailoring", 225, 300 }, { "Alchemy", 80, 150 } }
 	mem.tradeSkill = { name = "Tailoring", recipes = { { 1, "Bolt of Linen Cloth", 2996 } } }
 	mem.env.__fire("TRADE_SKILL_SHOW")
-	mem.tradeSkill = { name = "Cooking", recipes = { { 2, "Roasted Boar Meat", 2888 } } }
+	mem.tradeSkill = { name = "Alchemy", recipes = { { 2, "Minor Healing Potion", 118 } } }
 	mem.env.__fire("TRADE_SKILL_LIST_UPDATE")
 	mem.flush()
-	eq(P.SharedCount("Cooking"), 1); eq(P.SharedCount("Tailoring"), nil, "skipped past before it was read")
+	eq(P.SharedCount("Alchemy"), 1); eq(P.SharedCount("Tailoring"), nil, "skipped past before it was read")
 	-- A scan asks for both again; showing an unchanged tab still ticks it off
 	P.Scan()
 	mem.env.__fire("TRADE_SKILL_LIST_UPDATE"); mem.flush()
@@ -1028,7 +1028,7 @@ test("names: 0.2 saved data keyed by first name becomes first name and surname",
 	local db = c.env.IwTDB
 	db.sync.alts = { records = { Clane = { rev = 1, data = "Large", by = "Clane" } } }
 	db.sync.profs = { records = { Large = { rev = 1, data = "Alchemy:195:225", by = "Large" } } }
-	db.sync.recipes = { records = { ["Magia#Cooking"] = { rev = 1, data = "2681:Roasted Boar Meat", by = "Magia" } } }
+	db.sync.recipes = { records = { ["Magia#Cooking"] = { rev = 1, data = "i22h", by = "Magia", v = 3 } } }
 	db.accountMain = "Large"
 	db.altPending = { Clane = { main = "Large", at = 1 } }
 	c.ns.Sync.MigrateNames(); c.ns.Alts.MigrateNames()
@@ -2435,7 +2435,7 @@ test("character sheet: attunements, keys and saved raids, shared once and read b
 	gm.ns.Comm.Send("SU", gm.ns.Comm.Pack("sheet", "Mem", W.now + 5, "Gm", "", "naxx;"))
 	eq(mem.ns.Sheet.Of("Mem").has.naxx, nil)
 	-- names can't break the format
-	eq(S.Encode({}, { { name = "A:b/c;d.e", resetAt = 600, done = 1, total = 2 } }), ";Abcde:600:1:2")
+	eq(S.Encode({ has = {}, locks = { { name = "A:b/c;d.e", resetAt = 600, done = 1, total = 2 } } }), ";Abcde:600:1:2")
 	assert(mem.ns.Professions.LEAVER_SETS[5] == "sheet")
 	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
 end)
@@ -2548,6 +2548,163 @@ test("roster page runs on the list builder: filters, sort and search still work"
 	T.searchBox.onChange("gm")
 	eq(#list.rows, 1)
 	eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("cooking is dropped (1.3.0): not read, not shown, and your old cooking recipes are deleted", function()
+	local g = Guild2()
+	local mem, gm = W.NewClient(base, "Mem", g), W.NewClient(base, "Gm", g)
+	local P = mem.ns.Professions
+	eq(P.IsCrafting("Cooking", 185), false)
+	-- old records: Mem's own and Gm's (from a 1.2 client)
+	for _, c in ipairs({ mem, gm }) do
+		c.ns.Sync.Accept("recipes", "Mem#Cooking", { rev = W.now - 10, by = "Mem", data = "2888;2680", v = 2 })
+		c.ns.Sync.Accept("recipes", "Gm#Cooking", { rev = W.now - 10, by = "Gm", data = "2888", v = 2 })
+		c.ns.Sync.Accept("recipes", "Mem#Tailoring", { rev = W.now - 10, by = "Mem", data = "2996", v = 2 })
+	end
+	W.itemNames[2888] = "Roasted Boar Meat"; W.itemNames[2996] = "Bolt of Linen Cloth"
+	eq(#gm.ns.Professions.WhoCanMake("boar"), 0, "never shown")
+	eq(#gm.ns.Professions.WhoCanMake("linen"), 1)
+	-- the cooking window is not read
+	mem.skills = { { "Cooking", 80, 150 } }
+	mem.tradeSkill = { name = "Cooking", recipes = { { 2, "Spiced Wolf Meat", 2680 } } }
+	mem.env.__fire("TRADE_SKILL_SHOW"); mem.flush()
+	eq(P.SharedCount("Cooking"), 2, "unchanged by the read")
+	-- at login Mem deletes its own; Gm's copy follows, and Gm's own record is left to Gm
+	eq(P.DropUntracked(), 1)
+	eq(mem.ns.Sync.Get("recipes", "Mem#Cooking"), nil)
+	eq(gm.ns.Sync.Get("recipes", "Mem#Cooking"), nil, "the deletion reached guildmates")
+	assert(gm.ns.Sync.Get("recipes", "Gm#Cooking"))
+	assert(mem.ns.Sync.Get("recipes", "Mem#Tailoring"))
+	eq(P.DropUntracked(), 0, "nothing left to delete")
+	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("record formats: every shared set has a codec, and each sample round-trips", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local R, n = c.ns.Record, 0
+	for set in pairs(c.ns.Sync.sets) do
+		local codec = R.codecs[set]
+		assert(codec, "no record codec for set " .. set)
+		assert(codec.sample ~= nil, "no sample for set " .. set)
+		local text = R.Encode(set, codec.sample)
+		assert(type(text) == "string" and text ~= "", set .. " encodes to text")
+		assert(not text:find("[\30\31|]"), set .. " never holds a separator")
+		local back = R.Decode(set, text)
+		assert(back ~= nil, set .. " decodes its own text")
+		eq(R.Encode(set, back), text, set .. " round-trips")
+		-- rubbish never breaks a decoder
+		for _, junk in ipairs({ "", ";;;", "x", "1;2", "\30" }) do pcall(R.Decode, set, junk) end
+		local ok = pcall(R.Decode, set, "")
+		assert(ok, set .. " decodes an empty record without error")
+		n = n + 1
+	end
+	assert(n >= 10, "all sets checked: " .. n)
+	-- helpers
+	eq(R.B36(0), "0"); eq(R.B36(35), "z"); eq(R.B36(36), "10"); eq(R.B36(36, 3), "010"); eq(R.Num36("zz"), 1295)
+	eq(R.Gaps({ 2997, 2996, 3001, 2996, 0 }), "2b8.1.4"); eq(table.concat(R.Ungaps("2b8.1.4"), ","), "2996,2997,3001")
+	eq(#R.Ungaps(""), 0)
+	local a, b, rest = R.Fields("1;2;x;y", 3); eq(a, "1"); eq(b, "2"); eq(rest, "x;y")
+	eq(R.Fields("1;2", 3), nil)
+	eq(table.concat(R.Split("a;;b", ";"), "|"), "a||b")
+end)
+
+test("recipes version 3: base 36 gaps are a third smaller than version 2, and v2 records upgrade", function()
+	local g = Guild2()
+	local c = W.NewClient(base, "Mem", g)
+	local P = c.ns.Professions
+	-- a crafter with 150 recipes spread over the item ids, as tailoring is
+	local list, v2 = {}, {}
+	for i = 1, 150 do list[i] = { item = 2500 + i * 113 + (i % 7) } end
+	for i = 1, 20 do list[#list + 1] = { spell = 7400 + i * 3 } end
+	for _, r in ipairs(list) do v2[#v2 + 1] = r.item and tostring(r.item) or ("s" .. r.spell) end
+	table.sort(v2)
+	local old, new = table.concat(v2, ";"), P.EncodeRecipes(list)
+	assert(#new * 3 <= #old * 2, string.format("v3 %d bytes vs v2 %d", #new, #old))
+	-- the same recipes back
+	local items, spells = P.RecipeIds(new)
+	eq(#items, 150); eq(#spells, 20); eq(items[1], 2500 + 113 + 1)
+	-- a 1.3.0-beta.1 record (version 2) is upgraded as it arrives
+	local gm = W.NewClient(base, "Gm", g)
+	gm.ns.Comm.Send("SU", gm.ns.Comm.Pack("recipes", "Gm#Tailoring", W.now + 5, "Gm", "", "2996;2997;s7418;nOld Name", 2))
+	eq(c.ns.Sync.Get("recipes", "Gm#Tailoring"), "i2b8.1;s5q2;nOld Name")
+	local _, rec = c.ns.Sync.Get("recipes", "Gm#Tailoring")
+	eq(rec.v, 3)
+	-- a version 1 record too
+	eq(P.UpgradeRecipes("2996:Bolt of Linen Cloth;0:Secret Stew", 1), "i2b8;nSecret Stew")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("declared settings: one list gives the defaults and the page; Set checks values", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local S, db = c.ns.Settings, c.env.IwTDB.settings
+	for _, def in ipairs(c.ns.SETTINGS) do
+		eq(db[def.key], def.default, def.key .. " default")
+		assert(def.kind == "hidden" or def.label, def.key .. " has a label")
+	end
+	c.ns.UI.Open("Settings")
+	local toggles = 0
+	for _, def in ipairs(c.ns.SETTINGS) do
+		if def.kind == "toggle" then toggles = toggles + 1; assert(S.checks[def.key], def.key .. " has a tick box") end
+	end
+	assert(toggles >= 10)
+	-- a tick box saves and tells the feature
+	local heard
+	S.OnChange("sounds", function(v) heard = v end)
+	S.checks.sounds:SetChecked(false)
+	S.checks.sounds:GetScript("OnClick")(S.checks.sounds)
+	eq(db.sounds, false); eq(heard, false)
+	-- values are checked against the declaration
+	eq(S.Set("scale", 5), 1.3); eq(db.scale, 1.3)
+	eq(S.Set("scale", 0.83), 0.85)
+	eq(S.Set("openOn", "Nowhere"), nil); eq(db.openOn, "last")
+	eq(S.Set("theme", "solarizedLight"), "solarizedLight")
+	eq(S.Set("nonsense", 1), nil); eq(db.nonsense, nil)
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("live log (/iwt clane): secret, shows catch-ups, messages and records as they happen", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	gm.ns.Sync.Set("loot", "1", "1800000000;Mem;19019;Thunderfury;Main tank")
+	local mem = W.NewClient(base, "Mem", g)
+	local Con = mem.ns.Console
+	-- not listed in /iwt help
+	mem.printed = {}
+	mem.ns.HandleSlash("help")
+	for _, line in ipairs(mem.printed) do assert(not line:find("clane"), "the secret stays secret") end
+	-- a catch-up: asked, answered by Gm, records taken in
+	mem.ns.Sync.Ask()
+	mem.ns.Sync.CheckRound()
+	mem.flush()
+	local text = table.concat(Con.Lines(true), "\n")
+	assert(text:find("SYNC   Asking the guild for anything newer", 1, true), text)
+	assert(text:find("Answer from Gm", 1, true), text)
+	assert(text:find("SEND   SQ to the guild", 1, true), text)
+	assert(text:find("HEAR   SR from Gm", 1, true), text)
+	assert(text:find("Took 1 new record: loot 1 (loot 1 by Gm)", 1, true), text)
+	assert(text:find("Round 1 done: 1 records from Gm, 1 new", 1, true), text)
+	-- the summary says who we synced with
+	local synced, traffic = Con.Summary()
+	assert(synced:find("Synced with", 1, true) and synced:find("Gm", 1, true), synced)
+	assert(traffic:find("Records held", 1, true), traffic)
+	-- the window: opens, names in class colours, filters, pause, clear
+	mem.ns.HandleSlash("clane")
+	assert(Con.window:IsShown())
+	assert(Con.Format({ at = 1.25, clock = W.now, kind = "recv", fmt = "%s from %s", n = 2, "SU", "Gm" }):find("|cff", 1, true))
+	Con.filter = "problems"
+	eq(#Con.Lines(), 0, "no problems")
+	mem.ns.ReportError("boom")
+	eq(#Con.Lines(), 1)
+	Con.filter = "all"
+	Con.Clear()
+	eq(#Con.Lines(), 0)
+	mem.ns.Trace("sync", "%d things", 3)
+	eq(#Con.Lines(), 1)
+	-- the buffer stays bounded
+	for i = 1, mem.ns.TRACE_MAX + 50 do mem.ns.Trace("timer", "tick %d", i) end
+	eq(#Con.Lines(), mem.ns.TRACE_MAX)
+	mem.ns.HandleSlash("clane")
+	eq(Con.window:IsShown(), false)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

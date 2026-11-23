@@ -13,6 +13,7 @@ Diagnostics.lua
 Perf.lua
 Roster.lua
 Comm.lua
+Record.lua
 Sync.lua
 UI.lua
 Widgets.lua
@@ -42,3 +43,4 @@ Updates.lua
 GameOptions.lua
 SelfTest.lua
 Report.lua
+Console.lua

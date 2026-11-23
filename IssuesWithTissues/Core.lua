@@ -7,24 +7,43 @@ ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
 ns.VERSION = "1.3.0-beta.2"
 
+-- Every setting, declared once: its default and how the Settings page shows it. The page builds
+-- itself from this list (Settings.lua); a feature reacts to a change with
+-- ns.Settings.OnChange(key, fn). kind:
+--   "toggle"    a tick box (label)
+--   "choice"    a row of buttons (label, choices = { { id, name }, ... })
+--   "dropdown"  a drop-down (label, choices = fn() -> { { id, name }, ... }, reload = applies at /reload)
+--   "range"     a slider shown in percent (label, min, max, step)
+--   "hidden"    kept, but not on the page
+ns.SETTINGS = {
+	{ key = "minimap", default = true, kind = "toggle", label = "Show the minimap button" },
+	{ key = "guildButton", default = true, kind = "toggle", label = "Show the button on the guild window" },
+	{ key = "sounds", default = true, kind = "toggle", label = "Play alert sounds" },
+	{ key = "windowSounds", default = true, kind = "toggle", label = "Sounds when the window opens and closes" },
+	{ key = "hideInCombat", default = false, kind = "toggle", label = "Hide the window in combat (back after)" },
+	{ key = "tooltipCraftable", default = true, kind = "toggle", label = "\"Guild craftable\" on item tooltips" },
+	{ key = "chatHistory", default = true, kind = "toggle", label = "Keep guild chat between sessions (this PC)" },
+	{ key = "clock24", default = true, kind = "toggle", label = "24-hour times in chat (off: 2:05pm)" },
+	{ key = "relativeTimes", default = true, kind = "toggle", label = "\"5 min ago\" times in chat for the last hour" },
+	{ key = "debug", default = false, kind = "toggle", label = "Print addon errors in chat" },
+	{ key = "theme", default = "default", kind = "dropdown", label = "Theme", reload = true,
+		choices = function()
+			local out = {}
+			for i, t in ipairs(ns.UI.THEMES) do out[i] = { id = t.id, name = t.name } end
+			return out
+		end },
+	{ key = "scale", default = 1, kind = "range", label = "Window size", min = 0.7, max = 1.3, step = 0.05 },
+	{ key = "openOn", default = "last", kind = "choice", label = "Open the window on",
+		choices = { { id = "last", name = "Last used" }, { id = "Home", name = "Home" }, { id = "Chat", name = "Chat" } } },
+	-- rankIndex 0 = Guild Master, 1 = Officer (game ranks 1 and 2); shown as text on the page
+	{ key = "officerMaxRank", default = 1, kind = "hidden" },
+}
+ns.SETTING = {}
+for _, s in ipairs(ns.SETTINGS) do ns.SETTING[s.key] = s end
+
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
-	settings = {
-		minimap = true,        -- show the minimap button
-		guildButton = true,    -- show the button on the guild frame
-		sounds = true,
-		officerMaxRank = 1,    -- rankIndex 0 = Guild Master, 1 = Officer (game ranks 1 and 2)
-		debug = false,
-		chatHistory = true,    -- keep guild chat between sessions (this PC only)
-		theme = "default",     -- window colours (Themes.lua), applied at /reload
-		windowSounds = true,   -- a sound when the window opens, closes or changes tab
-		scale = 1,             -- window size, 0.7 to 1.3
-		hideInCombat = false,  -- hide the window when combat starts, back after
-		clock24 = true,        -- chat times as 14:05 (false: 2:05pm)
-		relativeTimes = true,  -- "5 min ago" in chat for the last hour
-		tooltipCraftable = true, -- "Guild craftable" on item tooltips
-		openOn = "last",       -- the tab the window opens on: "last" (where you left it), "Home" or "Chat"
-	},
+	settings = {},
 	minimapAngle = 220,
 	errors = {},               -- Diagnostics
 	log = {},                  -- Diagnostics
@@ -32,6 +51,7 @@ ns.DEFAULTS = {
 	perf = { on = false },
 	window = {},
 }
+for _, s in ipairs(ns.SETTINGS) do ns.DEFAULTS.settings[s.key] = s.default end
 ns.CHAR_DEFAULTS = {}
 
 local function CopyDefaults(dst, src)
@@ -52,6 +72,24 @@ function ns.Print(fmt, ...)
 	if DEFAULT_CHAT_FRAME then
 		DEFAULT_CHAT_FRAME:AddMessage("|cff7fd4ffIwT|r " .. msg)
 	end
+end
+
+-- The live log (/iwt clane, Console.lua): what the addon is doing, kept in memory only.
+--   ns.Trace("sync", "Asked the guild (round %d)", n)
+-- Cheap: the text is only formatted when the window shows it. Kinds: sync, send, recv, data,
+-- mine, comm, timer, roster, error, log.
+ns.TRACE_MAX = 500
+ns.traces = { first = 1, last = 0 }
+function ns.Trace(kind, fmt, ...)
+	local t = ns.traces
+	t.last = t.last + 1
+	t[t.last] = { at = GetTime and GetTime() or 0, clock = time and time() or 0, kind = kind, fmt = fmt,
+		n = select("#", ...), ... }
+	if t.last - t.first >= ns.TRACE_MAX then
+		t[t.first] = nil
+		t.first = t.first + 1
+	end
+	if ns.onTrace then ns.onTrace(t[t.last]) end
 end
 
 function ns.Now()
@@ -164,6 +202,7 @@ ns.TIMERS = {
 function ns.Later(name, fn)
 	local seconds = ns.TIMERS[name]
 	assert(seconds, "unknown timer " .. tostring(name))
+	ns.Trace("timer", "%s in %ss", name, seconds)
 	ns.After(seconds, fn)
 end
 
@@ -239,9 +278,10 @@ end)
 -- Slash commands: ns.RegisterCommand("bug", "copyable bug report", fn)
 ---------------------------------------------------------------------------
 ns.commands, ns.commandOrder = {}, {}
-function ns.RegisterCommand(word, help, fn)
+-- hidden: works, but isn't listed in /iwt help.
+function ns.RegisterCommand(word, help, fn, hidden)
 	ns.commands[word] = { help = help, fn = fn }
-	table.insert(ns.commandOrder, word)
+	if not hidden then table.insert(ns.commandOrder, word) end
 end
 
 function ns.HandleSlash(msg)

@@ -103,8 +103,13 @@ function Comm.Held()
 	end
 end
 
+local HELD_TEXT = { combat = "Sending paused: in combat", raid = "Sending slowly: in a raid or dungeon" }
 function Comm.Pump()
 	local held = Comm.Held()
+	if held ~= Comm.lastHeld then
+		ns.Trace("comm", "%s", HELD_TEXT[held] or "Sending at the normal pace")
+		Comm.lastHeld = held
+	end
 	if held == "combat" then
 		ns.After(Comm.HOLD_CHECK, Comm.Pump)
 		return
@@ -117,8 +122,10 @@ function Comm.Pump()
 		if item.tries < Comm.MAX_TRIES then
 			PushFront(item) -- keep the order: a split message needs every piece
 			wait = Comm.THROTTLE_WAIT
+			ns.Trace("comm", "The game refused a packet (try %d of %d): sending again in %ss", item.tries, Comm.MAX_TRIES, Comm.THROTTLE_WAIT)
 		else
 			Comm.dropped = (Comm.dropped or 0) + 1
+			ns.Trace("error", "A packet was refused %d times and dropped", Comm.MAX_TRIES)
 		end
 	end
 	if Comm.Queued() > 0 then
@@ -140,6 +147,9 @@ function Comm.Send(msgType, payload, distribution, target)
 	for _, p in ipairs(packets) do
 		Push({ packet = p, distribution = distribution, target = target })
 	end
+	Comm.sentCount, Comm.sentBytes = (Comm.sentCount or 0) + 1, (Comm.sentBytes or 0) + #payload
+	ns.Trace("send", "%s to %s, %d bytes in %d packet%s", msgType, distribution == "WHISPER" and tostring(target) or "the guild",
+		#payload, #packets, #packets == 1 and "" or "s")
 	if Comm.immediate then -- tests: deliver at once
 		local item = Pop()
 		while item do
@@ -197,6 +207,8 @@ local function Dispatch(rawSender, body, distribution)
 		ns.Log("comm: dropped %s from %s (not allowed)", msgType, tostring(sender))
 		return
 	end
+	Comm.heardCount, Comm.heardBytes = (Comm.heardCount or 0) + 1, (Comm.heardBytes or 0) + #payload
+	ns.Trace("recv", "%s from %s, %d bytes%s", msgType, sender, #payload, distribution == "WHISPER" and " (whispered)" or "")
 	ns.Measure("comm " .. msgType, h.fn, sender, payload, distribution, forged, verified)
 end
 
@@ -286,6 +298,7 @@ Comm.Register("HELLO", function(sender, payload, distribution)
 	version = version or ""
 	local new = Comm.versions[sender] == nil
 	Comm.versions[sender] = version
+	ns.Trace("roster", "%s is running %s", sender, tostring(version))
 	ns.Send("VERSION_SEEN", sender, version)
 	ns.Send("ADDON_HELLO", sender, reply == "r")
 	if new and reply ~= "r" and sender ~= ns.PlayerName() then

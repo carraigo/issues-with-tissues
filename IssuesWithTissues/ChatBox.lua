@@ -239,8 +239,8 @@ if hooksecurefunc and ChatEdit_InsertLink then
 	end)
 end
 
-ns.Settings.AddToggle("chatHistory", "Keep guild chat between sessions (this PC)", function(on) Chat.SetHistory(on) end)
-ns.Settings.AddToggle("clock24", "24-hour times in chat (off: 2:05pm)", function() Chat.Redraw() end)
-ns.Settings.AddToggle("relativeTimes", "\"5 min ago\" times in chat for the last hour", function() Chat.Redraw() end)
+ns.Settings.OnChange("chatHistory", function(on) Chat.SetHistory(on) end)
+ns.Settings.OnChange("clock24", function() Chat.Redraw() end)
+ns.Settings.OnChange("relativeTimes", function() Chat.Redraw() end)
 
 ns.RegisterCommand("chat", "open guild chat", function() ns.UI.Open("Chat") end)

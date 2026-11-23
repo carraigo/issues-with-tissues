@@ -263,7 +263,7 @@ function UI.Sound(kind)
 	return true
 end
 
-UI.SCALE_MIN, UI.SCALE_MAX = 0.7, 1.3
+UI.SCALE_MIN, UI.SCALE_MAX = ns.SETTING.scale.min, ns.SETTING.scale.max
 function UI.SetScale(v)
 	v = tonumber(v) or 1
 	v = math.floor(math.max(UI.SCALE_MIN, math.min(UI.SCALE_MAX, v)) * 20 + 0.5) / 20 -- steps of 5%
@@ -379,7 +379,7 @@ function UI.Create()
 end
 
 -- Opening (minimap, key, /iwt): the tab chosen in Settings, or the last one used.
-UI.OPEN_ON = { { id = "last", name = "Last used" }, { id = "Home", name = "Home" }, { id = "Chat", name = "Chat" } }
+UI.OPEN_ON = ns.SETTING.openOn.choices
 function UI.Toggle()
 	local f = UI.Create()
 	if f:IsShown() then

@@ -2,14 +2,18 @@
 --
 -- Skills are read at login and whenever they change. Recipes are read when the player opens a
 -- profession window (the game only lists them then). Both are shared with the guild:
---   Sync "profs"   key = character, data = "Tailoring:225:300,Cooking:150:150"
---   Sync "recipes" key = character .. "#" .. profession, data = "12345;s7421;nRecipe name;..."
---     (version 2, 1.3.0): an item id for recipes that make an item, "s" .. spell id for ones that
---     don't (enchants), "n" .. name as a last resort. Names are looked up in game and remembered
---     on this PC (db.recipeNames), so each name is stored once instead of once per crafter.
---     Version 1 was "itemID:Recipe name;..." and is upgraded as it arrives.
+--   Sync "profs"   key = character, data = "Tailoring:225:300,Alchemy:150:150"
+--   Sync "recipes" key = character .. "#" .. profession, data = "i2b8.1.4;s5p9.2;nRecipe name"
+--     (version 3, 1.3.0-beta.2): "i" then the item ids of recipes that make an item, "s" then the
+--     spell ids of ones that don't (enchants), each sorted and written as base 36 gaps from the
+--     one before (Record.Gaps); "n" .. name as a last resort. Names are looked up in game and
+--     remembered on this PC (db.recipeNames), so each name is stored once instead of once per
+--     crafter. Version 2 (1.3.0-beta.1) was "12345;s7421;nName", version 1 "itemID:Name;...";
+--     both are upgraded as they arrive.
 -- Only the crafting professions are tracked (0.9.0): gathering ones, First Aid and Fishing are
 -- left out, and guildmates' older records that still list them are filtered when read.
+-- Cooking was dropped in 1.3.0 (nearly everyone has it, so it swamped the Crafting list): it is
+-- no longer read or shown, and each character deletes its own old Cooking recipes at login.
 -- Forever has the modern C_TradeSkillUI API; the classic GetTradeSkill* functions are a fallback.
 
 local _, ns = ...
@@ -19,13 +23,13 @@ ns.Professions = Prof
 
 ns.Sync.Define("profs", { writer = "owner" })
 -- Recipes are the one set that grows with the guild: a safety cap on top of the clean-up below.
-ns.Sync.Define("recipes", { writer = "member", max = 1500, version = 2,
-	upgrade = function(data) return Prof.UpgradeRecipes(data) end })
+ns.Sync.Define("recipes", { writer = "member", max = 1500, version = 3,
+	upgrade = function(data, v) return Prof.UpgradeRecipes(data, v) end })
 
 -- The professions tracked, by name and by skill line (the name may be in another language).
 Prof.CRAFTING = {
 	Alchemy = 171, Blacksmithing = 164, Enchanting = 333, Engineering = 202,
-	Leatherworking = 165, Tailoring = 197, Cooking = 185,
+	Leatherworking = 165, Tailoring = 197,
 }
 local craftingLine = {}
 for _, id in pairs(Prof.CRAFTING) do craftingLine[id] = true end
@@ -66,6 +70,7 @@ function Prof.ReadSkills()
 	return list
 end
 
+-- Skills record: "Alchemy:150:225,Tailoring:225:300" (sorted)
 function Prof.Encode(list)
 	local parts = {}
 	for _, p in ipairs(list) do parts[#parts + 1] = Clean(p.name, 24) .. ":" .. (p.rank or 0) .. ":" .. (p.max or 0) end
@@ -75,11 +80,14 @@ end
 
 function Prof.Decode(data)
 	local list = {}
-	for name, rank, max in (data or ""):gmatch("([^:,]+):(%d+):(%d+)") do
-		list[#list + 1] = { name = name, rank = tonumber(rank), max = tonumber(max) }
+	for _, part in ipairs(ns.Record.Split(data or "", ",")) do
+		local name, rank, max = part:match("^([^:]+):(%d+):(%d+)$")
+		if name then list[#list + 1] = { name = name, rank = tonumber(rank), max = tonumber(max) } end
 	end
 	return list
 end
+ns.Record.Define("profs", { encode = Prof.Encode, decode = Prof.Decode,
+	sample = { { name = "Alchemy", rank = 150, max = 225 }, { name = "Tailoring", rank = 225, max = 300 } } })
 
 -- Publish our skills when they changed.
 function Prof.UpdateSkills()
@@ -220,10 +228,8 @@ end)
 function Prof.PrefetchNames()
 	local names, want = Names(), {}
 	for _, data in ns.Sync.Each("recipes") do
-		for token in tostring(data):gmatch("[^;]+") do
-			local id = token:match("^(%d+)$")
-			id = tonumber(id)
-			if id and id > 0 and not names["i" .. id] and not missing[id] then
+		for _, id in ipairs((Prof.RecipeIds(data))) do
+			if not names["i" .. id] and not missing[id] then
 				local name = ItemName(id)
 				if name then Prof.Remember("i", id, name) else want[#want + 1] = id end
 			end
@@ -245,52 +251,70 @@ end
 local prefetchSoon = ns.Coalesce(Prof.PrefetchNames, 5)
 ns.Listen("SYNC_CHANGED", function(set) if set == "recipes" then prefetchSoon() end end)
 
-local function Token(r)
-	if r.item and r.item > 0 then
-		Prof.Remember("i", r.item, r.name)
-		return tostring(r.item)
-	elseif r.spell and r.spell > 0 then
-		Prof.Remember("s", r.spell, r.name)
-		return "s" .. r.spell
+-- A recipe list -> "i<item gaps>;s<spell gaps>;n<name>;n<name>" (empty groups left out).
+-- Names given with the ids are remembered on this PC.
+function Prof.EncodeRecipes(recipes)
+	local items, spells, names, seen = {}, {}, {}, {}
+	for _, r in ipairs(recipes) do
+		if r.item and r.item > 0 then
+			Prof.Remember("i", r.item, r.name)
+			items[#items + 1] = r.item
+		elseif r.spell and r.spell > 0 then
+			Prof.Remember("s", r.spell, r.name)
+			spells[#spells + 1] = r.spell
+		else
+			local n = Clean(r.name, 50)
+			if n ~= "" and not seen[n] then seen[n] = true; names[#names + 1] = n end
+		end
 	end
-	return "n" .. Clean(r.name, 50)
+	table.sort(names)
+	local parts = {}
+	if #items > 0 then parts[#parts + 1] = "i" .. ns.Record.Gaps(items) end
+	if #spells > 0 then parts[#parts + 1] = "s" .. ns.Record.Gaps(spells) end
+	for _, n in ipairs(names) do parts[#parts + 1] = "n" .. n end
+	return table.concat(parts, ";")
 end
 
-function Prof.EncodeRecipes(recipes)
-	local parts, seen = {}, {}
-	for _, r in ipairs(recipes) do
-		local t = Token(r)
-		if not seen[t] then seen[t] = true; parts[#parts + 1] = t end
+-- The ids in a recipe record, without looking names up: items, spells, names.
+function Prof.RecipeIds(data)
+	local items, spells, names = {}, {}, {}
+	for _, token in ipairs(ns.Record.Split(data or "", ";")) do
+		local kind, rest = token:sub(1, 1), token:sub(2)
+		if kind == "i" then items = ns.Record.Ungaps(rest)
+		elseif kind == "s" then spells = ns.Record.Ungaps(rest)
+		elseif kind == "n" and rest ~= "" then names[#names + 1] = rest end
 	end
-	table.sort(parts)
-	return table.concat(parts, ";")
+	return items, spells, names
 end
 
 -- { { item, spell, name }, ... }; name is "" while the game hasn't loaded it yet.
 function Prof.DecodeRecipes(data)
 	local list = {}
-	for token in (data or ""):gmatch("[^;]+") do
-		local item, oldName = token:match("^(%d+):(.*)$") -- version 1
-		if item then
-			list[#list + 1] = { item = tonumber(item), name = oldName }
-		elseif token:match("^%d+$") then
-			local id = tonumber(token)
-			list[#list + 1] = { item = id, name = Prof.NameOf("i", id) or "" }
-		elseif token:sub(1, 1) == "s" and tonumber(token:sub(2)) then
-			local id = tonumber(token:sub(2))
-			list[#list + 1] = { item = 0, spell = id, name = Prof.NameOf("s", id) or "" }
-		elseif token:sub(1, 1) == "n" then
-			list[#list + 1] = { item = 0, name = token:sub(2) }
-		end
-	end
+	local items, spells, names = Prof.RecipeIds(data)
+	for _, id in ipairs(items) do list[#list + 1] = { item = id, name = Prof.NameOf("i", id) or "" } end
+	for _, id in ipairs(spells) do list[#list + 1] = { item = 0, spell = id, name = Prof.NameOf("s", id) or "" } end
+	for _, n in ipairs(names) do list[#list + 1] = { item = 0, name = n } end
 	return list
 end
+ns.Record.Define("recipes", { encode = Prof.EncodeRecipes, decode = Prof.DecodeRecipes,
+	sample = { { item = 2996 }, { item = 2997 }, { item = 4305 }, { spell = 7418 }, { spell = 7420 }, { item = 0, name = "Secret Stew" } } })
 
--- Version 1 -> 2: names move to this PC's name list, the record keeps the ids.
-function Prof.UpgradeRecipes(data)
+-- Older records -> version 3. Version 1: "itemID:Name;..." (names move to this PC's name list).
+-- Version 2: "12345;s7421;nName".
+function Prof.UpgradeRecipes(data, v)
 	local list = {}
-	for item, name in (data or ""):gmatch("(%d+):([^;]*)") do
-		list[#list + 1] = { item = tonumber(item), name = name }
+	if (v or 1) == 1 then
+		for item, name in (data or ""):gmatch("(%d+):([^;]*)") do
+			item = tonumber(item)
+			if item > 0 then list[#list + 1] = { item = item, name = name }
+			elseif name ~= "" then list[#list + 1] = { item = 0, name = name } end
+		end
+	else
+		for token in (data or ""):gmatch("[^;]+") do
+			if token:match("^%d+$") then list[#list + 1] = { item = tonumber(token) }
+			elseif token:sub(1, 1) == "s" and tonumber(token:sub(2)) then list[#list + 1] = { spell = tonumber(token:sub(2)) }
+			elseif token:sub(1, 1) == "n" then list[#list + 1] = { item = 0, name = token:sub(2) } end
+		end
 	end
 	return Prof.EncodeRecipes(list)
 end
@@ -463,8 +487,23 @@ end
 pcall(ns.On, "CRAFT_SHOW", function() Soon(true) end)
 pcall(ns.On, "SKILL_LINES_CHANGED", function() ns.Later("skillsChanged", Prof.UpdateSkills) end)
 
+-- Delete this character's shared recipes for professions no longer tracked (Cooking, 1.3.0).
+-- A deletion travels like any change, so guildmates on older versions drop them too.
+function Prof.DropUntracked()
+	local me = ns.PlayerName()
+	if not me or not ns.Roster.me then return 0 end
+	local n = 0
+	local keys = {}
+	for key in ns.Sync.Each("recipes") do keys[#keys + 1] = key end
+	for _, key in ipairs(keys) do
+		local who, profession = key:match("^(.-)#(.+)$")
+		if who == me and not Prof.IsCrafting(profession) and ns.Sync.Delete("recipes", key) then n = n + 1 end
+	end
+	return n
+end
+
 function Prof:OnLogin()
-	ns.Later("profs", Prof.UpdateSkills)
+	ns.Later("profs", function() Prof.UpdateSkills(); Prof.DropUntracked() end)
 	ns.Later("recipeNames", Prof.PrefetchNames)
 end
 -- At login the roster can arrive after those 12 seconds, and until it has, sharing is refused

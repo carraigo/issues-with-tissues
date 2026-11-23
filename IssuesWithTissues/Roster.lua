@@ -113,6 +113,9 @@ function Roster.Scan()
 			if isOnline then online = online + 1 end
 		end
 	end
+	if n ~= Roster.count or online ~= Roster.online then
+		ns.Trace("roster", "Roster: %d members, %d online", n, online)
+	end
 	Roster.members, Roster.count, Roster.online, Roster.byFirst = fresh, n, online, byFirst
 	local me, how = FindMe(guids)
 	Roster.me, Roster.meHow = me, how

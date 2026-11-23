@@ -20,6 +20,9 @@ local Alts = ns.RegisterModule("Alts", {})
 ns.Alts = Alts
 
 ns.Sync.Define("alts", { writer = "owner" })
+-- Record: the main's name ("Large Joseph").
+ns.Record.Define("alts", { encode = function(main) return ns.Record.Clean(main, 60) end,
+	decode = function(data) return data ~= "" and data or nil end, sample = "Large Joseph" })
 
 local function Me() return ns.PlayerName() end
 

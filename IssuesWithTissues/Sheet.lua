@@ -58,7 +58,7 @@ function Sheet.Has(a)
 	return false
 end
 
-local function Clean(s) return (tostring(s or ""):gsub("[%c:/;%.|]", ""):sub(1, 40)) end
+local function Clean(s) return ns.Record.Clean((tostring(s or ""):gsub("%c", "")), 40, ":/%.") end
 
 -- This character's saved raids: { name, resetAt, done, total }, by name.
 function Sheet.ReadLockouts(now)
@@ -78,11 +78,19 @@ function Sheet.ReadLockouts(now)
 	return out
 end
 
-function Sheet.Encode(has, locks)
-	local codes = {}
-	for _, a in ipairs(Sheet.ATTUNEMENTS) do if has[a.code] then codes[#codes + 1] = a.code end end
+-- s = { has = { code = true }, locks = { { name, resetAt, done, total } } }
+function Sheet.Encode(s)
+	local codes, known = {}, {}
+	for _, a in ipairs(Sheet.ATTUNEMENTS) do
+		known[a.code] = true
+		if s.has[a.code] then codes[#codes + 1] = a.code end
+	end
+	local extra = {} -- codes from a newer version, kept after ours
+	for code in pairs(s.has) do if not known[code] then extra[#extra + 1] = Clean(code) end end
+	table.sort(extra)
+	for _, code in ipairs(extra) do codes[#codes + 1] = code end
 	local l = {}
-	for i, lock in ipairs(locks or {}) do
+	for i, lock in ipairs(s.locks or {}) do
 		l[i] = string.format("%s:%d:%d:%d", Clean(lock.name), lock.resetAt, lock.done or 0, lock.total or 0)
 	end
 	return table.concat(codes, ".") .. ";" .. table.concat(l, "/")
@@ -91,8 +99,11 @@ end
 -- { has = { code = true }, locks = { {name, resetAt, done, total} } }; lockouts that have
 -- reset are left out. Codes this version doesn't know are kept (a newer addon may add some).
 function Sheet.Decode(data, now)
-	local codes, locks = tostring(data or ""):match("^([^;]*);?(.*)$")
-	if not codes then return nil end
+	local codes, locks = ns.Record.Fields(data, 2)
+	if not codes then
+		codes, locks = tostring(data or ""), "" -- codes only
+		if codes:find("[^%w%.]") then return nil end
+	end
 	now = now or ns.Now()
 	local s = { has = {}, locks = {} }
 	for c in codes:gmatch("[^%.]+") do s.has[c] = true end
@@ -105,10 +116,13 @@ function Sheet.Decode(data, now)
 	return s
 end
 
+ns.Record.Define("sheet", { encode = Sheet.Encode, decode = function(data) return Sheet.Decode(data, 0) end,
+	sample = { has = { mc = true, ony = true, ubrs = true }, locks = { { name = "Molten Core", resetAt = 1795000200, done = 7, total = 10 } } } })
+
 function Sheet.Read()
 	local has = {}
 	for _, a in ipairs(Sheet.ATTUNEMENTS) do has[a.code] = Sheet.Has(a) or nil end
-	return Sheet.Encode(has, Sheet.ReadLockouts())
+	return Sheet.Encode({ has = has, locks = Sheet.ReadLockouts() })
 end
 
 -- Share this character's sheet (only when it changed).

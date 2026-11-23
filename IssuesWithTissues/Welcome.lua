@@ -16,8 +16,9 @@ Welcome.NOTES = {
 		"Chat says \"5 min ago\" for recent lines; hover a time for the full date.",
 		"Officers: a new Officers page under Members lists who's been away 30+ days and who needs to update.",
 		"Officers: a Raid page under Members shows who's attuned, who has the keys, and who's saved where (and when it resets).",
+		"Crafting no longer lists Cooking, so the list is shorter and easier to search.",
 		"Lists remember how you sorted and filtered them, and the addon stays quiet in dungeons too.",
-		"Lighter syncing: recipes are shared as item ids, and old votes are tidied away.",
+		"Lighter syncing: recipes are shared as compact item ids (a third smaller again), and old votes are tidied away.",
 	} },
 	{ version = "1.2.3", lines = {
 		"Behind the scenes: new versions now reach CurseForge automatically.",

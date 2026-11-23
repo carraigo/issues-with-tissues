@@ -21,11 +21,19 @@ function Loot.ParseItem(text)
 	return nil, Clean(text:gsub("^%[", ""):gsub("%]$", ""), 60)
 end
 
-function Loot.Decode(data)
-	local t, player, id, item, note = tostring(data or ""):match("^(%d+);([^;]*);(%d*);([^;]*);(.*)$")
-	if not t then return nil end
-	return { time = tonumber(t), player = player, itemID = tonumber(id), item = item, note = note }
+-- Record: "time;player;itemID;item name;note" (itemID empty for a typed name)
+function Loot.Encode(n)
+	return string.format("%d;%s;%s;%s;%s", n.time, Clean(n.player, 60), n.itemID or "", Clean(n.item, 60), Clean(n.note, 100))
 end
+
+function Loot.Decode(data)
+	local t, player, id, item, note = ns.Record.Fields(data, 5)
+	t = tonumber(t)
+	if not t or (id ~= "" and not tonumber(id)) then return nil end
+	return { time = t, player = player, itemID = tonumber(id), item = item, note = note }
+end
+ns.Record.Define("loot", { encode = Loot.Encode, decode = Loot.Decode,
+	sample = { time = 1795000000, player = "Large Joseph", itemID = 19019, item = "Thunderfury", note = "Main tank" } })
 
 -- Officers: note that player got item. player: a guildmate's name (first name is enough when
 -- only one guildmate has it).
@@ -36,7 +44,7 @@ function Loot.Add(player, itemText, note)
 	if not name or name == "" then return false, "Give the item (shift-click it into the box, or type its name)." end
 	local key = tostring(ns.Now())
 	while ns.Sync.Get("loot", key) do key = tostring(tonumber(key) + 1) end
-	return ns.Sync.Set("loot", key, string.format("%d;%s;%s;%s;%s", ns.Now(), who, id or "", Clean(name, 60), Clean(note, 100)))
+	return ns.Sync.Set("loot", key, Loot.Encode({ time = ns.Now(), player = who, itemID = id, item = name, note = note }))
 end
 
 function Loot.Remove(key) return ns.Sync.Delete("loot", key) end
