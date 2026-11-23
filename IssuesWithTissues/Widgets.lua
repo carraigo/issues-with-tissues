@@ -448,6 +448,17 @@ function UI.ClassColor(token)
 	return 1, 1, 1
 end
 
+-- How long ago: "just now", "5 min ago", "3 hours ago", "yesterday", "12 days ago".
+function UI.Ago(t, now)
+	now = now or ns.Now()
+	local s = now - (t or now)
+	if s < 60 then return "just now" end
+	if s < 3600 then return math.floor(s / 60) .. " min ago" end
+	if s < 86400 then local h = math.floor(s / 3600); return h == 1 and "an hour ago" or (h .. " hours ago") end
+	local d = math.floor(s / 86400)
+	return d == 1 and "yesterday" or (d .. " days ago")
+end
+
 -- 1234567 -> "1,234,567"
 function UI.Number(n)
 	local s = tostring(math.floor(n or 0))

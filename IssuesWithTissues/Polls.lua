@@ -2,7 +2,8 @@
 -- per player: alts linked to a main count once (the latest vote wins).
 --
 -- "polls" (officers): key = id, data = "closes;answer1~answer2~...;question"
--- "votes" (owner):    key = character, data = "id=answer,id=answer" (open polls only)
+-- "votes" (owner):    key = character, data = "id=answer,id=answer" (polls still listed only;
+--                     tidied at login, and dropped for characters who left the guild)
 
 local _, ns = ...
 
@@ -65,10 +66,29 @@ function Polls.Vote(id, answer)
 	mine[id] = answer
 	for pid, n in pairs(mine) do
 		local q = Polls.Decode(ns.Sync.Get("polls", pid))
-		if q and q.closes > ns.Now() then parts[#parts + 1] = pid .. "=" .. n end
+		-- keep votes on recently closed polls: their results are still shown
+		if q and q.closes + Polls.SHOW_CLOSED > ns.Now() then parts[#parts + 1] = pid .. "=" .. n end
 	end
 	table.sort(parts)
 	return ns.Sync.Set("votes", ns.PlayerName(), table.concat(parts, ","))
+end
+
+-- Our own votes record keeps only polls still listed (open, or closed under a week ago); once
+-- none are left it is deleted. Run at login, so old votes don't stay in everyone's data.
+function Polls.TidyMyVotes()
+	local me = ns.PlayerName()
+	local data = ns.Sync.Get("votes", me)
+	if not data then return false end
+	local keep = {}
+	for id, n in tostring(data):gmatch("(%d+)=(%d+)") do
+		local p = Polls.Decode(ns.Sync.Get("polls", id))
+		if p and p.closes + Polls.SHOW_CLOSED > ns.Now() then keep[#keep + 1] = id .. "=" .. n end
+	end
+	table.sort(keep)
+	local tidy = table.concat(keep, ",")
+	if tidy == data then return false end
+	if tidy == "" then return ns.Sync.Delete("votes", me) end
+	return ns.Sync.Set("votes", me, tidy)
 end
 
 -- Counts per answer for poll id, one per player (main), the newest vote winning.
@@ -251,3 +271,7 @@ Polls.RefreshSoon = ns.Coalesce(function() Polls.Refresh() end)
 ns.Listen("SYNC_CHANGED", function(set)
 	if set == "polls" or set == "votes" then Polls.RefreshSoon(); ns.Send("GUILD_LIFE_CHANGED") end
 end)
+
+function Polls:OnLogin()
+	ns.Later("tidyVotes", Polls.TidyMyVotes) -- after the catch-up has brought the polls
+end

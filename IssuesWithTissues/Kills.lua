@@ -54,7 +54,7 @@ end
 local function Soon()
 	if Kills.pending then return end
 	Kills.pending = true
-	ns.After(120, Kills.Share)
+	ns.Later("killsEvery", Kills.Share)
 end
 Kills.Soon = Soon
 
@@ -98,5 +98,5 @@ pcall(ns.On, "PLAYER_REGEN_ENABLED", Soon)
 pcall(ns.On, "PLAYER_PVP_KILLS_CHANGED", Soon)
 
 function Kills:OnLogin()
-	ns.After(15, Kills.Share)
+	ns.Later("kills", Kills.Share)
 end

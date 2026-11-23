@@ -39,6 +39,9 @@ Every feature that shares data defines a *set*. Each set has a rule for who may 
 - **Catching up:** at login, the addon sends a fingerprint of each set (`SQ`): a count plus a hash of every key and revision. Anyone online whose fingerprint differs answers with their records (`SR`), after a short random wait. That way usually only one guildmate answers, and a whole guild doesn't flood the channel.
 - **Smaller answers:** a set with 32 or more records also sends 16 bucket fingerprints (`set~...`), and an answerer sends only the records in buckets that differ. Before its records, an answerer sends a one-packet claim (`SC`) naming the sets it's answering. A set the asker holds nothing of takes the first claim only; the others wait for the next round. Older clients ignore both.
 - **Rounds:** a catch-up is judged 20 seconds after the ask (later while answers are still arriving). If it brought anything new, the addon asks again 10 seconds later, up to 5 rounds. A fresh install nobody answered asks again every minute (up to 10 times), and also when a guildmate's addon says hello at login. A catch-up runs at login and 10 minutes later; `/iwt sync` or Settings > Sync now starts one by hand.
+- **Private answers:** an answer only for sets the asker holds nothing of (a new install) is whispered to the asker, so the rest of the guild doesn't unpack records it already has.
+- **Recipes as ids:** a recipe record is a list of item ids (`s` + spell id for enchants, `n` + name as a last resort). Names are looked up in game and remembered on each PC, so each name is stored once rather than once per crafter. Records from 1.2 (with names) are upgraded as they arrive (data version 2).
+- **Clean-up:** each player's votes record keeps only polls still listed and is deleted when empty. Profession, recipe, kill and vote records of characters who left the guild are dropped after 3 days.
 - **Refused packets:** if the game refuses a packet (it limits how fast an addon may send), the queue waits 1.5 seconds and sends it again, so a split message never loses a piece.
 - **Data versions:** each record carries its set's data version (missing means 1). A set that changes its format is defined with a higher `version` and an `upgrade` function: older records are upgraded as they arrive and at load, and a client leaves alone any record from a newer version than it knows.
 - **Quiet in fights:** catch-ups aren't asked for or answered in combat or a raid, and records that arrive in combat are stored after it ends.
@@ -47,13 +50,15 @@ Every feature that shares data defines a *set*. Each set has a rule for who may 
 ## Modules and UI
 
 - Each feature is a module (`ns.RegisterModule`) with `OnLoad` and `OnLogin` hooks, loaded in the order the `.toc` lists them.
+- Every timed job is in one table, `ns.TIMERS` in `Core.lua` (`ns.Later("kills", fn)`). The login jobs are spread from 5 to 15 seconds so the addon never does everything in one frame.
+- A page can be hidden from some players: `AddPage(..., { visible = fn })`. The Officers page (away 30+ days, addon versions) uses it.
 - Pages register themselves into tabs (Home, Chat, Members, Crafting, Guild life), so adding a feature doesn't touch the window code.
 - Guild news (`News.lua`) is never shared: each PC compares the roster with the copy it saw last, so joins, leavers, level 60s and promotions show up even when they happened while you were offline.
 - Redraws are batched (`ns.Coalesce`). A burst of 300 incoming records with a page open costs about 1.5 ms instead of 2.5 s.
-- Every colour lives in one table (`UI.COLORS`). A theme (`Themes.lua`) is another set of those colours, copied in at load before any frame exists, so features never need to know about themes. In every theme but Default, text that would be too faint on the panels is shaded toward the theme's ink colour until it reaches a 4.5:1 contrast.
+- Every colour lives in one table (`UI.COLORS`). A theme (`Themes.lua`) is another set of those colours, copied in at load before any frame exists, so features never need to know about themes. In every theme but Default, text that would be too faint on the panels is shaded toward the theme's ink colour until it reaches a 4.5:1 contrast. Light themes (Kawaii Day, Solarized Light) also carry hand-picked class colours, since darkening the game's own made several classes look alike.
 - The addon never assigns Blizzard's global variables, because one stray assignment "taints" the secure UI and breaks other addons' macros. A test enforces this.
 
-## Guild chat (`Chat.lua`)
+## Guild chat (`Chat.lua`, `ChatHistory.lua`, `ChatOnline.lua`, `ChatBox.lua`)
 
 Chat isn't shared data: it never goes over addon messages, and it's never put in the report or the website.
 

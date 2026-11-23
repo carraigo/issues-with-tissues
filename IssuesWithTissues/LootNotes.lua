@@ -166,7 +166,7 @@ local function Build(panel)
 				GameTooltip:AddLine(n.item)
 			end
 			if n.note ~= "" then GameTooltip:AddLine(n.note, 1, 1, 1, true) end
-			GameTooltip:AddLine(ns.Roster.DisplayName(n.player) .. ", " .. date("%d %b %Y", n.time), 0.7, 0.7, 0.7)
+			GameTooltip:AddLine(ns.Roster.DisplayName(n.player) .. ", " .. ns.UI.Ago(n.time) .. " (" .. date("%d %b %Y, %H:%M", n.time) .. ")", 0.7, 0.7, 0.7)
 		end,
 	})
 	removeButton = ns.UI.Button(panel, "Remove note", 110, 22)

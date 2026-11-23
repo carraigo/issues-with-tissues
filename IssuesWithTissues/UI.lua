@@ -57,10 +57,12 @@ local function Group(title)
 end
 
 -- A page under a tab. opts.order sorts pages (lower first; default: in the order added).
+-- opts.visible: a function; while it returns false the page's sub-tab is hidden (officer pages).
 function UI.AddPage(groupTitle, title, build, opts)
 	local g = Group(groupTitle)
 	assert(g, "no tab " .. tostring(groupTitle))
-	local page = { title = title, build = build, order = (opts and opts.order) or (#g.pages + 1) * 10, group = g }
+	local page = { title = title, build = build, order = (opts and opts.order) or (#g.pages + 1) * 10, group = g,
+		visible = opts and opts.visible }
 	g.pages[#g.pages + 1] = page
 	table.sort(g.pages, function(a, b) return a.order < b.order end)
 	return page
@@ -148,6 +150,7 @@ local function GroupFrame(g)
 			page.subButton = b
 			prev = b
 		end
+		UI.LayoutSubTabs(g)
 		local line = UI.Fill(f:CreateTexture(nil, "BORDER"), C.dim)
 		line:SetPoint("TOPLEFT", 0, -24)
 		line:SetPoint("TOPRIGHT", 0, -24)
@@ -159,9 +162,46 @@ local function GroupFrame(g)
 	return f
 end
 
+-- Can this page be shown now?
+function UI.PageVisible(page)
+	if not page.visible then return true end
+	local ok, yes = pcall(page.visible)
+	return ok and yes and true or false
+end
+
+-- Show the sub-tabs of visible pages only, side by side.
+function UI.LayoutSubTabs(g)
+	local prev
+	for _, page in ipairs(g.pages) do
+		local b = page.subButton
+		if b then
+			local show = UI.PageVisible(page)
+			b:SetShown(show)
+			if show then
+				b:ClearAllPoints()
+				if prev then b:SetPoint("LEFT", prev, "RIGHT", 2, 0) else b:SetPoint("TOPLEFT", 0, 0) end
+				prev = b
+			end
+		end
+	end
+end
+
+-- Ranks changed (or loaded): hide or show officer pages, and leave one that just went hidden.
+function UI.RefreshPages()
+	for _, g in ipairs(UI.groups) do
+		if g.frame then
+			UI.LayoutSubTabs(g)
+			local cur = g.current and g.pages[g.current]
+			if cur and not UI.PageVisible(cur) and g.frame:IsShown() then UI.SelectPage(g, 1) end
+		end
+	end
+end
+ns.Listen("ROSTER_UPDATED", function() UI.RefreshPages() end)
+
 function UI.SelectPage(g, j)
 	local page = g.pages[j]
 	if not page then return end
+	if not UI.PageVisible(page) then j, page = 1, g.pages[1] end
 	for k, other in ipairs(g.pages) do
 		if other.panel then other.panel:SetShown(k == j) end
 		if other.subButton then other.subButton:SetSelectedTab(k == j) end
@@ -184,7 +224,7 @@ function UI.SelectTab(i)
 	local want = ns.db.window.pages and ns.db.window.pages[g.title]
 	local j = g.current or 1
 	if not g.current and want then
-		for k, page in ipairs(g.pages) do if page.title == want then j = k end end
+		for k, page in ipairs(g.pages) do if page.title == want and UI.PageVisible(page) then j = k end end
 	end
 	UI.SelectPage(g, j)
 	MarkTabs(i)

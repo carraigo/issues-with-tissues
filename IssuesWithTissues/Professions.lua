@@ -3,7 +3,11 @@
 -- Skills are read at login and whenever they change. Recipes are read when the player opens a
 -- profession window (the game only lists them then). Both are shared with the guild:
 --   Sync "profs"   key = character, data = "Tailoring:225:300,Cooking:150:150"
---   Sync "recipes" key = character .. "#" .. profession, data = "itemID:Recipe name;..."
+--   Sync "recipes" key = character .. "#" .. profession, data = "12345;s7421;nRecipe name;..."
+--     (version 2, 1.3.0): an item id for recipes that make an item, "s" .. spell id for ones that
+--     don't (enchants), "n" .. name as a last resort. Names are looked up in game and remembered
+--     on this PC (db.recipeNames), so each name is stored once instead of once per crafter.
+--     Version 1 was "itemID:Recipe name;..." and is upgraded as it arrives.
 -- Only the crafting professions are tracked (0.9.0): gathering ones, First Aid and Fishing are
 -- left out, and guildmates' older records that still list them are filtered when read.
 -- Forever has the modern C_TradeSkillUI API; the classic GetTradeSkill* functions are a fallback.
@@ -15,7 +19,8 @@ ns.Professions = Prof
 
 ns.Sync.Define("profs", { writer = "owner" })
 -- Recipes are the one set that grows with the guild: a safety cap on top of the clean-up below.
-ns.Sync.Define("recipes", { writer = "member", max = 1500 })
+ns.Sync.Define("recipes", { writer = "member", max = 1500, version = 2,
+	upgrade = function(data) return Prof.UpgradeRecipes(data) end })
 
 -- The professions tracked, by name and by skill line (the name may be in another language).
 Prof.CRAFTING = {
@@ -131,7 +136,7 @@ local function ReadModern()
 				local oko, out = pcall(T.GetRecipeOutputItemData, id)
 				if oko and type(out) == "table" then item = out.itemID end
 			end
-			recipes[#recipes + 1] = { item = item or 0, name = info.name }
+			recipes[#recipes + 1] = { item = item or 0, spell = id, name = info.name }
 		end
 	end
 	return base.professionName, recipes
@@ -157,19 +162,106 @@ local function ReadClassic(craft)
 	return profName, recipes
 end
 
+---------------------------------------------------------------------------
+-- Recipe names: looked up in game, remembered on this PC.
+---------------------------------------------------------------------------
+Prof.namesGen = 0 -- goes up when a name arrives (the recipe list is decoded again)
+local missing = {} -- item id -> true while the game loads its name
+
+local function Names()
+	ns.db.recipeNames = ns.db.recipeNames or {}
+	return ns.db.recipeNames
+end
+
+function Prof.Remember(kind, id, name)
+	if not id or id == 0 or type(name) ~= "string" or name == "" then return end
+	Names()[kind .. id] = Clean(name, 50)
+end
+
+local function ItemName(id)
+	local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+	local name = type(fn) == "function" and fn(id) or nil
+	if name then return name end
+	if not missing[id] then
+		missing[id] = true
+		if C_Item and type(C_Item.RequestLoadItemDataByID) == "function" then pcall(C_Item.RequestLoadItemDataByID, id) end
+	end
+end
+
+local function SpellName(id)
+	if C_Spell and type(C_Spell.GetSpellName) == "function" then return C_Spell.GetSpellName(id) end
+	if type(GetSpellInfo) == "function" then return (GetSpellInfo(id)) end
+end
+
+-- A recipe's name: remembered, else asked from the game (nil while an item still loads).
+function Prof.NameOf(kind, id)
+	local names = Names()
+	local name = names[kind .. id]
+	if name then return name end
+	name = kind == "i" and ItemName(id) or kind == "s" and SpellName(id) or nil
+	if name then Prof.Remember(kind, id, name) end
+	return name
+end
+
+local namesArrived = ns.Coalesce(function()
+	Prof.namesGen = Prof.namesGen + 1
+	ns.Send("SYNC_CHANGED", "recipes")
+end, 1)
+pcall(ns.On, "GET_ITEM_INFO_RECEIVED", function(_, id, ok)
+	id = tonumber(id)
+	if not id or not missing[id] then return end
+	missing[id] = nil
+	if ok ~= false and Prof.NameOf("i", id) then namesArrived() end
+end)
+
+local function Token(r)
+	if r.item and r.item > 0 then
+		Prof.Remember("i", r.item, r.name)
+		return tostring(r.item)
+	elseif r.spell and r.spell > 0 then
+		Prof.Remember("s", r.spell, r.name)
+		return "s" .. r.spell
+	end
+	return "n" .. Clean(r.name, 50)
+end
+
 function Prof.EncodeRecipes(recipes)
-	local parts = {}
-	for _, r in ipairs(recipes) do parts[#parts + 1] = (r.item or 0) .. ":" .. Clean(r.name, 50) end
+	local parts, seen = {}, {}
+	for _, r in ipairs(recipes) do
+		local t = Token(r)
+		if not seen[t] then seen[t] = true; parts[#parts + 1] = t end
+	end
 	table.sort(parts)
 	return table.concat(parts, ";")
 end
 
+-- { { item, spell, name }, ... }; name is "" while the game hasn't loaded it yet.
 function Prof.DecodeRecipes(data)
+	local list = {}
+	for token in (data or ""):gmatch("[^;]+") do
+		local item, oldName = token:match("^(%d+):(.*)$") -- version 1
+		if item then
+			list[#list + 1] = { item = tonumber(item), name = oldName }
+		elseif token:match("^%d+$") then
+			local id = tonumber(token)
+			list[#list + 1] = { item = id, name = Prof.NameOf("i", id) or "" }
+		elseif token:sub(1, 1) == "s" and tonumber(token:sub(2)) then
+			local id = tonumber(token:sub(2))
+			list[#list + 1] = { item = 0, spell = id, name = Prof.NameOf("s", id) or "" }
+		elseif token:sub(1, 1) == "n" then
+			list[#list + 1] = { item = 0, name = token:sub(2) }
+		end
+	end
+	return list
+end
+
+-- Version 1 -> 2: names move to this PC's name list, the record keeps the ids.
+function Prof.UpgradeRecipes(data)
 	local list = {}
 	for item, name in (data or ""):gmatch("(%d+):([^;]*)") do
 		list[#list + 1] = { item = tonumber(item), name = name }
 	end
-	return list
+	return Prof.EncodeRecipes(list)
 end
 
 -- The skill line of one of this character's professions, by name.
@@ -206,10 +298,10 @@ end
 -- Every recipe in the guild: { { crafter, profession, item, name }, ... }
 -- Decoded once per change: the Crafters search runs on every key typed, and decoding thousands
 -- of recipes each time made typing stutter in a big guild. Callers must not change the list.
-local cache, cacheGen, cacheStore
+local cache, cacheGen, cacheStore, cacheNames
 function Prof.AllRecipes()
 	local store = ns.db.sync.recipes
-	if cache and cacheGen == ns.Sync.gen and cacheStore == (store and store.records) then return cache end
+	if cache and cacheGen == ns.Sync.gen and cacheNames == Prof.namesGen and cacheStore == (store and store.records) then return cache end
 	local out = {}
 	for key, data in ns.Sync.Each("recipes") do
 		local crafter, profession = key:match("^(.-)#(.*)$")
@@ -219,7 +311,7 @@ function Prof.AllRecipes()
 			end
 		end
 	end
-	cache, cacheGen, cacheStore = out, ns.Sync.gen, store and store.records
+	cache, cacheGen, cacheStore, cacheNames = out, ns.Sync.gen, store and store.records, Prof.namesGen
 	return out
 end
 
@@ -324,7 +416,7 @@ local token = 0
 local function Soon(craft)
 	token = token + 1
 	local mine = token
-	ns.After(0.6, function()
+	ns.Later("recipeRead", function()
 		if mine ~= token then return end
 		Prof.lastRead = nil
 		local ok, err = pcall(Prof.ReadOpenWindow, craft)
@@ -338,10 +430,10 @@ for _, ev in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKIL
 	pcall(ns.On, ev, function() Soon(false) end)
 end
 pcall(ns.On, "CRAFT_SHOW", function() Soon(true) end)
-pcall(ns.On, "SKILL_LINES_CHANGED", function() ns.After(2, Prof.UpdateSkills) end)
+pcall(ns.On, "SKILL_LINES_CHANGED", function() ns.Later("skillsChanged", Prof.UpdateSkills) end)
 
 function Prof:OnLogin()
-	ns.After(12, Prof.UpdateSkills)
+	ns.Later("profs", Prof.UpdateSkills)
 end
 -- At login the roster can arrive after those 12 seconds, and until it has, sharing is refused
 -- (we are not known to be in the guild yet). Try again whenever the roster is read; it only
@@ -357,6 +449,8 @@ end, 1))
 -- members' records are accepted). A roster much smaller than usual is not trusted.
 ---------------------------------------------------------------------------
 Prof.LEAVER_DAYS = 3
+-- Sets keyed by character (recipes: character#profession) that are dropped for leavers.
+Prof.LEAVER_SETS = { "profs", "recipes", "kills", "votes" }
 Prof.rosterPeak = 0
 
 local function Owner(set, key)
@@ -373,7 +467,7 @@ function Prof.ForgetLeavers()
 	db.leftAt = db.leftAt or {}
 	local now, dropped = ns.Now(), 0
 	local seen = {}
-	for _, set in ipairs({ "profs", "recipes" }) do
+	for _, set in ipairs(Prof.LEAVER_SETS) do
 		local store = db.sync[set] and db.sync[set].records or {}
 		for key in pairs(store) do
 			local who = Owner(set, key)
@@ -393,8 +487,8 @@ function Prof.ForgetLeavers()
 	for who in pairs(db.leftAt) do if not seen[who] then db.leftAt[who] = nil end end
 	if dropped > 0 then
 		ns.Sync.gen = ns.Sync.gen + 1
-		ns.Log("professions: dropped %d records of characters who left the guild", dropped)
-		ns.Send("SYNC_CHANGED", "recipes")
+		ns.Log("leavers: dropped %d records of characters who left the guild", dropped)
+		for _, set in ipairs(Prof.LEAVER_SETS) do ns.Send("SYNC_CHANGED", set) end
 	end
 	return dropped
 end

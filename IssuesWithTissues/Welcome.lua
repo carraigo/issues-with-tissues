@@ -10,6 +10,13 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.3.0", lines = {
+		"New themes: Solarized Dark and Solarized Light, picked from a drop-down in Settings.",
+		"Kawaii Day has its own class colours, easy to read and easy to tell apart.",
+		"Chat says \"5 min ago\" for recent lines; hover a time for the full date.",
+		"Officers: a new Officers page under Members lists who's been away 30+ days and who needs to update.",
+		"Lighter syncing: recipes are shared as item ids, and old votes are tidied away.",
+	} },
 	{ version = "1.2.3", lines = {
 		"Behind the scenes: new versions now reach CurseForge automatically.",
 	} },
@@ -78,6 +85,13 @@ Welcome.WELCOME = {
 	"Guild life: polls, donations and loot notes.",
 	"The cog opens Settings, with themes. Everything is shared only with guildmates who run the addon.",
 }
+-- The first-run tour: the welcome card's "Take the tour" opens each page with a short tip.
+Welcome.TOUR = {
+	{ page = "Home", text = "Home: the guild at a glance, this character and its main, and your professions. Press \"Scan my recipes\" once so guildmates can find what you craft." },
+	{ page = "Chat", text = "Chat: guild and officer chat with earlier messages, and who's online by rank on the right. Type below and press Enter to send." },
+	{ page = "Crafters", text = "Crafting: search for an item to see who in the guild can make it. Item tooltips also say \"Guild craftable\" in green." },
+}
+
 -- Shown under the welcome (and in What's new) while the guild key still opens the game's window.
 Welcome.KEY_TIP = "Tip: let your guild key (%s) open this window instead of the game's Guild & Communities. Press the button below, or set it in Key Bindings."
 
@@ -140,7 +154,10 @@ local function Card()
 	card.ok = ok
 	local open = UI.Button(card, "Open the window", 140, 24)
 	open:SetPoint("RIGHT", ok, "LEFT", -8, 0)
-	open:SetScript("OnClick", function() card:Hide(); UI.Open("Home") end)
+	open:SetScript("OnClick", function()
+		card:Hide()
+		if card.tour then Welcome.StartTour() else UI.Open("Home") end
+	end)
 	card.open = open
 	local key = UI.Button(card, "", 180, 24)
 	key:SetPoint("RIGHT", open, "LEFT", -8, 0)
@@ -191,8 +208,10 @@ function Welcome.UpdateKeyButton(c)
 	c.key:Show()
 end
 
-local function Show(title, text)
+local function Show(title, text, tour)
 	local c = Card()
+	c.tour = tour and true or false
+	c.open:SetText(tour and "Take the tour" or "Open the window")
 	c.title:SetText(title)
 	c.body:SetText(text)
 	-- Fit the card to the text: title bar and padding above, a gap and the buttons below.
@@ -223,7 +242,7 @@ function Welcome.ShowWelcome()
 		lines[#lines + 1] = ""
 		lines[#lines + 1] = Gold(Welcome.KEY_TIP:format(Welcome.GuildKey()))
 	end
-	return Show("Welcome to Issues with Tissues", table.concat(lines, "\n"))
+	return Show("Welcome to Issues with Tissues", table.concat(lines, "\n"), true)
 end
 
 function Welcome.ShowWhatsNew(since)
@@ -241,6 +260,60 @@ function Welcome.ShowWhatsNew(since)
 end
 
 ---------------------------------------------------------------------------
+-- The tour: a tip under the window for each page, with Next and Done.
+---------------------------------------------------------------------------
+local tip
+local function Tip()
+	if tip then return tip end
+	local UI = ns.UI
+	tip = CreateFrame("Frame", "IwTTourTip", UIParent)
+	tip:SetSize(420, 96)
+	tip:SetFrameStrata("DIALOG")
+	tip:EnableMouse(true)
+	UI.Skin(tip)
+	tip.step = tip:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	tip.step:SetPoint("TOPLEFT", 12, -10)
+	tip.text = tip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	tip.text:SetPoint("TOPLEFT", 12, -26)
+	tip.text:SetWidth(396)
+	tip.text:SetJustifyH("LEFT")
+	tip.next = UI.Button(tip, "Next", 80, 22, "primary")
+	tip.next:SetPoint("BOTTOMRIGHT", -10, 8)
+	tip.next:SetScript("OnClick", function() Welcome.TourStep((Welcome.tourAt or 0) + 1) end)
+	tip.close = UI.Button(tip, "End tour", 80, 22)
+	tip.close:SetPoint("RIGHT", tip.next, "LEFT", -6, 0)
+	tip.close:SetScript("OnClick", function() Welcome.EndTour() end)
+	return tip
+end
+
+function Welcome.StartTour() return Welcome.TourStep(1) end
+
+-- Show step i (past the last one ends the tour). Returns the step shown.
+function Welcome.TourStep(i)
+	local step = Welcome.TOUR[i]
+	if not step then return Welcome.EndTour() end
+	Welcome.tourAt = i
+	ns.UI.Open(step.page)
+	local t = Tip()
+	t.step:SetText(string.format("Tour %d of %d", i, #Welcome.TOUR))
+	t.text:SetText(step.text)
+	t.next:SetText(i == #Welcome.TOUR and "Done" or "Next")
+	t:ClearAllPoints()
+	local w = _G.IwTMainWindow
+	if w then t:SetPoint("TOP", w, "BOTTOM", 0, -6) else t:SetPoint("CENTER") end
+	t:Show()
+	if ns.UI.ThemeTree then ns.UI.ThemeTree(t) end
+	return step
+end
+
+function Welcome.EndTour()
+	Welcome.tourAt = nil
+	if tip then tip:Hide() end
+end
+
+ns.RegisterCommand("tour", "a short tour of the window", function() Welcome.StartTour() end)
+
+---------------------------------------------------------------------------
 -- When to show it
 ---------------------------------------------------------------------------
 function Welcome:OnLoad()
@@ -250,7 +323,7 @@ function Welcome:OnLoad()
 end
 
 function Welcome.Check()
-	if InCombatLockdown and InCombatLockdown() then return ns.After(10, Welcome.Check) end
+	if InCombatLockdown and InCombatLockdown() then return ns.Later("welcomeRetry", Welcome.Check) end
 	local db = ns.db
 	local seen = db.seenVersion
 	db.seenVersion = ns.VERSION
@@ -263,7 +336,7 @@ function Welcome.Check()
 end
 
 function Welcome:OnLogin()
-	ns.After(6, Welcome.Check)
+	ns.Later("welcome", Welcome.Check)
 end
 
 ns.RegisterCommand("new", "what's new in this version", function()

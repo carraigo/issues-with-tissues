@@ -17,11 +17,19 @@ local function Hex(s)
 end
 local function A(s, a) local c = Hex(s); c[4] = a; return c end
 
--- Keys as in UI.COLORS, plus:
+-- Keys as in UI.COLORS, plus (optional) classes = { WARRIOR = colour, ... } for class names, plus:
 --   ink      text is moved toward this colour when it's too faint
 --   ref      the background text is checked against (the lightest panel on a light theme)
 --   chat     guild/officer chat colours, instead of the game's chat settings
 --   light    a light theme (game font shadows are lightened)
+-- Class colours picked by hand for light backgrounds (1.3.0): each still looks like its class
+-- and differs from the others; darkening the game's own made several look alike.
+local LIGHT_CLASSES = {
+	WARRIOR = Hex("8b5a2b"), PALADIN = Hex("c2185b"), HUNTER = Hex("3d7a14"), ROGUE = Hex("7d6800"),
+	PRIEST = Hex("52607a"), SHAMAN = Hex("0058b0"), MAGE = Hex("00788f"), WARLOCK = Hex("5a49c4"),
+	DRUID = Hex("b84a00"),
+}
+
 UI.THEMES = {
 	{ id = "default", name = "Default" },
 	{ id = "kawaiiNight", name = "Kawaii Night", colors = {
@@ -37,7 +45,8 @@ UI.THEMES = {
 		hover = A("e889b5", 0.15), stripe = A("e889b5", 0.06), input = Hex("fffaf2"),
 		gold = Hex("b03a74"), text = Hex("5a3349"), tabtext = Hex("8a5a74"), subtext = Hex("8a5a74"),
 		stamp = Hex("a07a90"), sys = Hex("8a7684"), primarytext = Hex("4a2038"),
-	}, ink = Hex("4a2038"), ref = Hex("fffaf2"), chat = { guild = Hex("1d6b4c"), officer = Hex("17573e") } },
+	}, ink = Hex("4a2038"), ref = Hex("fffaf2"), chat = { guild = Hex("1d6b4c"), officer = Hex("17573e") },
+	classes = LIGHT_CLASSES },
 	{ id = "midnight", name = "Midnight", colors = {
 		bg = A("0c1220", 0.97), bar = Hex("131c30"), card = A("16213a", 0.9), edge = Hex("6f8fbf"), dim = Hex("2c3a58"),
 		button = Hex("18233b"), primary = Hex("2f5ea8"), close = Hex("3a4a6e"), selected = Hex("24365a"),
@@ -52,6 +61,24 @@ UI.THEMES = {
 		gold = Hex("ffd200"), text = Hex("ffffff"), tabtext = Hex("e0e0e0"), subtext = Hex("e0e0e0"),
 		stamp = Hex("d0d0d0"), sys = Hex("e0e0e0"), primarytext = Hex("000000"),
 	}, ink = Hex("ffffff"), ref = Hex("1a1a1a") },
+	-- Solarized (Ethan Schoonover's palette, github.com/altercation/vim-colors-solarized): the same
+	-- accents on a dark and a light base. A few tones are a shade darker than the originals so
+	-- text stays readable.
+	{ id = "solarizedDark", name = "Solarized Dark", colors = {
+		bg = A("002b36", 0.98), bar = Hex("073642"), card = A("073642", 0.92), edge = Hex("b58900"), dim = Hex("2a4f5a"),
+		button = Hex("073642"), primary = Hex("1a6699"), close = Hex("b0281f"), selected = Hex("0e4a58"),
+		hover = A("93a1a1", 0.12), stripe = A("93a1a1", 0.04), input = Hex("00212b"),
+		gold = Hex("cc9a00"), text = Hex("93a1a1"), tabtext = Hex("93a1a1"), subtext = Hex("93a1a1"),
+		stamp = Hex("93a1a1"), sys = Hex("93a1a1"), primarytext = Hex("fdf6e3"),
+	}, ink = Hex("eee8d5"), ref = Hex("073642"), chat = { guild = Hex("9aad00"), officer = Hex("35b5aa") } },
+	{ id = "solarizedLight", name = "Solarized Light", light = true, colors = {
+		bg = A("fdf6e3", 0.98), bar = Hex("eee8d5"), card = A("eee8d5", 0.95), edge = Hex("93a1a1"), dim = Hex("d8d2bf"),
+		button = Hex("eee8d5"), primary = Hex("1a6699"), close = Hex("dc322f"), selected = Hex("e2dac2"),
+		hover = A("586e75", 0.12), stripe = A("586e75", 0.05), input = Hex("fffbef"),
+		gold = Hex("8a5f00"), text = Hex("586e75"), tabtext = Hex("586e75"), subtext = Hex("586e75"),
+		stamp = Hex("5f7379"), sys = Hex("586e75"), primarytext = Hex("fdf6e3"),
+	}, ink = Hex("073642"), ref = Hex("fdf6e3"), chat = { guild = Hex("5c6b00"), officer = Hex("1f7a73") },
+	classes = LIGHT_CLASSES },
 }
 
 UI.theme = UI.THEMES[1]
@@ -111,6 +138,8 @@ end
 
 local classColor = UI.ClassColor
 function UI.ClassColor(token)
+	local own = UI.theme and UI.theme.classes and token and UI.theme.classes[token]
+	if own then return own[1], own[2], own[3] end
 	return UI.Readable(classColor(token))
 end
 

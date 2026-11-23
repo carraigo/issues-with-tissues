@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.2.3"
+ns.VERSION = "1.3.0-beta.1"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
@@ -21,6 +21,7 @@ ns.DEFAULTS = {
 		scale = 1,             -- window size, 0.7 to 1.3
 		hideInCombat = false,  -- hide the window when combat starts, back after
 		clock24 = true,        -- chat times as 14:05 (false: 2:05pm)
+		relativeTimes = true,  -- "5 min ago" in chat for the last hour
 		tooltipCraftable = true, -- "Guild craftable" on item tooltips
 		openOn = "last",       -- the tab the window opens on: "last" (where you left it), "Home" or "Chat"
 	},
@@ -134,6 +135,31 @@ function ns.After(seconds, fn)
 			if not ok and ns.ReportError then ns.ReportError(err) end
 		end)
 	end
+end
+
+-- Every timed job in one place, in seconds. At login the jobs are spread out so the addon
+-- never does everything in the same frame, in this order:
+ns.TIMERS = {
+	hello = 5,          -- Comm: tell the guild our version
+	welcome = 6,        -- Welcome card or What's new
+	catchUp = 8,        -- Sync: first catch-up (the roster has loaded by then)
+	chatHistory = 10,   -- Chat: ask the server for guild chat history
+	alts = 11,          -- Alts: pending link requests (after the chat history)
+	profs = 12,         -- Professions: share skills
+	kills = 15,         -- Kills: share kill counts
+	tidyVotes = 90,     -- Polls: drop our votes on polls no longer listed (after the catch-up)
+	lateCatchUp = 600,  -- Sync: a second catch-up, for whoever logged in since
+	-- Repeating and event-driven waits:
+	killsEvery = 120,   -- Kills: share at most this often after fights
+	skillsChanged = 2,  -- Professions: after SKILL_LINES_CHANGED
+	recipeRead = 0.6,   -- Professions: after the profession window changes
+	welcomeRetry = 10,  -- Welcome: waiting for combat to end
+}
+-- ns.Later("kills", fn): run fn after ns.TIMERS.kills seconds.
+function ns.Later(name, fn)
+	local seconds = ns.TIMERS[name]
+	assert(seconds, "unknown timer " .. tostring(name))
+	ns.After(seconds, fn)
 end
 
 ---------------------------------------------------------------------------

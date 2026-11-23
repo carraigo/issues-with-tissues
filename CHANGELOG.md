@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.3.0-beta.1
+
+**Performance**
+- **Smaller recipe data:** recipes are shared as item ids (spell ids for enchants), and each PC looks up and remembers the names. A profession's record is about 4 times smaller. Records from 1.2 are upgraded as they arrive; 1.2 clients can't read the new ones, so everyone should update.
+- **New installs catch up privately:** when a new install asks for everything, the answer is whispered to them, so the rest of the guild doesn't unpack data it already has.
+- **Old data cleaned up:** your votes on polls that are no longer listed are removed at login, and kill and vote records of characters who left the guild are dropped after 3 days, like professions.
+
+**Functionality**
+- **Officers page** (Members, officers and the Guild Master only): everyone away 30 days or more with rank, level, last seen and alts (right-click to demote or remove), and which addon version each guildmate runs, older versions first (click to whisper them).
+- **Remove from guild** on the roster's right-click menu for officers. As with promote and demote, it types the game's `/gremove` command into chat for you to confirm with Enter.
+- **Kawaii Day class colours:** hand-picked for the light background, each readable and different from the others (Priest is slate instead of mauve).
+- Voting on a new poll no longer drops your vote on a poll that closed in the last week, whose result is still shown.
+
+**Features**
+- **Solarized Dark and Solarized Light themes**, based on Ethan Schoonover's Solarized palette.
+- **Theme drop-down** in Settings instead of a row of buttons.
+
+**User experience**
+- **First-run tour:** the welcome card's "Take the tour" shows Home, Chat and Crafting with a short tip on each (also `/iwt tour`).
+- **"5 min ago" times:** chat lines from the last hour say how long ago they were written, and older ones show the day when it wasn't today. Hover a time for the full date. Settings can turn it off. Loot note and Officers tooltips say how long ago too.
+
+**Refactoring**
+- **One place for timers:** every login delay and repeating wait is in `ns.TIMERS` (Core.lua), spread out so nothing runs in the same frame.
+- **Chat.lua split** into Chat.lua (lines, sending, events), ChatHistory.lua (the server's history), ChatOnline.lua (who's online) and ChatBox.lua (the page).
+
 ## 1.2.3
 
 - New versions reach CurseForge on their own: each GitHub release now uploads its zip to CurseForge straight away. Nothing changes in game.

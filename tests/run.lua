@@ -247,6 +247,21 @@ test("sync: guildmates holding different records each answer, the same records o
 	eq(late.ns.Sync.Get("notes", "x"), "only offi"); eq(late.ns.Sync.Get("notes", "y"), "only vet")
 end)
 
+test("sync: a new install's catch-up is whispered, so others don't unpack it", function()
+	local g = Guild()
+	local offi, vet = W.NewClient(base, "Offi", g), W.NewClient(base, "Vet", g)
+	DefineSets(offi, vet)
+	offi.ns.Sync.Set("notes", "n1", "x")
+	local late = W.NewClient(base, "Mem", g)
+	DefineSets(late)
+	local heard = 0
+	local orig = vet.ns.Comm.handlers.SR.fn
+	vet.ns.Comm.handlers.SR.fn = function(...) heard = heard + 1 return orig(...) end
+	late.ns.Sync.Ask()
+	eq(late.ns.Sync.Get("notes", "n1"), "x")
+	eq(heard, 0, "vet never sees the answer")
+end)
+
 test("sync: a big set sends only the buckets that differ", function()
 	local g = Guild()
 	local offi = W.NewClient(base, "Offi", g)
@@ -541,6 +556,100 @@ test("professions: a large recipe list survives catch-up sync", function()
 	eq(#late.ns.Professions.WhoCanMake("recipe number"), 250)
 end)
 
+test("recipes: shared as ids, names looked up in game, older records upgraded", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local gm = W.NewClient(base, "Gm", g)
+	mem.tradeSkill = { name = "Enchanting", recipes = {
+		{ 7421, "Runed Copper Rod", 6218 }, { 7418, "Enchant Bracer - Minor Health" }, -- no item: an enchant
+	} }
+	assert(mem.ns.Professions.ReadOpenWindow(false))
+	local data = mem.ns.Sync.Get("recipes", "Mem#Enchanting")
+	eq(data, "6218;s7418", "ids only")
+	local _, rec = mem.ns.Sync.Get("recipes", "Mem#Enchanting")
+	eq(rec.v, 2)
+	-- Gm's game knows the item but has never seen the enchant's spell name: remembered names fill in.
+	gm.env.GetSpellInfo = function(id) if id == 7418 then return "Enchant Bracer - Minor Health" end end
+	eq(#gm.ns.Professions.WhoCanMake("runed copper"), 1)
+	eq(#gm.ns.Professions.WhoCanMake("minor health"), 1)
+	-- An item the game hasn't loaded yet: found once its name arrives.
+	local late = W.NewClient(base, "Vet", g)
+	late.unknownItems = { [6218] = true }
+	late.ns.Sync.Ask()
+	eq(#late.ns.Professions.WhoCanMake("runed copper"), 0)
+	late.unknownItems = nil
+	late.env.__fire("GET_ITEM_INFO_RECEIVED", 6218, true)
+	late.flush()
+	eq(#late.ns.Professions.WhoCanMake("runed copper"), 1)
+	-- A record from a 1.2 client (version 1, names inline) is upgraded as it arrives.
+	mem.ns.Comm.Send("SU", mem.ns.Comm.Pack("recipes", "Mem#Cooking", W.now + 5, "Mem", "", "2888:Roasted Boar Meat;0:Secret Stew", 1))
+	eq(gm.ns.Sync.Get("recipes", "Mem#Cooking"), "2888;nSecret Stew")
+	eq(#gm.ns.Professions.WhoCanMake("boar"), 1)
+	eq(#gm.ns.Professions.WhoCanMake("secret stew"), 1)
+end)
+
+test("recipes: the shared data is much smaller than before", function()
+	local list = {}
+	for i = 1, 100 do list[i] = { item = 10000 + i, name = "Heavy Runecloth Bandolier " .. i } end
+	local c = W.NewClient(base, "Mem", Guild2())
+	local old = {}
+	for _, r in ipairs(list) do old[#old + 1] = r.item .. ":" .. r.name end
+	local new = c.ns.Professions.EncodeRecipes(list)
+	assert(#new * 4 < #table.concat(old, ";"), "at least 4x smaller: " .. #new)
+end)
+
+test("themes: Kawaii Day has its own readable class colours", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local UI = c.ns.UI
+	UI.ApplyTheme("kawaiiDay")
+	local seen = {}
+	for _, token in ipairs({ "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }) do
+		local r, g, b = UI.ClassColor(token)
+		assert(UI.Contrast({ r, g, b }, UI.theme.ref) >= 4.5, token .. " is readable")
+		local k = string.format("%.2f%.2f%.2f", r, g, b)
+		assert(not seen[k], token .. " differs from the others"); seen[k] = true
+	end
+	local r, g, b = UI.ClassColor("PRIEST")
+	eq(string.format("%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5)), "52607a")
+	UI.ApplyTheme("default")
+	r = UI.ClassColor("PRIEST")
+	eq(r, 1, "other themes keep the game's colours")
+end)
+
+test("officers page: only officers see it; away list and addon versions", function()
+	local g = Guild2()
+	local gm, mem = W.NewClient(base, "Gm", g), W.NewClient(base, "Mem", g)
+	local O = gm.ns.OfficerTab
+	eq(O.Visible(), true); eq(mem.ns.OfficerTab.Visible(), false)
+	gm.ns.UI.Create(); mem.ns.UI.Create()
+	local function Page(c)
+		for _, t in ipairs(c.ns.UI.tabs) do
+			for _, p in ipairs(t.pages) do if p.title == "Officers" then return p, t end end
+		end
+	end
+	mem.ns.UI.Open("Members")
+	local p, t = Page(mem)
+	eq(p.subButton:IsShown(), false, "hidden for members")
+	mem.ns.UI.Open("Officers")
+	eq(t.current, 1, "a member asking for it gets the roster")
+	gm.ns.UI.Open("Officers")
+	p = Page(gm)
+	eq(p.subButton:IsShown(), true)
+	eq(p.panel:IsShown(), true)
+	-- Who's away 30 days or more
+	local away = O.AwayRows()
+	for _, r in ipairs(away) do assert(not r.online and r.offlineDays >= 30) end
+	-- Versions: heard at login, remembered; older ones first
+	gm.ns.Send("VERSION_SEEN", "Vet", "1.2.1")
+	gm.ns.Send("VERSION_SEEN", "Mem", gm.ns.VERSION)
+	local rows, never = O.VersionRows()
+	eq(rows[1].name, "Vet"); eq(rows[1].old, true)
+	for i = 2, #rows do eq(rows[i].old, false) end
+	assert(never >= 0)
+	eq(gm.env.IwTDB.versionsSeen["Vet"].v, "1.2.1", "remembered for next time")
+	eq(#gm.env.IwTDB.errors, 0); eq(#mem.env.IwTDB.errors, 0)
+end)
+
 test("roster tab shows in the window before Settings", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	c.ns.UI.Create()
@@ -550,7 +659,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster),Crafting(Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Officers),Crafting(Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -653,7 +762,8 @@ test("roster: officers and the Guild Master can promote and demote, following th
 	-- The menu, the question, then the change
 	gm.ns.UI.Open("Roster")
 	local items = gm.ns.RosterTab.ShowMenu({ full = "Vet", name = "Vet" })
-	eq(#items, 4); eq(items[3][1], "Promote to Officer"); eq(items[4][1], "Demote to Member")
+	eq(#items, 5); eq(items[3][1], "Promote to Officer"); eq(items[4][1], "Demote to Member")
+	eq(items[5][1], "Remove from guild")
 	-- Forever forbids GuildPromote from addons: the game's own command goes in the chat box,
 	-- and the player's Enter runs it.
 	local typed
@@ -664,6 +774,10 @@ test("roster: officers and the Guild Master can promote and demote, following th
 	items[4][2]()
 	eq(typed, "/gdemote Vet")
 	assert(gm.printed[#gm.printed]:find("Press Enter to demote Vet to Member", 1, true))
+	items[5][2]()
+	eq(typed, "/gremove Vet")
+	eq(mem.ns.RosterTab.CanRemove("Gone"), false, "members can't remove")
+	eq(off.ns.RosterTab.CanRemove("Gm"), false, "nobody at or above your rank")
 	-- Members can't get there even by calling it directly
 	mem.env.ChatFrame_OpenChat = function() error("should not be called") end
 	eq(mem.ns.RosterTab.ChangeRank("Gone", true), false)
@@ -1020,6 +1134,29 @@ test("donations: only the officer who set the goal changes it, unless they allow
 	mem.ns.Sync.Accept("dgoal", "goal", { rev = W.now, by = "Gm", data = "8;100;Stuck;Gone Person" })
 	eq(mem.ns.Donations.CanEdit("Off"), true)
 	eq(#gm.env.IwTDB.errors, 0); eq(#off.env.IwTDB.errors, 0)
+end)
+
+test("polls: our votes on polls no longer listed are tidied away", function()
+	local g = Guild2()
+	local gm, mem = W.NewClient(base, "Gm", g), W.NewClient(base, "Mem", g)
+	local t0 = W.now
+	assert(gm.ns.Polls.Ask("Raid night?", "Fri, Sat", 1))
+	assert(gm.ns.Polls.Ask("Bank tabs?", "Yes, No", 7))
+	local ids = {}
+	for id in mem.ns.Sync.Each("polls") do ids[#ids + 1] = id end
+	table.sort(ids)
+	assert(mem.ns.Polls.Vote(ids[1], 1)); assert(mem.ns.Polls.Vote(ids[2], 2))
+	W.now = t0 + 3 * 86400 -- the first poll has closed: its result is still shown
+	eq(mem.ns.Polls.TidyMyVotes(), false)
+	assert(mem.ns.Polls.Vote(ids[2], 1))
+	assert(mem.ns.Sync.Get("votes", "Mem"):find(ids[1] .. "=1", 1, true), "voting again keeps a recently closed poll's vote")
+	W.now = t0 + 9 * 86400 -- closed over a week ago: no longer listed
+	assert(mem.ns.Polls.TidyMyVotes())
+	eq(gm.ns.Sync.Get("votes", "Mem"), ids[2] .. "=1")
+	W.now = t0 + 20 * 86400
+	assert(mem.ns.Polls.TidyMyVotes())
+	eq(gm.ns.Sync.Get("votes", "Mem"), nil, "nothing left: deleted")
+	W.now = t0
 end)
 
 test("polls: officers ask, one vote per player (alts once), votes can change, closed polls stop voting", function()
@@ -1838,6 +1975,13 @@ test("themes: every theme has every colour, and picking one in Settings waits fo
 		end
 	end
 	UI.Open("Settings")
+	-- The theme drop-down: click to list them, pick one, the list closes
+	local S = c.ns.Settings
+	S.themePick:GetScript("OnClick")()
+	eq(S.themeList:IsShown(), true)
+	assert(S.themeButtons.solarizedDark and S.themeButtons.solarizedLight, "both Solarized themes listed")
+	S.themeButtons.solarizedDark:GetScript("OnClick")()
+	eq(c.env.IwTDB.settings.theme, "solarizedDark"); eq(S.themeList:IsShown(), false)
 	c.env.IwTDB.settings.theme = "midnight"
 	eq(UI.theme.id, "default", "applies at the next reload")
 	eq(#c.env.IwTDB.errors, 0)
@@ -1866,6 +2010,25 @@ test("welcome: a first install gets the welcome card; an update gets What's new 
 	Welcome.shown = nil
 	Welcome.Check()
 	eq(Welcome.shown, "What's new in Issues with Tissues")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("welcome: a first install can take the tour of Home, Chat and Crafting", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Wl = c.ns.Welcome
+	local card = Wl.ShowWelcome()
+	eq(card.tour, true, "the button takes the tour")
+	card.open:GetScript("OnClick")()
+	eq(Wl.tourAt, 1)
+	eq(c.ns.UI.tabs[c.ns.UI.current].title, "Home")
+	Wl.TourStep(2)
+	eq(c.ns.UI.tabs[c.ns.UI.current].title, "Chat")
+	local step = Wl.TourStep(3)
+	eq(step.page, "Crafters"); eq(c.ns.UI.tabs[c.ns.UI.current].title, "Crafting")
+	Wl.TourStep(4)
+	eq(Wl.tourAt, nil, "past the last step ends it")
+	-- What's new keeps the plain button
+	eq(Wl.ShowWhatsNew("1.0.0").tour, false)
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
@@ -2052,6 +2215,21 @@ test("chat: 12 or 24-hour times", function()
 	assert(Chat.Format("guild", { t = t, k = "msg", a = "Gm-Realm", m = "hi" }):find("2:05pm", 1, true))
 end)
 
+test("chat: recent lines say how long ago, with the full time on hover", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	local Chat = c.ns.Chat
+	local now = os.time({ year = 2026, month = 11, day = 23, hour = 14, min = 30 })
+	eq(Chat.Stamp(now - 20, now), "just now")
+	eq(Chat.Stamp(now - 120, now), "2 min ago")
+	eq(Chat.Stamp(now - 7200, now), "12:30", "earlier today: the clock time")
+	eq(Chat.Stamp(now - 86400, now), "22 Nov 14:30", "another day: the date too")
+	c.env.IwTDB.settings.relativeTimes = false
+	eq(Chat.Stamp(now - 120, now), "14:28")
+	eq(Chat.FullTime(now - 7200), "Monday 23 November 2026, 12:30:00")
+	local line = Chat.Format("guild", { t = now - 7200, k = "msg", a = "Gm-Realm", m = "hi" })
+	assert(line:find("|Hiwttime:" .. (now - 7200) .. "|h", 1, true), "the stamp is a hover link")
+end)
+
 test("bug report: memory use and startup times", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	c.env.UpdateAddOnMemoryUsage = function() end
@@ -2112,6 +2290,8 @@ test("professions: characters who left the guild are forgotten after three days"
 	db.sync.recipes = db.sync.recipes or { records = {} }
 	db.sync.recipes.records["Quitter#Tailoring"] = { rev = 1, by = "Quitter", data = "4334:Formal White Shirt" }
 	db.sync.recipes.records["Gm#Cooking"] = { rev = 1, by = "Gm", data = "2681:Roasted Boar Meat" }
+	db.sync.kills = db.sync.kills or { records = {} }
+	db.sync.kills.records["Quitter"] = { rev = 1, by = "Quitter", data = "5:10" }
 	eq(P.ForgetLeavers(), 0, "just noticed")
 	W.now = W.now + 2 * 86400
 	eq(P.ForgetLeavers(), 0, "not yet")
@@ -2121,8 +2301,9 @@ test("professions: characters who left the guild are forgotten after three days"
 	W.now = W.now + 2 * 86400
 	eq(P.ForgetLeavers(), 0)
 	mem.ns.Roster.count = full
-	eq(P.ForgetLeavers(), 2, "the profession and recipe records go")
+	eq(P.ForgetLeavers(), 3, "the profession, recipe and kill records go")
 	eq(db.sync.profs.records["Quitter"], nil); eq(db.sync.recipes.records["Quitter#Tailoring"], nil)
+	eq(db.sync.kills.records["Quitter"], nil)
 	assert(db.sync.recipes.records["Gm#Cooking"], "members keep theirs")
 	eq(#P.WhoCanMake("shirt"), 0)
 	eq(db.leftAt["Quitter"], nil, "nothing left to track")

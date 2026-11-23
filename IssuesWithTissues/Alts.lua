@@ -202,7 +202,7 @@ end
 ns.Listen("ROSTER_UPDATED", CheckOnce)
 
 function Alts:OnLogin()
-	ns.After(11, function() checked = false; CheckOnce() end) -- a second after the chat history (10s)
+	ns.Later("alts", function() checked = false; CheckOnce() end)
 end
 
 ns.RegisterCommand("alt", "alt links: main, add Name, remove Name, ask, or list", function(rest)

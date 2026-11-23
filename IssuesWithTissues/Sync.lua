@@ -12,6 +12,7 @@
 --   SQ  nonce, then set=maxRev for each set   "I'm missing anything newer than these"
 --   SR  nonce \2 set=digest,...,#=count \30 record \30 record ...   an answer
 --   SC  nonce,set,set...                      "I'm answering these sets" (sent first, one packet)
+-- An answer only for sets the asker holds nothing of (a new install) is whispered to the asker.
 -- A big set's ask also carries "set~<16 bucket fingerprints>", so an answerer sends only the
 -- records in buckets that differ instead of the whole set (old clients ignore the field).
 -- Catch-up runs in rounds: ask, take the answers, and ask again soon while a round still brings
@@ -453,14 +454,25 @@ Comm.Register("SQ", function(sender, payload)
 		local records = Sync.BuildAnswer(wants, skip)
 		if #records == 0 then return end
 		for _, m in ipairs(mine) do heard[m] = true end
-		for name in pairs(wants) do if not skip[name] then sets[#sets + 1] = name end end
+		-- Only sets the asker has nothing of (a new install): whisper the answer to them alone,
+		-- so the rest of the guild doesn't unpack records it already holds.
+		local private = true
+		for name in pairs(wants) do
+			if not skip[name] then
+				sets[#sets + 1] = name
+				if wants[name].digest ~= "0.0" then private = false end
+			end
+		end
 		Comm.Send("SC", nonce .. "," .. table.concat(sets, ","))
 		mine[#mine + 1] = "#=" .. #records
 		local head = nonce .. "\2" .. table.concat(mine, ",")
 		-- Split into answers of at most ~2,000 bytes so no single message gets too long.
 		local batch, size = {}, 0
 		local function flush()
-			if #batch > 0 then Comm.Send("SR", head .. RS .. table.concat(batch, RS)) end
+			if #batch > 0 then
+				local body = head .. RS .. table.concat(batch, RS)
+				if private then Comm.Send("SR", body, "WHISPER", sender) else Comm.Send("SR", body) end
+			end
 			batch, size = {}, 0
 		end
 		for _, s in ipairs(records) do
@@ -619,6 +631,6 @@ function Sync.StartCatchUp()
 end
 
 function Sync:OnLogin()
-	ns.After(8, Sync.StartCatchUp) -- after the roster has loaded, so rank checks work
-	ns.After(600, Sync.StartCatchUp) -- and once more later, for anything a guildmate logging in since has
+	ns.Later("catchUp", Sync.StartCatchUp)
+	ns.Later("lateCatchUp", Sync.StartCatchUp)
 end

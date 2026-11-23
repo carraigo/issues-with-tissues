@@ -271,5 +271,5 @@ Comm.Register("HELLO", function(sender, payload, distribution)
 	end
 end)
 function Comm:OnLogin()
-	ns.After(5, function() Comm.Send("HELLO", ns.VERSION) end)
+	ns.Later("hello", function() Comm.Send("HELLO", ns.VERSION) end)
 end

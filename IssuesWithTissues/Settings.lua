@@ -60,27 +60,40 @@ local function Build(panel)
 	y = y - 20
 	local themeNote = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	local reload = ns.UI.Button(panel, "Reload now", 100, 22, "primary")
+	-- A drop-down: the chosen theme on a button; clicking it lists them all beneath.
+	local pick = ns.UI.Button(panel, "", 200, 22)
+	pick:SetPoint("TOPLEFT", 0, y)
+	local list = CreateFrame("Frame", nil, panel)
+	list:SetFrameStrata("DIALOG")
+	list:EnableMouse(true)
+	ns.UI.Skin(list)
+	list:SetPoint("TOPLEFT", pick, "BOTTOMLEFT", 0, -2)
+	list:SetSize(200, 6 + #ns.UI.THEMES * 24)
+	list:Hide()
 	local buttons = {}
 	local function MarkThemes()
-		for id, b in pairs(buttons) do ns.UI.SetSelected(b, id == ns.db.settings.theme) end
-		local changed = ns.db.settings.theme ~= ns.UI.theme.id
+		local id = ns.db.settings.theme or "default"
+		for tid, b in pairs(buttons) do ns.UI.SetSelected(b, tid == id) end
+		pick:SetText(ns.UI.Theme(id).name .. "  v")
+		local changed = id ~= ns.UI.theme.id
 		themeNote:SetText(changed and "Reload to switch to the new theme." or "")
 		reload:SetShown(changed)
 	end
-	local tx = 0
-	for _, t in ipairs(ns.UI.THEMES) do
-		local b = ns.UI.Button(panel, t.name, 112, 22)
-		b:SetPoint("TOPLEFT", tx, y)
+	for i, t in ipairs(ns.UI.THEMES) do
+		local b = ns.UI.Button(list, t.name, 192, 22)
+		b:SetPoint("TOPLEFT", 4, -3 - (i - 1) * 24)
 		b:SetScript("OnClick", function()
 			ns.db.settings.theme = t.id
+			list:Hide()
 			MarkThemes()
 		end)
 		buttons[t.id] = b
-		tx = tx + 116
 	end
-	y = y - 28
-	themeNote:SetPoint("TOPLEFT", 4, y - 4)
-	reload:SetPoint("TOPLEFT", 260, y)
+	pick:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
+	panel:HookScript("OnHide", function() list:Hide() end)
+	Settings.themeButtons, Settings.themePick, Settings.themeList = buttons, pick, list
+	themeNote:SetPoint("LEFT", pick, "RIGHT", 12, 0)
+	reload:SetPoint("LEFT", pick, "RIGHT", 230, 0)
 	reload:SetScript("OnClick", function() if ReloadUI then ReloadUI() end end)
 	MarkThemes()
 	y = y - 28

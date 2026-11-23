@@ -136,13 +136,7 @@ end
 local ROWS, ROW_H = 17, 18
 local lines, headerButtons, filterButtons, countText = {}, {}, {}, nil
 
-local CLASS_COLORS = RAID_CLASS_COLORS
-
-local function ClassColor(token)
-	local c = CLASS_COLORS and token and CLASS_COLORS[token]
-	if c then return c.r, c.g, c.b end
-	return 1, 1, 1
-end
+local function ClassColor(token) return ns.UI.ClassColor(token) end -- the theme's, when it has its own
 
 -- rebuild: the data changed. Scrolling only repaints the rows already built; filters, sorting
 -- and opening the page rebuild them too.
@@ -398,6 +392,29 @@ function Tab.ChangeRank(target, up)
 	return command
 end
 
+-- Removing someone: officers, only for a rank below their own, the same way as rank changes
+-- (the game's /gremove command typed into chat; Enter confirms).
+function Tab.CanRemove(target)
+	if not Tab.CanManage() then return false end
+	local me = ns.Roster.Get(ns.Roster.me)
+	local them = ns.Roster.Get(target)
+	if not them or ns.FullName(target) == ns.Roster.me or them.rankIndex == nil or me.rankIndex == nil then return false end
+	return them.rankIndex > me.rankIndex and GameAllows(CanGuildRemove or (C_GuildInfo and C_GuildInfo.CanGuildRemove))
+end
+
+function Tab.Remove(target)
+	if not Tab.CanRemove(target) then return false end
+	local name = ns.Roster.DisplayName(target)
+	local command = "/gremove " .. name
+	if not ChatFrame_OpenChat then
+		ns.Print("Type %s to remove them from the guild.", command)
+		return false
+	end
+	ChatFrame_OpenChat(command)
+	ns.Print("Press Enter to remove %s from the guild (or Escape to keep them).", name)
+	return command
+end
+
 local menu
 function Tab.HideMenu()
 	if menu then menu:Hide() end
@@ -418,13 +435,17 @@ function Tab.MenuItems(row)
 	if demote then
 		items[#items + 1] = { "Demote to " .. RankName(them.rankIndex + 1), function() Tab.ChangeRank(who, false) end }
 	end
+	if Tab.CanRemove(who) then
+		items[#items + 1] = { "Remove from guild", function() Tab.Remove(who) end }
+	end
 	return items
 end
 
-function Tab.ShowMenu(row, line)
-	if not Tab.panel then return end
+function Tab.ShowMenu(row, line, parent)
+	parent = parent or Tab.panel
+	if not parent then return end
 	if not menu then
-		menu = CreateFrame("Frame", nil, Tab.panel)
+		menu = CreateFrame("Frame", nil, parent)
 		menu:SetFrameStrata("DIALOG")
 		menu:EnableMouse(true)
 		ns.UI.Skin(menu)
@@ -438,6 +459,8 @@ function Tab.ShowMenu(row, line)
 			if self.away > 1 then self:Hide() end
 		end)
 	end
+	if menu.SetParent then menu:SetParent(parent) end
+	menu:SetFrameStrata("DIALOG")
 	local items = Tab.MenuItems(row)
 	menu.title:SetText(row.name)
 	for i, item in ipairs(items) do
@@ -454,7 +477,7 @@ function Tab.ShowMenu(row, line)
 	for i = #items + 1, #menu.buttons do menu.buttons[i]:Hide() end
 	menu:SetSize(162, 12 + (#items + 1) * 22)
 	menu:ClearAllPoints()
-	menu:SetPoint("TOPLEFT", line or Tab.panel, "TOPLEFT", line and 180 or 200, line and -4 or -60)
+	menu:SetPoint("TOPLEFT", line or parent, "TOPLEFT", line and 180 or 200, line and -4 or -60)
 	menu.away, menu.row = 0, row
 	menu:Show()
 	return items
