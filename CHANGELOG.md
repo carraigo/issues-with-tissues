@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.2-beta.1
+## 1.0.2
 
-- New versions are packaged for CurseForge automatically when they're tagged (`.pkgmeta`), so the CurseForge app picks up updates. This test build checks the package holds only the addon folder.
+- New versions are packaged for CurseForge automatically when they're tagged (`.pkgmeta`), so the CurseForge app picks up updates. The package holds only the addon folder.
 
 ## 1.0.1
 

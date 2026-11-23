@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.0.2-beta.1"
+ns.VERSION = "1.0.2"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
