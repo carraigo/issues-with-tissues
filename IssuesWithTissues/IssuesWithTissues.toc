@@ -3,7 +3,8 @@
 ## Notes: Guild tools for Issues with Tissues on WoW: Forever.
 ## Author: Issues with Tissues
 ## IconTexture: Interface\Icons\INV_Misc_Bandage_15
-## Version: 0.9.0
+## Version: 1.0.0
+## X-Website: https://github.com/carraigo/issues-with-tissues
 ## SavedVariables: IwTDB
 ## SavedVariablesPerCharacter: IwTCharDB
 
@@ -14,6 +15,8 @@ Roster.lua
 Comm.lua
 Sync.lua
 UI.lua
+Widgets.lua
+Buttons.lua
 Themes.lua
 Settings.lua
 Alts.lua

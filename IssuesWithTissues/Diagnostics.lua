@@ -90,6 +90,37 @@ if blocked then
 	end)
 end
 
+-- Rough size of what the addon saves, in KB per part (the strings it holds, plus a little per entry).
+local function Size(v, seen)
+	local t = type(v)
+	if t == "string" then return #v + 8 end
+	if t ~= "table" then return 8 end
+	if seen[v] then return 0 end
+	seen[v] = true
+	local n = 16
+	for k, x in pairs(v) do n = n + Size(k, seen) + Size(x, seen) end
+	return n
+end
+
+function Diag.Sizes()
+	local out = {}
+	local db = ns.db or {}
+	for name, set in pairs(db.sync or {}) do out[#out + 1] = { name = name, bytes = Size(set, {}) } end
+	out[#out + 1] = { name = "chat", bytes = Size(ns.char and ns.char.chat or {}, {}) }
+	out[#out + 1] = { name = "log", bytes = Size(db.log or {}, {}) + Size(db.errors or {}, {}) }
+	table.sort(out, function(a, b) return a.bytes > b.bytes end)
+	return out
+end
+
+function Diag.SizesText()
+	local parts, total = {}, 0
+	for _, s in ipairs(Diag.Sizes()) do
+		total = total + s.bytes
+		parts[#parts + 1] = string.format("%s %.0f KB", s.name, s.bytes / 1024)
+	end
+	return string.format("%.0f KB (%s)", total / 1024, table.concat(parts, ", "))
+end
+
 function Diag.BuildReport()
 	Diag.Expire()
 	local db = ns.db or { errors = {}, log = {}, settings = {} }
@@ -123,7 +154,7 @@ function Diag.BuildReport()
 		add("  Found self by: " .. tostring(ns.Roster.meHow) .. ", UnitGUID: " .. tostring(UnitGUID and UnitGUID("player") ~= nil)
 			.. ", UnitFullName: " .. tostring(UnitFullName and select(2, UnitFullName("player"))))
 		local shared = {}
-		for first, list in pairs(ns.Roster.byFirst or {}) do
+		for _, list in pairs(ns.Roster.byFirst or {}) do
 			if #list > 1 then shared[#shared + 1] = table.concat(list, "/") end
 		end
 		table.sort(shared)
@@ -170,6 +201,7 @@ function Diag.BuildReport()
 		end
 		table.sort(counts)
 		add("Shared data: " .. table.concat(counts, " "))
+		add("Saved data: " .. Diag.SizesText())
 	end
 	add("")
 	add("Settings:")

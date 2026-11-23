@@ -1081,7 +1081,7 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 end)
 
 test("no file assigns a Blizzard global like SlashCmdList (that taints every macro)", function()
-	for _, f in ipairs({ "Core.lua", "UI.lua", "LootNotes.lua", "Donations.lua", "Diagnostics.lua", "Chat.lua", "Themes.lua", "Settings.lua", "Welcome.lua", "Updates.lua", "GameOptions.lua" }) do
+	for _, f in ipairs(W.TOC_FILES) do
 		local src = io.open(base .. "/IssuesWithTissues/" .. f):read("*a")
 		for _, g in ipairs({ "SlashCmdList", "StaticPopupDialogs", "UISpecialFrames", "ChatFrame_OpenChat", "ChatEdit_InsertLink" }) do
 			assert(not src:find("\n%s*" .. g .. "%s*=[^=]"), f .. " assigns " .. g)
@@ -1699,6 +1699,49 @@ test("bug log: errors and log lines clear themselves after 24 hours", function()
 	c.env.__fire("ADDON_LOADED", "IssuesWithTissues")
 	eq(#db.errors, 0); eq(#db.log, 0)
 	W.now = t0
+end)
+
+test("professions: characters who left the guild are forgotten after three days", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local t0 = W.now
+	local P = mem.ns.Professions
+	local db = mem.env.IwTDB
+	db.sync.profs.records["Quitter"] = { rev = 1, by = "Quitter", data = "Tailoring:300:300" }
+	db.sync.recipes = db.sync.recipes or { records = {} }
+	db.sync.recipes.records["Quitter#Tailoring"] = { rev = 1, by = "Quitter", data = "4334:Formal White Shirt" }
+	db.sync.recipes.records["Gm#Cooking"] = { rev = 1, by = "Gm", data = "2681:Roasted Boar Meat" }
+	eq(P.ForgetLeavers(), 0, "just noticed")
+	W.now = W.now + 2 * 86400
+	eq(P.ForgetLeavers(), 0, "not yet")
+	-- A roster that comes back much smaller (half loaded) is ignored
+	local full = mem.ns.Roster.count
+	mem.ns.Roster.count = 2
+	W.now = W.now + 2 * 86400
+	eq(P.ForgetLeavers(), 0)
+	mem.ns.Roster.count = full
+	eq(P.ForgetLeavers(), 2, "the profession and recipe records go")
+	eq(db.sync.profs.records["Quitter"], nil); eq(db.sync.recipes.records["Quitter#Tailoring"], nil)
+	assert(db.sync.recipes.records["Gm#Cooking"], "members keep theirs")
+	eq(#P.WhoCanMake("shirt"), 0)
+	eq(db.leftAt["Quitter"], nil, "nothing left to track")
+	-- someone who comes back before the three days is kept
+	db.sync.profs.records["Vet"] = { rev = 1, by = "Vet", data = "Alchemy:1:75" }
+	eq(P.ForgetLeavers(), 0); eq(db.leftAt["Vet"], nil)
+	W.now = t0
+end)
+
+test("professions: recipes are capped at 1,500 records, oldest first", function()
+	local mem = W.NewClient(base, "Mem", Guild2())
+	eq(mem.ns.Sync.sets.recipes.max, 1500)
+end)
+
+test("bug report: saved data sizes", function()
+	local c = W.NewClient(base, "Mem", Guild2())
+	c.env.IwTDB.sync.recipes = { records = { ["Gm#Cooking"] = { rev = 1, by = "Gm", data = string.rep("x", 4096) } } }
+	local text = c.ns.Diagnostics.SizesText()
+	assert(text:find("recipes 4 KB", 1, true), text)
+	assert(c.ns.Diagnostics.BuildReport():find("Saved data: ", 1, true))
 end)
 
 test("layer hopping is gone (0.9.0): no Hop tab, no commands, its setting dropped, old messages ignored", function()

@@ -52,7 +52,7 @@ function Tab.Rows(state)
 	-- Group: one entry per main. A main not in the guild (alt in guild, main elsewhere) is
 	-- represented by the alt itself.
 	local groups = {}
-	for full, m in pairs(ns.Roster.members) do
+	for full in pairs(ns.Roster.members) do
 		local key = full
 		if state.groupAlts then
 			local main = ns.Alts.MainOf(full)

@@ -14,7 +14,8 @@ local Prof = ns.RegisterModule("Professions", {})
 ns.Professions = Prof
 
 ns.Sync.Define("profs", { writer = "owner" })
-ns.Sync.Define("recipes", { writer = "member" })
+-- Recipes are the one set that grows with the guild: a safety cap on top of the clean-up below.
+ns.Sync.Define("recipes", { writer = "member", max = 1500 })
 
 -- The professions tracked, by name and by skill line (the name may be in another language).
 Prof.CRAFTING = {
@@ -50,12 +51,9 @@ function Prof.ReadSkills()
 		if #list > 0 then return list end
 	end
 	if type(GetNumSkillLines) == "function" and type(GetSkillLineInfo) == "function" then
-		local section
 		for i = 1, GetNumSkillLines() do
 			local name, isHeader, _, rank, _, _, max = GetSkillLineInfo(i)
-			if isHeader then
-				section = name
-			elseif name and Prof.IsCrafting(name) then
+			if not isHeader and name and Prof.IsCrafting(name) then
 				list[#list + 1] = { name = name, rank = rank or 0, max = max or 0 }
 			end
 		end
@@ -350,7 +348,56 @@ end
 -- sends when the skills differ from what is shared.
 ns.Listen("ROSTER_UPDATED", ns.Coalesce(function()
 	if ns.Roster.me then Prof.UpdateSkills() end
+	Prof.ForgetLeavers()
 end, 1))
+
+---------------------------------------------------------------------------
+-- Characters who left the guild: their professions and recipes are dropped from this PC once
+-- they've been missing from the roster for LEAVER_DAYS (guildmates can't send them back: only
+-- members' records are accepted). A roster much smaller than usual is not trusted.
+---------------------------------------------------------------------------
+Prof.LEAVER_DAYS = 3
+Prof.rosterPeak = 0
+
+local function Owner(set, key)
+	if set == "recipes" then return key:match("^(.-)#") end
+	return key
+end
+
+function Prof.ForgetLeavers()
+	local R = ns.Roster
+	if (R.count or 0) == 0 then return 0 end
+	Prof.rosterPeak = math.max(Prof.rosterPeak, R.count)
+	if R.count < Prof.rosterPeak * 0.75 then return 0 end
+	local db = ns.db
+	db.leftAt = db.leftAt or {}
+	local now, dropped = ns.Now(), 0
+	local seen = {}
+	for _, set in ipairs({ "profs", "recipes" }) do
+		local store = db.sync[set] and db.sync[set].records or {}
+		for key in pairs(store) do
+			local who = Owner(set, key)
+			if who and R.IsMember(who) then
+				db.leftAt[who] = nil
+			elseif who then
+				db.leftAt[who] = db.leftAt[who] or now
+				if now - db.leftAt[who] >= Prof.LEAVER_DAYS * 86400 then
+					store[key] = nil
+					dropped = dropped + 1
+				else
+					seen[who] = true -- still has records waiting
+				end
+			end
+		end
+	end
+	for who in pairs(db.leftAt) do if not seen[who] then db.leftAt[who] = nil end end
+	if dropped > 0 then
+		ns.Sync.gen = ns.Sync.gen + 1
+		ns.Log("professions: dropped %d records of characters who left the guild", dropped)
+		ns.Send("SYNC_CHANGED", "recipes")
+	end
+	return dropped
+end
 
 ns.RegisterCommand("craft", "who in the guild can make an item: /iwt craft name", function(rest)
 	local found = Prof.WhoCanMake(rest)

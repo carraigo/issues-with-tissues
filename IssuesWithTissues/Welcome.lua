@@ -10,6 +10,11 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.0.0", lines = {
+		"Version 1.0: Issues with Tissues is now on CurseForge as well as GitHub.",
+		"Recipes and professions of characters who left the guild are cleared after three days.",
+		"/iwt bug shows how much each part of the addon's saved data takes.",
+	} },
 	{ version = "0.9.0", lines = {
 		"Layer hopping is gone: Blizzard turns it off after 25 November.",
 		"Settings: window size, window sounds, hide the window in combat, and 12 or 24-hour chat times.",

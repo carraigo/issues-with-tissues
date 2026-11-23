@@ -81,7 +81,7 @@ end
 -- Whole days since the member was last online (0 while online or unknown).
 function Roster.OfflineDays(i, isOnline)
 	if isOnline or not GetGuildRosterLastOnline then return 0 end
-	local y, m, d, h = GetGuildRosterLastOnline(i)
+	local y, m, d = GetGuildRosterLastOnline(i)
 	if not y then return 0 end
 	return (y or 0) * 365 + (m or 0) * 30 + (d or 0)
 end
