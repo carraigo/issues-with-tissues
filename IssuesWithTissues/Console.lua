@@ -1,4 +1,4 @@
--- The live log, a secret window for Craig: /iwt clane (not listed in /iwt help).
+-- The live log: /iwt clane (not listed in /iwt help or the docs).
 -- Shows, as it happens, what the addon is doing: catch-ups asked and answered (and by whom),
 -- every message sent and heard, records taken in and shared, timers, roster changes and
 -- errors, from ns.Trace (Core.lua). A separate window that can stay open while playing.

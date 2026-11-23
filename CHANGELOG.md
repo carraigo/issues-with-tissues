@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0-beta.3
+
+- **Cooking dropped from Crafting:** nearly everyone has it, so it swamped the list. It is no longer read, shared or shown, and each character deletes its old Cooking recipes at login, which also shrinks everyone's saved data.
+- **Smaller recipe records:** recipes are sent as sorted item ids written as base 36 gaps ("i2b8.1.4"), about a third smaller again (data version 3). Records from beta.1 and 1.2 are upgraded as they arrive; older clients can't read the new ones, so everyone should update.
+- **One record format helper (Record.lua):** every shared set (kills, professions, recipes, sheets, alts, polls, votes, loot notes, donations) reads and writes its data through one set of helpers, and a test round-trips each set's sample, so a new set without a format fails the build.
+- **Declared settings:** every setting is declared once in Core.lua (default, label, kind), and the Settings page builds itself from that list. Values are checked as they're saved.
+
 ## 1.3.0-beta.2
 
 - **Faster send queue:** outgoing messages wait in a ring instead of a list that was shifted for every packet, so a big catch-up costs the sender less.
@@ -9,11 +16,6 @@
 - **Raid page** (Members, officers and the Guild Master only for now): who is attuned to Molten Core, Onyxia, Blackwing Lair and Naxxramas, who holds the dungeon keys (UBRS seal, Scholomance, Stratholme, Dire Maul, Blackrock Depths) and the Aqual Quintessence, and who is saved to which raid with bosses killed and when it resets. Filters for online, level 60 and not saved; hover a name for details. `/iwt raid` prints your own.
 - **One character sheet:** attunements, keys and saved raids travel in one small record per character, read at login and after a quest hand-in, a bag change or a boss kill, and sent only when something in it changed.
 - **Quiet in dungeons too:** in a dungeon the addon sends slowly (one packet a second) and doesn't ask for or answer catch-ups, as in raids.
-- **Cooking dropped from Crafting:** nearly everyone has it, so it swamped the list. It is no longer read, shared or shown, and each character deletes its old Cooking recipes at login, which also shrinks everyone's saved data.
-- **Smaller recipe records:** recipes are sent as sorted item ids written as base 36 gaps ("i2b8.1.4"), about a third smaller again (data version 3). Records from beta.1 and 1.2 are upgraded as they arrive; older clients can't read the new ones, so everyone should update.
-- **One record format helper (Record.lua):** every shared set (kills, professions, recipes, sheets, alts, polls, votes, loot notes, donations) reads and writes its data through one set of helpers, and a test round-trips each set's sample, so a new set without a format fails the build.
-- **Declared settings:** every setting is declared once in Core.lua (default, label, kind), and the Settings page builds itself from that list. Values are checked as they're saved.
-- **Live log** (`/iwt clane`, not listed in help): a separate window showing, as it happens, every catch-up asked and answered and by whom, messages sent and heard with sizes, records taken in and shared, timers, roster changes and errors. The top line says who you've synced with and when; the bottom line shows traffic, the queue and whether sending is paused. Filters, pause, clear and copy. Kept in memory only (the last 500 lines).
 - **Shared list builder:** every list page (Roster, Raid, Officers, Crafting, Loot notes, Polls, Donations) is built by one helper with sortable columns, filter buttons, search and a count line. Roster, Raid and Officers remember your sort and filter.
 - **"Heard" times fixed:** the Officers page and loot note tooltips showed hundreds of thousands of hours ago (a clash with the polls' "time left" helper). They now say "2 min ago", "3 hours ago" and so on.
 
