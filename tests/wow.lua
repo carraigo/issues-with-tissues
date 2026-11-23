@@ -93,7 +93,7 @@ function W.NewClient(baseDir, name, guild, opts)
 	env.GetNumGuildMembers = function() return guild and #guild.members or 0 end
 	env.GetGuildRosterInfo = function(i)
 		local m = guild.members[i]
-		return m[1] .. "-Realm", "Rank" .. m[2], m[2], m[5] or 60, "Warrior", "Stormwind City", "", "", m[3], 0, "WARRIOR",
+		return m[1] .. "-Realm", "Rank" .. m[2], m[2], m[5] or 60, "Warrior", "Stormwind City", m[6] or "", m[7] or "", m[3], 0, "WARRIOR",
 			0, 0, false, false, 0, "Player-" .. m[1]
 	end
 	env.GetGuildRosterLastOnline = function(i)

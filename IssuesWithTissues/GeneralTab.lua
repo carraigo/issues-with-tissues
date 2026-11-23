@@ -71,6 +71,15 @@ function General.Facts()
 	return f
 end
 
+-- The newest few lines of guild news, with "and N more" (the rest are in its tooltip).
+General.NEWS_LINES = 3
+function General.NewsText()
+	local lines, total = ns.News.Lines(General.NEWS_LINES)
+	if total == 0 then return "|cff999999Nothing new this week.|r" end
+	if total > #lines then lines[#lines + 1] = "|cff999999and " .. (total - #lines) .. " more|r" end
+	return table.concat(lines, "\n")
+end
+
 function General.ScanLabel()
 	local s = ns.Professions.scan
 	if s then return "Scanning (" .. s.done .. "/" .. s.total .. " done)" end
@@ -136,6 +145,7 @@ function General.Refresh()
 	texts.polls:SetText(f.openPolls > 0 and (f.firstPoll.question .. (f.openPolls > 1 and
 		("\n|cff999999and " .. (f.openPolls - 1) .. " more|r") or "")) or "|cff999999No open polls|r")
 	texts.donations:SetText(f.donations.title .. "\n|cff999999" .. ns.Donations.ProgressText(f.donations) .. "|r")
+	texts.news:SetText(General.NewsText())
 
 	local pl = {}
 	for _, p in ipairs(f.profs) do
@@ -186,25 +196,39 @@ local function Build(panel)
 	scanHint:SetJustifyH("LEFT")
 	scanHint:SetText(HINT)
 
-	-- What's on: open polls and the donation goal (Guild life tab).
+	-- What's on: open polls, the donation goal (Guild life tab) and this week's guild news.
 	ns.UI.Card(panel, 0, -334, 616, 100)
 	Section(panel, 12, -342, "What's on")
-	local function Column(x, title)
+	local function Column(x, title, page)
 		local t = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		t:SetPoint("TOPLEFT", x, -362)
 		t:SetText(title)
 		t:SetTextColor(0.65, 0.61, 0.54)
-		local body = Body(panel, x, -376, 284)
+		local body = Body(panel, x, -376, 188)
 		local open = CreateFrame("Button", nil, panel)
 		open:SetPoint("TOPLEFT", x - 4, -358)
-		open:SetSize(296, 70)
-		open:SetScript("OnClick", function() ns.UI.Open(title == "Open polls" and "Polls" or "Donations") end)
+		open:SetSize(198, 70)
+		if page then open:SetScript("OnClick", function() ns.UI.Open(page) end) end
 		local hl = ns.UI.Fill(open:CreateTexture(nil, "HIGHLIGHT"), ns.UI.COLORS.hover)
 		hl:SetAllPoints()
-		return body
+		return body, open
 	end
-	texts.polls = Column(12, "Open polls")
-	texts.donations = Column(312, "Donation goal")
+	texts.polls = Column(12, "Open polls", "Polls")
+	texts.donations = Column(216, "Donation goal", "Donations")
+	local newsArea
+	texts.news, newsArea = Column(420, "Guild news")
+	texts.news:SetFontObject("GameFontHighlightSmall") -- four short lines fit the card
+	texts.news:SetWordWrap(false)
+	-- Hover: the whole week.
+	newsArea:SetScript("OnEnter", function(self)
+		local all = ns.News.Lines()
+		if #all <= General.NEWS_LINES then return end
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:AddLine("Guild news this week")
+		for _, line in ipairs(all) do GameTooltip:AddLine(line, 1, 1, 1) end
+		GameTooltip:Show()
+	end)
+	newsArea:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 	panel:SetScript("OnShow", General.Refresh)
 	General.Refresh()
@@ -213,6 +237,6 @@ end
 ns.UI.AddPage("Home", "Home", Build)
 
 local Soon = ns.Coalesce(function() General.Refresh() end)
-for _, msg in ipairs({ "ROSTER_UPDATED", "SYNC_CHANGED", "SCAN_CHANGED", "VERSION_SEEN", "GUILD_LIFE_CHANGED" }) do
+for _, msg in ipairs({ "ROSTER_UPDATED", "SYNC_CHANGED", "SCAN_CHANGED", "VERSION_SEEN", "GUILD_LIFE_CHANGED", "NEWS_CHANGED" }) do
 	ns.Listen(msg, Soon)
 end

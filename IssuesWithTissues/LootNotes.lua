@@ -83,6 +83,12 @@ end
 local list, officerRow, playerBox, itemBox, noteBox, searchBox, removeButton, status
 Loot.search = ""
 
+function Loot.EmptyText(officer)
+	if Loot.search ~= "" then return "No loot notes match that search." end
+	return "No loot notes yet." .. (officer and " Shift-click an item into the box above to note who got it."
+		or " Officers note who received which item here.")
+end
+
 function Loot.Refresh()
 	if not Loot.panel or not Loot.panel:IsShown() then return end
 	local officer = ns.Roster.IsOfficer(ns.PlayerName())
@@ -91,6 +97,7 @@ function Loot.Refresh()
 	local sel
 	for _, n in ipairs(notes) do if n.key == Loot.selected then sel = n end end
 	Loot.selected = sel and sel.key
+	list:SetEmpty(Loot.EmptyText(officer))
 	list:SetRows(notes, function(n, key)
 		if key == "when" then return date("%d %b %Y", n.time), 0.7, 0.7, 0.7 end
 		if key == "player" then

@@ -96,7 +96,7 @@ function Roster.Scan()
 	if n == 0 then return end -- roster not loaded yet; keep the old copy
 	local fresh, online, byFirst, guids = {}, 0, {}, {}
 	for i = 1, n do
-		local name, rank, rankIndex, level, classLocal, zone, note, _, isOnline, _, classFile,
+		local name, rank, rankIndex, level, classLocal, zone, note, officerNote, isOnline, _, classFile,
 			_, _, _, _, _, guid = GetGuildRosterInfo(i)
 		local full = Roster.ParseName(name)
 		if full then
@@ -107,6 +107,7 @@ function Roster.Scan()
 			fresh[full] = {
 				rankIndex = rankIndex, rank = rank, level = level, class = classLocal, classFile = classFile,
 				zone = zone, online = isOnline and true or false, note = note,
+				officerNote = officerNote, -- empty unless this rank may see officer notes
 				offlineDays = Roster.OfflineDays(i, isOnline), rosterName = name,
 			}
 			if isOnline then online = online + 1 end

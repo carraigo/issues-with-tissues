@@ -19,7 +19,7 @@ flowchart LR
 ## Messages (`Comm.lua`)
 
 - Everything goes over the `IWT` prefix, to the guild or as a whisper to one guildmate.
-- The game caps a message at 255 bytes, so longer ones are split into numbered pieces and put back together on arrival. Outgoing pieces are queued and sent a few per second, so the game never drops them.
+- The game caps a message at 255 bytes, so longer ones are split into numbered pieces and put back together on arrival. Outgoing pieces are queued and sent a few per second, so the game never drops them. In combat the queue waits; in a raid it sends one piece a second.
 - Each handler states who may send it: any guild member, officers only, or anyone. Officer checks use the receiver's own copy of the roster, never what the sender claims.
 - On Forever, characters have a first name and a surname, and two guildmates can share a first name. When the game only stamps the first name, the sender's claimed full name is accepted only if the first names match.
 
@@ -37,12 +37,15 @@ Every feature that shares data defines a *set*. Each set has a rule for who may 
 - A deletion is a record too (a "tombstone"). It's kept for 30 days so that an old copy can't bring a deleted record back.
 - **Live changes:** a change is sent to the guild as it's made (`SU`). Each receiver checks it against the set's rule before storing it.
 - **Catching up:** at login, the addon sends a fingerprint of each set (`SQ`): a count plus a hash of every key and revision. Anyone online whose fingerprint differs answers with their records (`SR`), after a short random wait. That way usually only one guildmate answers, and a whole guild doesn't flood the channel.
+- **Data versions:** each record carries its set's data version (missing means 1). A set that changes its format is defined with a higher `version` and an `upgrade` function: older records are upgraded as they arrive and at load, and a client leaves alone any record from a newer version than it knows.
+- **Quiet in fights:** catch-ups aren't asked for or answered in combat or a raid, and records that arrive in combat are stored after it ends.
 - **Forgery:** if a record arrives claiming to be yours but you didn't write it, your addon sends your real version back with a newer revision.
 
 ## Modules and UI
 
 - Each feature is a module (`ns.RegisterModule`) with `OnLoad` and `OnLogin` hooks, loaded in the order the `.toc` lists them.
 - Pages register themselves into tabs (Home, Chat, Members, Crafting, Guild life), so adding a feature doesn't touch the window code.
+- Guild news (`News.lua`) is never shared: each PC compares the roster with the copy it saw last, so joins, leavers, level 60s and promotions show up even when they happened while you were offline.
 - Redraws are batched (`ns.Coalesce`). A burst of 300 incoming records with a page open costs about 1.5 ms instead of 2.5 s.
 - Every colour lives in one table (`UI.COLORS`). A theme (`Themes.lua`) is another set of those colours, copied in at load before any frame exists, so features never need to know about themes. In every theme but Default, text that would be too faint on the panels is shaded toward the theme's ink colour until it reaches a 4.5:1 contrast.
 - The addon never assigns Blizzard's global variables, because one stray assignment "taints" the secure UI and breaks other addons' macros. A test enforces this.

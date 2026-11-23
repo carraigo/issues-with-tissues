@@ -16,15 +16,15 @@ Open it with `/iwt`, the minimap button, the **Tissues** button on the guild win
 
 ## Features
 
-- **Home**: the guild at a glance (members online, players with alts counted once, how many use the addon, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls and the donation goal.
-- **Chat**: guild and officer chat in the window, with item links, class colours, a Newest button when you've scrolled up, and a list of who's online by rank. Earlier chat loads from the game's own guild chat history, and the addon keeps a copy of the last 300 lines on your PC (never shared with anyone).
-- **Members**: the whole guild with level, class, honourable kills, rank and when they were last on, a name search, filters (online, away 7, 14 or 30 days) and alts grouped under their main. Right-click someone to whisper or invite them. Officers can also promote and demote from here.
-- **Crafting**: search who can make an item, or browse by profession. Only crafting professions are tracked (Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring and Cooking).
+- **Home**: the guild at a glance (members online, players with alts counted once, how many use the addon, guild kill totals and the Elite Soldier with the most honourable kills), your character and its main, your professions, and a "What's on" box with open polls, the donation goal and this week's guild news (joins, leavers, level 60s and promotions). Officers get a nudge in chat when someone joins.
+- **Chat**: guild and officer chat in the window, with item links, class colours, a Newest button when you've scrolled up, an unread count on the tab and the minimap button, and a list of who's online by rank. Earlier chat loads from the game's own guild chat history, and the addon keeps a copy of the last 300 lines on your PC (never shared with anyone).
+- **Members**: the whole guild with level, class, honourable kills, rank and when they were last on, a name search, filters (online, away 7, 14 or 30 days) and alts grouped under their main. Hover for their guild note (officers also see the officer note). Right-click someone to whisper or invite them. Officers can also promote and demote from here.
+- **Crafting**: a green "Guild craftable" line on item tooltips when someone in the guild can make the item. Search who can make an item, or browse by profession. Only crafting professions are tracked (Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring and Cooking).
 - **Guild life**
   - **Polls**: officers ask, everyone votes once.
   - **Donations**: a guild goal with progress. Gold put into the guild bank is noted automatically. Only the officer who set a goal can change it, or allow another officer to. The Guild Master can always change it.
   - **Loot notes**: a shared record of who received which item.
-- **Settings** (the cog): themes (Default, Kawaii Night, Kawaii Day, Midnight, High contrast), window size, the minimap and guild window buttons, alert and window sounds, hiding the window in combat, saving chat between sessions, 12 or 24-hour chat times, and the bug report, profiler, self-test and diagnostics report.
+- **Settings** (the cog): themes (Default, Kawaii Night, Kawaii Day, Midnight, High contrast), window size, which tab the window opens on, the minimap and guild window buttons, alert and window sounds, hiding the window in combat, saving chat between sessions, 12 or 24-hour chat times, the "Guild craftable" tooltip line, and the bug report, profiler, self-test and diagnostics report.
 
 Ctrl+F jumps to the search on Roster, Crafters and Loot notes, and Enter picks the first result.
 

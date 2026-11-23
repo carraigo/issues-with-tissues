@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.1.0"
+ns.VERSION = "1.2.0"
 
 -- Defaults. Copied into IwTDB / IwTCharDB on load without overwriting what is already there.
 ns.DEFAULTS = {
@@ -21,6 +21,8 @@ ns.DEFAULTS = {
 		scale = 1,             -- window size, 0.7 to 1.3
 		hideInCombat = false,  -- hide the window when combat starts, back after
 		clock24 = true,        -- chat times as 14:05 (false: 2:05pm)
+		tooltipCraftable = true, -- "Guild craftable" on item tooltips
+		openOn = "last",       -- the tab the window opens on: "last" (where you left it), "Home" or "Chat"
 	},
 	minimapAngle = 220,
 	errors = {},               -- Diagnostics

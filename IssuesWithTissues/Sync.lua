@@ -11,6 +11,10 @@
 --   SU  set,key,rev,by,deleted,data           one change, sent as it is made
 --   SQ  nonce, then set=maxRev for each set   "I'm missing anything newer than these"
 --   SR  nonce \30 record \30 record ...       an answer; one guildmate answers each ask
+-- A record carries its set's data version (field 7; missing = 1). When a set's data format
+-- changes, Define it with a higher version and an upgrade function: older records are upgraded
+-- as they arrive or load, and records from a newer version than this client knows are left
+-- alone, so an old client never stores data it would misread.
 -- Saved variables may be wiped (the Forever beta did this every login), so at login the
 -- addon asks the guild and rebuilds from whoever is online.
 
@@ -35,7 +39,26 @@ end
 
 function Sync.Define(name, opts)
 	assert(not name:find("[\30\31=,]"), "bad set name")
-	Sync.sets[name] = { writer = (opts and opts.writer) or "officer", max = opts and opts.max }
+	opts = opts or {}
+	Sync.sets[name] = { writer = opts.writer or "officer", max = opts.max,
+		version = opts.version or 1, upgrade = opts.upgrade }
+end
+
+-- Bring a record up to its set's data version. False: it's from a newer version than ours.
+function Sync.Upgrade(name, rec)
+	local def = Sync.sets[name]
+	local v = tonumber(rec.v) or 1
+	if not def or v > def.version then return false end
+	if v < def.version then
+		if def.upgrade and not rec.deleted then
+			local ok, data = pcall(def.upgrade, rec.data or "", v)
+			if not ok or type(data) ~= "string" then return false end
+			rec.data = data
+		end
+		rec.v = def.version
+	end
+	if rec.v == 1 then rec.v = nil end -- version 1 is the default; not saved
+	return true
 end
 
 -- May `by` write record `key` of set `name`?
@@ -59,14 +82,14 @@ function Sync.IsForged(name, key, rec)
 end
 
 local function Serialize(name, key, r)
-	return ns.Comm.Pack(name, key, r.rev, r.by, r.deleted and "1" or "", r.data or "")
+	return ns.Comm.Pack(name, key, r.rev, r.by, r.deleted and "1" or "", r.data or "", r.v or 1)
 end
 
 local function Deserialize(s)
-	local name, key, rev, by, deleted, data = ns.Comm.Unpack(s)
+	local name, key, rev, by, deleted, data, v = ns.Comm.Unpack(s)
 	rev = tonumber(rev)
 	if not name or not key or key == "" or not rev then return nil end
-	return name, key, { rev = rev, by = by, deleted = deleted == "1", data = data or "" }
+	return name, key, { rev = rev, by = by, deleted = deleted == "1", data = data or "", v = tonumber(v) }
 end
 
 -- Take a record if it is allowed and newer than ours. Returns true when it changed something.
@@ -74,6 +97,10 @@ function Sync.Accept(name, key, rec)
 	if not Sync.sets[name] or not Sync.CanWrite(name, key, rec.by) then return false end
 	if rec.data and (rec.data:find(RS, 1, true) or rec.data:find(Comm.SEP, 1, true)) then return false end
 	if rec.rev > ns.Now() + 300 then return false end -- from the future: never let it win for good
+	if not Sync.Upgrade(name, rec) then
+		Sync.newer = (Sync.newer or 0) + 1 -- from a guildmate on a newer version
+		return false
+	end
 	local store = Store(name)
 	local old = store[key]
 	if old and old.rev >= rec.rev then return false end
@@ -114,7 +141,8 @@ local function Write(name, key, data, deleted, minRev)
 	local rev = ns.Now()
 	if old and old.rev >= rev then rev = old.rev + 1 end
 	if minRev and rev <= minRev then rev = minRev + 1 end
-	local rec = { rev = rev, by = me, deleted = deleted or nil, data = deleted and "" or data }
+	local v = Sync.sets[name].version
+	local rec = { rev = rev, by = me, deleted = deleted or nil, data = deleted and "" or data, v = v > 1 and v or nil }
 	if ns.char then
 		ns.char.written = ns.char.written or {}
 		ns.char.written[name .. "\1" .. key] = rev
@@ -195,6 +223,11 @@ function Sync.Digest(name)
 end
 
 function Sync.Ask()
+	-- A catch-up can bring hundreds of records: not during a fight or a raid.
+	if Comm.Held() then
+		ns.After(30, Sync.Ask)
+		return
+	end
 	local parts = { tostring(math.random(1, 2 ^ 30)) }
 	for name in pairs(Sync.sets) do parts[#parts + 1] = name .. "=" .. Sync.MaxRev(name) .. ":" .. Sync.Digest(name) end
 	Comm.Send("SQ", table.concat(parts, ","))
@@ -238,6 +271,7 @@ Comm.Register("SQ", function(sender, payload)
 	for f in (payload .. ","):gmatch("([^,]*),") do fields[#fields + 1] = f end
 	local nonce = fields[1]
 	if not nonce or nonce == "" then return end
+	if Comm.Held() then return end -- someone not fighting or raiding answers
 	local wants = {}
 	for i = 2, #fields do
 		local name, rev, digest = fields[i]:match("^(.-)=(%d+):?([%d%.]*)$")
@@ -282,6 +316,10 @@ end)
 Sync.ACCEPT_PER_FRAME = 40
 local queue, head, tail = {}, 1, 0
 local function Drain()
+	if InCombatLockdown and InCombatLockdown() then -- take the rest once combat ends
+		ns.After(1, Drain)
+		return
+	end
 	local stop = head + Sync.ACCEPT_PER_FRAME
 	while head < stop and queue[head] do
 		local piece = queue[head]
@@ -322,7 +360,18 @@ function Sync:OnLoad()
 	for name in pairs(ns.db.sync) do
 		if not Sync.sets[name] then ns.db.sync[name] = nil end
 	end
+	Sync.UpgradeSaved()
 	Sync.Prune()
+end
+
+-- Saved records from before a set's data format changed are upgraded at load; any the upgrade
+-- can't read are dropped, and a guildmate will send them again in the new format.
+function Sync.UpgradeSaved()
+	for name, set in pairs(ns.db.sync) do
+		for key, rec in pairs(set.records or {}) do
+			if not Sync.Upgrade(name, rec) then set.records[key] = nil end
+		end
+	end
 end
 
 -- Version 0.2 saved characters by first name alone ("Large"); now they are "Large Joseph".

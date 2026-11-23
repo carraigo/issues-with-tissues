@@ -338,14 +338,18 @@ function UI.Create()
 	return f
 end
 
+-- Opening (minimap, key, /iwt): the tab chosen in Settings, or the last one used.
+UI.OPEN_ON = { { id = "last", name = "Last used" }, { id = "Home", name = "Home" }, { id = "Chat", name = "Chat" } }
 function UI.Toggle()
 	local f = UI.Create()
 	if f:IsShown() then
 		f:Hide()
-	else
-		f:Show()
-		UI.SelectTab(UI.current or 1)
+		return
 	end
+	local on = ns.db.settings.openOn
+	if on == "Home" or on == "Chat" then return UI.Open(on) end
+	f:Show()
+	UI.SelectTab(UI.current or 1)
 end
 
 -- Open the window on a tab ("Members"), a page ("Roster") or "Settings".

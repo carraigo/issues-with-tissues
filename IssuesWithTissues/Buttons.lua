@@ -29,6 +29,28 @@ local function PlaceMini()
 	mini:SetPoint("CENTER", Minimap, "CENTER", x, y)
 end
 
+function UI.SetMinimapBadge(n)
+	if not mini or not mini.badge then return end
+	n = tonumber(n) or 0
+	mini.badge:SetText(n > 0 and tostring(math.min(n, 99)) or "")
+end
+
+-- The guild at a glance, for the button's tooltip:
+-- "12 online · 1 open poll · Guild bank 64%", then unread chat.
+function UI.MinimapSummary()
+	local parts = {}
+	if ns.Roster.count and ns.Roster.count > 0 then parts[#parts + 1] = (ns.Roster.online or 0) .. " online" end
+	local polls = ns.Polls and ns.Polls.OpenCount() or 0
+	if polls > 0 then parts[#parts + 1] = polls .. (polls == 1 and " open poll" or " open polls") end
+	local d = ns.Donations and ns.Donations.Progress()
+	if d and d.share then parts[#parts + 1] = d.title .. " " .. math.floor(d.share * 100) .. "%" end
+	local lines = {}
+	if #parts > 0 then lines[1] = table.concat(parts, " · ") end
+	local unread = ns.Chat and ns.Chat.unread or 0
+	if unread > 0 then lines[#lines + 1] = "|cffffd100" .. unread .. " unread in guild chat|r" end
+	return lines
+end
+
 function UI.CreateMinimapButton()
 	if mini or not Minimap then return end
 	mini = CreateFrame("Button", "IwTMinimapButton", Minimap)
@@ -59,9 +81,16 @@ function UI.CreateMinimapButton()
 		end)
 	end)
 	mini:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+	-- Unread guild chat: a small count on the button's corner.
+	local badge = mini:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	badge:SetPoint("TOPRIGHT", 2, 0)
+	badge:SetTextColor(1, 0.82, 0)
+	mini.badge = badge
+	UI.SetMinimapBadge(ns.Chat and ns.Chat.unread or 0)
 	mini:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:AddLine("Issues with Tissues")
+		for _, line in ipairs(UI.MinimapSummary()) do GameTooltip:AddLine(line, 0.85, 0.85, 0.85) end
 		GameTooltip:AddLine("Left-click: open", 1, 1, 1)
 		GameTooltip:AddLine("Right-click: settings", 1, 1, 1)
 		GameTooltip:Show()

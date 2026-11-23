@@ -9,7 +9,9 @@
 --   "member"  the sender is in our guild roster (the default)
 --   "officer" the sender's rank in OUR roster is GM or Officer (ns.Roster.IsOfficer)
 --   "any"     anyone (whispers from outside the guild, e.g. a version check)
--- Outgoing packets are queued and sent a few per second so the game never drops them.
+-- Outgoing packets are queued and sent a few per second so the game never drops them. In
+-- combat they wait until it ends; in a raid they go out slowly (one a second), so the addon
+-- never competes with the fight.
 
 local _, ns = ...
 
@@ -19,6 +21,8 @@ ns.Comm = Comm
 Comm.PREFIX = "IWT"
 Comm.MAX_PACKET = 250          -- the game allows 255 bytes
 Comm.SEND_INTERVAL = 0.1       -- seconds between queued packets
+Comm.RAID_INTERVAL = 1         -- in a raid
+Comm.HOLD_CHECK = 2            -- in combat: how often to look again
 Comm.PARTIAL_TIMEOUT = 30      -- seconds to wait for the rest of a split message
 Comm.MAX_PIECES = 64
 
@@ -57,11 +61,25 @@ function Comm.Encode(msgType, payload)
 	return packets
 end
 
+-- "combat" (hold everything), "raid" (go slowly) or nil.
+function Comm.Held()
+	if InCombatLockdown and InCombatLockdown() then return "combat" end
+	if IsInInstance then
+		local inside, kind = IsInInstance()
+		if inside and kind == "raid" then return "raid" end
+	end
+end
+
 function Comm.Pump()
+	local held = Comm.Held()
+	if held == "combat" then
+		ns.After(Comm.HOLD_CHECK, Comm.Pump)
+		return
+	end
 	local item = table.remove(Comm.queue, 1)
 	if item then RawSend(item.packet, item.distribution, item.target) end
 	if #Comm.queue > 0 then
-		ns.After(Comm.SEND_INTERVAL, Comm.Pump)
+		ns.After(held == "raid" and Comm.RAID_INTERVAL or Comm.SEND_INTERVAL, Comm.Pump)
 	else
 		Comm.pumping = false
 	end

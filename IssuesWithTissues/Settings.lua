@@ -118,6 +118,26 @@ local function Build(panel)
 	Settings.scaleSlider = slider
 	y = y - 30
 
+	-- Which tab the window opens on (the "Open guild chat" key always opens Chat).
+	local openLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	openLabel:SetPoint("TOPLEFT", 4, y - 4)
+	openLabel:SetText("Open the window on")
+	local openButtons = {}
+	local function MarkOpen()
+		for id, b in pairs(openButtons) do ns.UI.SetSelected(b, id == (ns.db.settings.openOn or "last")) end
+	end
+	local ox = 150
+	for _, o in ipairs(ns.UI.OPEN_ON) do
+		local b = ns.UI.Button(panel, o.name, 90, 22)
+		b:SetPoint("TOPLEFT", ox, y)
+		b:SetScript("OnClick", function() ns.db.settings.openOn = o.id; MarkOpen() end)
+		openButtons[o.id] = b
+		ox = ox + 94
+	end
+	MarkOpen()
+	Settings.openButtons = openButtons
+	y = y - 30
+
 	y = y - 10
 	local officers = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	officers:SetPoint("TOPLEFT", 4, y)

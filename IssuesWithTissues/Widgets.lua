@@ -228,6 +228,13 @@ function UI.CreateList(panel, opts)
 		line:Hide()
 		list.lines[i] = line
 	end
+	-- Shown in place of the rows when there are none (list:SetEmpty("Nobody's ...")).
+	local empty = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+	empty:SetPoint("TOPLEFT", 12, opts.top - 30)
+	empty:SetWidth(580)
+	empty:SetJustifyH("LEFT")
+	list.emptyText = empty
+	function list:SetEmpty(text) self.empty = text end
 	panel:EnableMouseWheel(true)
 	panel:SetScript("OnMouseWheel", function(_, delta)
 		list.offset = math.max(0, list.offset - delta * 3)
@@ -238,6 +245,7 @@ function UI.CreateList(panel, opts)
 		self:Draw()
 	end
 	function list:Draw()
+		self.emptyText:SetText(#self.rows == 0 and self.empty or "")
 		local maxOffset = math.max(0, #self.rows - opts.rows)
 		if self.offset > maxOffset then self.offset = maxOffset end
 		for i, line in ipairs(self.lines) do
