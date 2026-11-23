@@ -67,5 +67,6 @@ Chat isn't shared data: it never goes over addon messages, and it's never put in
 
 - `tests/run.lua` runs the real addon files against a small fake WoW API (`tests/wow.lua`). It simulates several guildmates' clients in one process, passing messages between them, so the sync, permissions and name handling are tested the way they run in game.
 - `tests/speed.lua` loads a 500-member guild with shared professions, recipes and chat, and times the roster, the Crafters search, the chat history merge and a full sync catch-up. Each has a limit, and the run fails when one gets slower than it.
-- Every push and PR runs the tests and the speed test (`tests.yml`). `main` is protected: changes go through a pull request, and the tests must pass first.
+- `luacheck IssuesWithTissues` (settings in `.luacheckrc`) flags stray globals, typos and unused code. The game's API the addon uses is listed there as read-only.
+- Every push and PR runs luacheck, the tests and the speed test (`tests.yml`). `main` is protected: changes go through a pull request, and the tests must pass first.
 - Pushing a tag like `v0.8.0` runs `release.yml`. It runs the tests, checks that the tag matches the version in the `.toc` and `Core.lua`, zips the addon, and publishes a release with notes taken from `CHANGELOG.md` (every section since the previous release). Tags with a dash, like `v0.8.0-beta.3`, become pre-releases.

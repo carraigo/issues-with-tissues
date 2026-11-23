@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0
+
+The first release on CurseForge.
+
+- **Tidier saved data:** professions and recipes of characters who left the guild are cleared after they've been gone from the roster for three days, and shared recipes are capped at 1,500 records (oldest first). A roster that loads only partly is never taken as people leaving.
+- `/iwt bug` shows the size of each part of the saved data (recipes, chat, loot notes...).
+- The addon's page link is in its TOC, for the game's AddOns list and CurseForge.
+- For developers: the window code is split into `UI.lua` (window and tabs), `Widgets.lua` (buttons, lists, inputs, the copy box) and `Buttons.lua` (minimap and guild-window buttons, key bindings). Luacheck (`.luacheckrc`) checks every file for stray globals and unused code.
+
 ## 0.9.0
 
 Layer hopping goes, and the window gets nicer to use and quicker in a big guild.
