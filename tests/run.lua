@@ -1461,7 +1461,7 @@ test("welcome: a first install gets the welcome card; an update gets What's new 
 	Welcome.Check()
 	eq(Welcome.shown, "What's new in Issues with Tissues")
 	local notes = Welcome.NotesSince("0.7.2")
-	eq(#notes, 2, "at most two versions"); eq(notes[1].version, c.ns.VERSION)
+	eq(#notes, 2, "at most two versions"); eq(notes[1].version, c.ns.VERSION:match("^%d+%.%d+%.%d+"))
 	eq(#Welcome.NotesSince(c.ns.VERSION), 0)
 	-- someone updating from an older version without seenVersion yet: What's new, not Welcome
 	c.env.IwTDB.seenVersion = nil
@@ -1492,6 +1492,7 @@ test("updates: told once when a guildmate has a newer release; betas ignored", f
 	local printed = {}
 	c.env.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) printed[#printed + 1] = m end }
 	local U = c.ns.Updates
+	c.ns.VERSION = "1.0.0" -- someone on a release (the build under test may be a beta)
 	eq(U.Consider("Gm", "9.0.0-beta.1"), false, "a beta doesn't nag people on a release")
 	eq(U.Consider("Gm", c.ns.VERSION), false)
 	eq(U.Consider("Gm", "9.0.0"), true)

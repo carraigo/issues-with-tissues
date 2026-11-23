@@ -10,6 +10,9 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.0.2", lines = {
+		"New versions now reach CurseForge automatically, so the CurseForge app keeps the addon up to date.",
+	} },
 	{ version = "1.0.1", lines = {
 		"Fixed the key bindings: they have their own Issues with Tissues section in Key Bindings, with no stray row.",
 	} },
@@ -76,9 +79,12 @@ end
 -- The notes for versions newer than `since`, up to this one (newest first, at most two).
 function Welcome.NotesSince(since)
 	local out = {}
+	-- A beta counts as its release here: it shows that release's notes, once.
+	local release = tostring(ns.VERSION):match("^%d+%.%d+%.%d+") or ns.VERSION
+	local sinceRelease = since and (tostring(since):match("^%d+%.%d+%.%d+") or since)
 	for _, n in ipairs(Welcome.NOTES) do
-		local current = not Welcome.Newer(n.version, ns.VERSION)
-		if current and (not since or Welcome.Newer(n.version, since)) then out[#out + 1] = n end
+		local current = not Welcome.Newer(n.version, release)
+		if current and (not since or Welcome.Newer(n.version, sinceRelease)) then out[#out + 1] = n end
 		if #out == 2 then break end
 	end
 	return out

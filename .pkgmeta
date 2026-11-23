@@ -1,0 +1,18 @@
+# CurseForge packaging (the webhook packages the repo on each tag).
+# The addon lives in the IssuesWithTissues/ subfolder, so the repo is packaged under a
+# throwaway root name, the addon folder is moved to the top of the zip, and everything
+# else is left out. The root folder is then empty, and the packager drops empty folders
+# left behind by a move.
+package-as: IwT-repo
+
+move-folders:
+  IwT-repo/IssuesWithTissues: IssuesWithTissues
+
+ignore:
+  - tests
+  - docs
+  - .github
+  - README.md
+  - CHANGELOG.md
+  - .luacheckrc
+  - .gitignore

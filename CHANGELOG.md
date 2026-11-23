@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2-beta.1
+
+- New versions are packaged for CurseForge automatically when they're tagged (`.pkgmeta`), so the CurseForge app picks up updates. This test build checks the package holds only the addon folder.
+
 ## 1.0.1
 
 - Fixed the key bindings list: "Issues with Tissues" was showing as a bindable row of its own under Other. The two bindings now have their own expandable Issues with Tissues section in the game's Key Bindings, like other addons.
