@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0
+
+Layer hopping goes, and the window gets nicer to use and quicker in a big guild.
+
+- **Layer hopping removed:** Blizzard turns layer hopping off after Wednesday 25 November, so the Hop tab, `/iwt layer`, `/iwt hop` and the layer-hop setting are gone. The window is down to four tabs: Home, Chat, Members and Guild life. Messages from guildmates still on 0.8 are ignored.
+- **Crafting professions only:** the addon now tracks Alchemy, Blacksmithing, Enchanting, Engineering, Leatherworking, Tailoring and Cooking. Gathering skills, First Aid and Fishing are no longer read or shared, and older records from guildmates on 0.8 that still list them are filtered out of the Roster, Crafters and Home.
+- **Donations:** the Guild Master can change the donation goal without asking the officer who set it, and then owns it. Officers still ask the owner first.
+- **Window size:** a slider in Settings sizes the window from 70% to 130%. `/iwt scale 90` does the same.
+- **Window sounds:** the window makes the game's usual sound when it opens, closes or changes tab. Settings can turn this off.
+- **Combat:** a setting hides the window when combat starts and brings it back when combat ends. It's off by default.
+- **Chat:** when you've scrolled up, a Newest button shows how many lines have come in since and takes you back to the bottom. Chat times can show as 2:05pm instead of 14:05.
+- **Keyboard:** Ctrl+F jumps to the search box on Roster, Crafters and Loot notes, and Enter picks the first result (whispers the guildmate or crafter, or selects the loot note). The Roster has a new name search.
+- **Quicker:** a big catch-up from guildmates at login is taken in small batches, so the game no longer hitches. The login timers are spread out. Crafters searches and chat history are faster in a big guild.
+- `/iwt bug` and the profiler report now show the addon's memory use and how long each part took to start.
+- The bug log clears itself: an error not seen for 24 hours is dropped, and the log starts afresh once it's a day old.
+- For developers: a speed test with a 500-member guild runs on every push and fails if a redraw, search or sync gets slower than its limit.
+
 ## 0.8.2
 
 - The welcome and What's new card now grows to fit its text, so its buttons no longer cover the last lines. It's a little wider too.

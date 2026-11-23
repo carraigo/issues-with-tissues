@@ -42,7 +42,7 @@ Every feature that shares data defines a *set*. Each set has a rule for who may 
 ## Modules and UI
 
 - Each feature is a module (`ns.RegisterModule`) with `OnLoad` and `OnLogin` hooks, loaded in the order the `.toc` lists them.
-- Pages register themselves into tabs (Home, Chat, Members, Hop, Guild life), so adding a feature doesn't touch the window code.
+- Pages register themselves into tabs (Home, Chat, Members, Guild life), so adding a feature doesn't touch the window code.
 - Redraws are batched (`ns.Coalesce`). A burst of 300 incoming records with a page open costs about 1.5 ms instead of 2.5 s.
 - Every colour lives in one table (`UI.COLORS`). A theme (`Themes.lua`) is another set of those colours, copied in at load before any frame exists, so features never need to know about themes. In every theme but Default, text that would be too faint on the panels is shaded toward the theme's ink colour until it reaches a 4.5:1 contrast.
 - The addon never assigns Blizzard's global variables, because one stray assignment "taints" the secure UI and breaks other addons' macros. A test enforces this.
@@ -58,12 +58,14 @@ Chat isn't shared data: it never goes over addon messages, and it's never put in
 
 ## Diagnostics
 
-- `/iwt bug`, `/iwt selftest` and an optional profiler help when something goes wrong in game.
+- `/iwt bug`, `/iwt selftest` and an optional profiler help when something goes wrong in game. The bug report and profiler show the addon's memory use and how long each module's load and login took.
+- At login, a guildmate's catch-up answer can hold hundreds of records. They are taken 40 per frame so the game doesn't hitch, and the decoded recipe and profession lists are cached until shared data changes.
 - `/iwt report` packs the version, errors (each tagged with the version it last happened on), profiler numbers, self-test results and usage counts into one checksummed string. It contains no chat and no other players' names.
 - The [website](https://carraigo.github.io/iwt-stats/#report) decodes the report, shows exactly what's inside, and files it as a GitHub issue.
 
 ## Tests and releases
 
 - `tests/run.lua` runs the real addon files against a small fake WoW API (`tests/wow.lua`). It simulates several guildmates' clients in one process, passing messages between them, so the sync, permissions and name handling are tested the way they run in game.
-- Every push and PR runs the tests (`tests.yml`). `main` is protected: changes go through a pull request, and the tests must pass first.
+- `tests/speed.lua` loads a 500-member guild with shared professions, recipes and chat, and times the roster, the Crafters search, the chat history merge and a full sync catch-up. Each has a limit, and the run fails when one gets slower than it.
+- Every push and PR runs the tests and the speed test (`tests.yml`). `main` is protected: changes go through a pull request, and the tests must pass first.
 - Pushing a tag like `v0.8.0` runs `release.yml`. It runs the tests, checks that the tag matches the version in the `.toc` and `Core.lua`, zips the addon, and publishes a release with notes taken from `CHANGELOG.md` (every section since the previous release). Tags with a dash, like `v0.8.0-beta.3`, become pre-releases.

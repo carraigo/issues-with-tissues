@@ -1,4 +1,4 @@
--- The main window: five tabs along the bottom (Home, Chat, Members, Hop, Guild life), each holding
+-- The main window: four tabs along the bottom (Home, Chat, Members, Guild life), each holding
 -- pages behind a row of sub-tabs, and Settings behind the cog in the title bar. Features add a
 -- page with ns.UI.AddPage("Members", "Roster", function(panel) ... end); the builder runs the
 -- first time the page is shown. A tab with no pages is not shown. Also the minimap button, the
@@ -11,7 +11,7 @@ ns.UI = UI
 
 -- The tabs, in order. UI.tabs is the ones with pages, set when the window is made.
 UI.groups = {}
-for _, title in ipairs({ "Home", "Chat", "Members", "Hop", "Guild life" }) do
+for _, title in ipairs({ "Home", "Chat", "Members", "Guild life" }) do
 	UI.groups[#UI.groups + 1] = { title = title, pages = {} }
 end
 UI.tabs = {}
@@ -262,7 +262,7 @@ function UI.BuildTabButton(i)
 	else
 		b:SetPoint("TOPLEFT", window, "BOTTOMLEFT", 12, 1)
 	end
-	b:SetScript("OnClick", function() UI.SelectTab(i) end)
+	b:SetScript("OnClick", function() UI.Sound("tab"); UI.SelectTab(i) end)
 	tab.button = b
 	b:Show()
 end
@@ -366,6 +366,78 @@ function UI.ShowSettings()
 	if UI.ThemeTree then UI.ThemeTree(window) end
 end
 
+---------------------------------------------------------------------------
+-- Feel (0.9.0): sounds, size, combat, keyboard
+---------------------------------------------------------------------------
+UI.SOUNDS = { open = "IG_CHARACTER_INFO_OPEN", close = "IG_CHARACTER_INFO_CLOSE", tab = "IG_CHARACTER_INFO_TAB" }
+UI.SOUND_IDS = { open = 839, close = 840, tab = 841 } -- the same sounds, where SOUNDKIT is missing
+
+function UI.Sound(kind)
+	if UI.quiet or not ns.db.settings.windowSounds or not PlaySound then return false end
+	local id = (SOUNDKIT and SOUNDKIT[UI.SOUNDS[kind]]) or UI.SOUND_IDS[kind]
+	if not id then return false end
+	pcall(PlaySound, id)
+	UI.lastSound = kind
+	return true
+end
+
+UI.SCALE_MIN, UI.SCALE_MAX = 0.7, 1.3
+function UI.SetScale(v)
+	v = tonumber(v) or 1
+	v = math.floor(math.max(UI.SCALE_MIN, math.min(UI.SCALE_MAX, v)) * 20 + 0.5) / 20 -- steps of 5%
+	ns.db.settings.scale = v
+	if window then window:SetScale(v) end
+	return v
+end
+
+-- Combat: with the option on, the window steps aside when combat starts and comes back after.
+function UI.OnCombat(starting)
+	if starting then
+		if ns.db.settings.hideInCombat and window and window:IsShown() then
+			UI.quiet = true; window:Hide(); UI.quiet = false
+			UI.hiddenForCombat = true
+		end
+	else
+		if UI.keyboardPending then UI.EnableKeys() end
+		if UI.hiddenForCombat then
+			UI.hiddenForCombat = false
+			if window and not window:IsShown() then UI.quiet = true; window:Show(); UI.quiet = false end
+		end
+	end
+end
+ns.On("PLAYER_REGEN_DISABLED", function() UI.OnCombat(true) end)
+ns.On("PLAYER_REGEN_ENABLED", function() UI.OnCombat(false) end)
+
+-- A page with a search box says so (UI.SetSearch(panel, box)): Ctrl+F jumps to it.
+function UI.SetSearch(panel, box) panel.searchBox = box end
+
+function UI.FocusSearch()
+	local g = UI.tabs[UI.current or 0]
+	if not (window and window:IsShown() and g and g.frame and g.frame:IsShown()) then return false end
+	local page = g.pages[g.current or 1]
+	local box = page and page.panel and page.panel.searchBox
+	if type(box) ~= "table" then return false end
+	box:SetFocus()
+	if box.HighlightText then box:HighlightText() end
+	return true
+end
+
+-- The window hears keys only to spot Ctrl+F. Every key still goes on to the game (propagation
+-- is set once, outside combat, where the game allows it, and never changed after).
+function UI.EnableKeys()
+	if not window or not window.EnableKeyboard or not window.SetPropagateKeyboardInput then return false end
+	if InCombatLockdown and InCombatLockdown() then UI.keyboardPending = true; return false end
+	UI.keyboardPending = false
+	local ok = pcall(window.SetPropagateKeyboardInput, window, true)
+	if not ok then return false end
+	window:EnableKeyboard(true)
+	window:SetScript("OnKeyDown", function(_, key)
+		if key == "F" and IsControlKeyDown and IsControlKeyDown() then UI.FocusSearch() end
+	end)
+	UI.keys = true
+	return true
+end
+
 function UI.Create()
 	if window then return window end
 	local f = UI.Window("IwTMainWindow", UI.WIDTH, UI.HEIGHT, "Issues with Tissues")
@@ -377,8 +449,12 @@ function UI.Create()
 		f:SetPoint("CENTER")
 	end
 	f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition(self) end)
+	f:HookScript("OnShow", function() UI.Sound("open") end)
+	f:HookScript("OnHide", function() UI.Sound("close") end)
 	window = f
 	UI.window = f
+	UI.SetScale(ns.db.settings.scale)
+	UI.EnableKeys()
 	-- The cog: Settings.
 	local cog = UI.Button(f, nil, 22, 20)
 	cog:SetPoint("RIGHT", f.close, "LEFT", -4, 0)

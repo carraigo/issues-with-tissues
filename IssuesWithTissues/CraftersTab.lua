@@ -52,12 +52,10 @@ function Crafters.ByProfession(onlineOnly)
 		local online = Online(who)
 		if ns.Roster.IsMember(who) and (online or not onlineOnly) then
 			for _, p in ipairs(ns.Professions.Of(who)) do
-				if not ns.Professions.NO_RECIPES[p.name] or p.name == "Mining" then
-					rows[#rows + 1] = {
-						who = who, profession = p.name, rank = p.rank, max = p.max, online = online,
-						recipes = counts[who .. "#" .. p.name],
-					}
-				end
+				rows[#rows + 1] = {
+					who = who, profession = p.name, rank = p.rank, max = p.max, online = online,
+					recipes = counts[who .. "#" .. p.name],
+				}
 			end
 		end
 	end
@@ -158,6 +156,16 @@ function Crafters.Refresh()
 	end
 end
 
+-- Enter in the search: whisper the crafter of the first result.
+function Crafters.PickFirst()
+	local s = Crafters.state
+	if s.search == "" then return nil end
+	local first = Crafters.Search(s.search, s.onlineOnly)[1]
+	if not first then return nil end
+	ns.UI.Whisper(first.who)
+	return first.who
+end
+
 local function Build(panel)
 	Crafters.panel = panel
 	local box = ns.UI.CreateInput(panel, 300, "Search: e.g. linen, bracer, potion")
@@ -167,6 +175,9 @@ local function Build(panel)
 		list.offset = 0
 		Crafters.Refresh()
 	end
+	box.onEnter = function() Crafters.PickFirst() end
+	ns.UI.SetSearch(panel, box)
+	Crafters.searchBox = box
 	local online = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
 	online:SetPoint("LEFT", box, "RIGHT", 12, 0)
 	local ol = online:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

@@ -21,7 +21,7 @@ Tab.COLUMNS = {
 	{ key = "hk", label = "Honourable kills", width = 110 },
 	{ key = "profs", label = "Professions", width = 180 },
 }
-Tab.state = { filter = "all", sort = "rankIndex", desc = false, groupAlts = true, offset = 0 }
+Tab.state = { filter = "all", sort = "rankIndex", desc = false, groupAlts = true, offset = 0, search = "" }
 
 -- Display name: the roster's own spelling ("Clane Stocious"), without the realm.
 local function Short(key)
@@ -88,6 +88,15 @@ function Tab.Rows(state)
 		if filter.key == "online" then keep = online
 		elseif filter.days then keep = not online and days >= filter.days
 		else keep = true end
+		-- Search: any of the group's characters by name (first name, surname or both).
+		local search = (state.search or ""):lower()
+		if keep and search ~= "" then
+			local hit = false
+			for _, full in ipairs(g.members) do
+				if Short(full):lower():find(search, 1, true) then hit = true break end
+			end
+			keep = hit
+		end
 		if keep then
 			-- Online on an alt: show that character (its level and class), with the main beside it.
 			local shown = onlineChar or key
@@ -189,6 +198,14 @@ function Tab.Refresh(rebuild)
 		#rows, online, ns.Roster.count, ns.Roster.online))
 end
 
+-- Enter in the search: whisper the first match.
+function Tab.PickFirst()
+	if (Tab.state.search or "") == "" then return nil end
+	local first = Tab.Rows()[1]
+	if not first then return nil end
+	return Tab.Whisper(first.tell or first.full)
+end
+
 -- Open a whisper to a guildmate. Forever's server finds a character by "First Surname"
 -- (the roster's spelling, without the realm); the first name alone reaches nobody.
 function Tab.Whisper(key)
@@ -208,14 +225,25 @@ local function Build(panel)
 	local x = 0
 	for _, f in ipairs(Tab.FILTERS) do
 		local b = ns.UI.Button(panel)
-		b:SetSize(84, 22)
+		b:SetSize(72, 22)
 		b:SetPoint("TOPLEFT", x, 0)
 		b:SetText(f.label)
 		b.key = f.key
 		b:SetScript("OnClick", function() Tab.state.filter = f.key; Tab.state.offset = 0; Tab.Refresh() end)
 		filterButtons[#filterButtons + 1] = b
-		x = x + 88
+		x = x + 76
 	end
+	-- Search by name (Ctrl+F); Enter whispers the first match.
+	local search = ns.UI.CreateInput(panel, 136, "Search names")
+	search:SetPoint("TOPRIGHT", -4, 0)
+	search.onChange = function(text)
+		Tab.state.search = text:match("^%s*(.-)%s*$")
+		Tab.state.offset = 0
+		Tab.Refresh()
+	end
+	search.onEnter = function() Tab.PickFirst() end
+	ns.UI.SetSearch(panel, search)
+	Tab.searchBox = search
 	local group = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
 	group:SetPoint("TOPLEFT", x + 4, 1)
 	local gl = group:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

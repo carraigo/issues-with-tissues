@@ -2,8 +2,10 @@
 --
 -- Skills are read at login and whenever they change. Recipes are read when the player opens a
 -- profession window (the game only lists them then). Both are shared with the guild:
---   Sync "profs"   key = character, data = "Tailoring:225:300,Herbalism:150:150"
+--   Sync "profs"   key = character, data = "Tailoring:225:300,Cooking:150:150"
 --   Sync "recipes" key = character .. "#" .. profession, data = "itemID:Recipe name;..."
+-- Only the crafting professions are tracked (0.9.0): gathering ones, First Aid and Fishing are
+-- left out, and guildmates' older records that still list them are filtered when read.
 -- Forever has the modern C_TradeSkillUI API; the classic GetTradeSkill* functions are a fallback.
 
 local _, ns = ...
@@ -14,12 +16,17 @@ ns.Professions = Prof
 ns.Sync.Define("profs", { writer = "owner" })
 ns.Sync.Define("recipes", { writer = "member" })
 
--- Names the classic skill list uses for professions (enUS; other locales use headers below).
-Prof.KNOWN = {
-	Alchemy = true, Blacksmithing = true, Enchanting = true, Engineering = true, Herbalism = true,
-	Leatherworking = true, Mining = true, Skinning = true, Tailoring = true, Jewelcrafting = true,
-	Inscription = true, Cooking = true, ["First Aid"] = true, Fishing = true,
+-- The professions tracked, by name and by skill line (the name may be in another language).
+Prof.CRAFTING = {
+	Alchemy = 171, Blacksmithing = 164, Enchanting = 333, Engineering = 202,
+	Leatherworking = 165, Tailoring = 197, Cooking = 185,
 }
+local craftingLine = {}
+for _, id in pairs(Prof.CRAFTING) do craftingLine[id] = true end
+
+function Prof.IsCrafting(name, skillLine)
+	return (skillLine ~= nil and craftingLine[skillLine]) or Prof.CRAFTING[name] ~= nil
+end
 
 local function Clean(s, max)
 	s = tostring(s or ""):gsub("[%c\30\31:;,|#]", "")
@@ -35,7 +42,9 @@ function Prof.ReadSkills()
 			local id = ids[i]
 			if id then
 				local name, _, rank, max, _, _, skillLine = GetProfessionInfo(id)
-				if name then list[#list + 1] = { name = name, rank = rank or 0, max = max or 0, skillLine = skillLine } end
+				if name and Prof.IsCrafting(name, skillLine) then
+					list[#list + 1] = { name = name, rank = rank or 0, max = max or 0, skillLine = skillLine }
+				end
 			end
 		end
 		if #list > 0 then return list end
@@ -46,8 +55,7 @@ function Prof.ReadSkills()
 			local name, isHeader, _, rank, _, _, max = GetSkillLineInfo(i)
 			if isHeader then
 				section = name
-			elseif name and (Prof.KNOWN[name] or section == (TRADE_SKILLS or "Professions")
-				or section == (SECONDARY_SKILLS or "Secondary Skills")) then
+			elseif name and Prof.IsCrafting(name) then
 				list[#list + 1] = { name = name, rank = rank or 0, max = max or 0 }
 			end
 		end
@@ -78,9 +86,21 @@ function Prof.UpdateSkills()
 	return ns.Sync.Set("profs", me, data)
 end
 
--- A character's professions: { { name, rank, max }, ... }
+-- A character's crafting professions: { { name, rank, max }, ... }
+-- Remembered until shared data changes (lists and searches ask for the same people often).
+-- Callers must not change the list.
+local ofCache, ofGen = {}, nil
 function Prof.Of(name)
-	return Prof.Decode(ns.Sync.Get("profs", ns.FullName(name)))
+	if ofGen ~= ns.Sync.gen then ofCache, ofGen = {}, ns.Sync.gen end
+	local data = ns.Sync.Get("profs", ns.FullName(name))
+	local hit = ofCache[name]
+	if hit and hit.data == data then return hit.list end
+	local out = {}
+	for _, p in ipairs(Prof.Decode(data)) do
+		if Prof.IsCrafting(p.name) then out[#out + 1] = p end
+	end
+	ofCache[name] = { data = data, list = out }
+	return out
 end
 
 ---------------------------------------------------------------------------
@@ -154,6 +174,11 @@ function Prof.DecodeRecipes(data)
 	return list
 end
 
+-- The skill line of one of this character's professions, by name.
+function Prof.SkillLineOf(profName)
+	for _, p in ipairs(Prof.ReadSkills()) do if p.name == profName then return p.skillLine end end
+end
+
 -- Read the open profession window and publish it when it changed.
 function Prof.ReadOpenWindow(craft)
 	if InCombatLockdown and InCombatLockdown() then return false end
@@ -161,6 +186,7 @@ function Prof.ReadOpenWindow(craft)
 	if not craft then profName, recipes = ReadModern() end
 	if not profName then profName, recipes = ReadClassic(craft) end
 	if not profName or not recipes or #recipes == 0 then return false end
+	if not Prof.IsCrafting(profName) and not Prof.IsCrafting(nil, Prof.SkillLineOf(profName)) then return false end -- Smelting and the like
 	Prof.lastRead = profName
 	local me = ns.PlayerName()
 	local key = me .. "#" .. Clean(profName, 24)
@@ -180,16 +206,22 @@ ns.Sync.CanWrite = function(name, key, by)
 end
 
 -- Every recipe in the guild: { { crafter, profession, item, name }, ... }
+-- Decoded once per change: the Crafters search runs on every key typed, and decoding thousands
+-- of recipes each time made typing stutter in a big guild. Callers must not change the list.
+local cache, cacheGen, cacheStore
 function Prof.AllRecipes()
+	local store = ns.db.sync.recipes
+	if cache and cacheGen == ns.Sync.gen and cacheStore == (store and store.records) then return cache end
 	local out = {}
 	for key, data in ns.Sync.Each("recipes") do
 		local crafter, profession = key:match("^(.-)#(.*)$")
-		if crafter then
+		if crafter and Prof.IsCrafting(profession) then
 			for _, r in ipairs(Prof.DecodeRecipes(data)) do
-				out[#out + 1] = { crafter = crafter, profession = profession, item = r.item, name = r.name }
+				out[#out + 1] = { crafter = crafter, profession = profession, item = r.item, name = r.name, lower = r.name:lower() }
 			end
 		end
 	end
+	cache, cacheGen, cacheStore = out, ns.Sync.gen, store and store.records
 	return out
 end
 
@@ -199,7 +231,7 @@ function Prof.WhoCanMake(text)
 	local out = {}
 	if text == "" then return out end
 	for _, r in ipairs(Prof.AllRecipes()) do
-		if r.name:lower():find(text, 1, true) then out[#out + 1] = r end
+		if r.lower:find(text, 1, true) then out[#out + 1] = r end
 	end
 	table.sort(out, function(a, b) if a.name ~= b.name then return a.name < b.name end return a.crafter < b.crafter end)
 	return out
@@ -222,7 +254,7 @@ function Prof.SharedCount(profName, who)
 	return #Prof.DecodeRecipes(data)
 end
 
--- Crafting professions on this character (Mining keeps Smelting, but it is not worth a tab).
+-- Professions on this character with recipes to share.
 function Prof.Scannable()
 	local out = {}
 	for _, p in ipairs(Prof.ReadSkills()) do

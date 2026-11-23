@@ -1,5 +1,6 @@
 -- Diagnostics: errors raised by this addon are stored (deduplicated, with a count) in
--- IwTDB.errors, plus a short rolling log. /iwt bug opens a copyable report.
+-- IwTDB.errors, plus a short rolling log. /iwt bug opens a copyable report. Both clear
+-- themselves after a day: an error not seen for 24 hours goes, and so does a day-old log.
 
 local _, ns = ...
 
@@ -8,6 +9,23 @@ ns.Diagnostics = Diag
 
 Diag.MAX_ERRORS = 50
 Diag.MAX_LOG = 200
+Diag.KEEP = 24 * 3600 -- errors and log lines older than a day are cleared (0.9.0)
+
+-- Errors not seen for a day go; the log starts afresh once it's a day old.
+function Diag.Expire()
+	local db = ns.db
+	if not db then return end
+	local now = ns.Now()
+	for i = #db.errors, 1, -1 do
+		local e = db.errors[i]
+		if now - (e.last or e.first or 0) > Diag.KEEP then table.remove(db.errors, i) end
+	end
+	if #db.log == 0 then db.logSince = nil end
+	if db.logSince and now - db.logSince > Diag.KEEP then
+		wipe(db.log)
+		db.logSince = nil
+	end
+end
 
 local pending = {} -- errors raised before saved variables load
 
@@ -36,11 +54,14 @@ function ns.Log(fmt, ...)
 	local db = ns.db
 	if not db then return end
 	local line = select("#", ...) > 0 and string.format(fmt, ...) or tostring(fmt)
+	if not db.logSince then db.logSince = ns.Now() end
 	table.insert(db.log, date("%H:%M:%S ") .. line)
 	while #db.log > Diag.MAX_LOG do table.remove(db.log, 1) end
 end
 
 function Diag:OnLoad()
+	if ns.db.log[1] and not ns.db.logSince then ns.db.logSince = ns.Now() end -- a log from before 0.9.0
+	Diag.Expire()
 	for _, e in ipairs(pending) do ns.ReportError(e.text) end
 	wipe(pending)
 end
@@ -70,6 +91,7 @@ if blocked then
 end
 
 function Diag.BuildReport()
+	Diag.Expire()
 	local db = ns.db or { errors = {}, log = {}, settings = {} }
 	local lines = {}
 	local function add(s) lines[#lines + 1] = s end
@@ -81,6 +103,14 @@ function Diag.BuildReport()
 	end
 	add("Locale: " .. (GetLocale and GetLocale() or "?"))
 	add("Time: " .. date("%Y-%m-%d %H:%M:%S"))
+	local kb = ns.MemoryKB and ns.MemoryKB()
+	add("Memory: " .. (kb and string.format("%.0f KB", kb) or "unknown"))
+	if ns.StartupText then add("Startup: " .. ns.StartupText()) end
+	if ns.char and ns.char.chat then
+		local n = 0
+		for _, l in pairs(ns.char.chat) do n = n + #l end
+		add("Saved chat lines: " .. n)
+	end
 	add("")
 	add("Identity:")
 	add("  UnitName: " .. tostring(UnitName and UnitName("player")) .. ", realm: " .. tostring(GetNormalizedRealmName and GetNormalizedRealmName()))
@@ -164,6 +194,7 @@ ns.RegisterCommand("bug", "copyable bug report", function(rest)
 	if rest == "clear" then
 		wipe(ns.db.errors)
 		wipe(ns.db.log)
+		ns.db.logSince = nil
 		ns.Print("Errors and log cleared.")
 		return
 	end

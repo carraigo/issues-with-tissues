@@ -20,6 +20,7 @@ local Sync = ns.RegisterModule("Sync", {})
 ns.Sync = Sync
 
 Sync.sets = {}
+Sync.gen = 0 -- goes up whenever a record changes (caches of decoded data check it)
 Sync.ANSWER_DELAY_MAX = 3      -- seconds; a random wait so one guildmate answers
 Sync.DELETED_KEEP = 30 * 86400 -- keep deletion marks so an old copy can't bring a record back
 local RS = "\30"
@@ -81,6 +82,7 @@ function Sync.Accept(name, key, rec)
 		return false
 	end
 	store[key] = rec
+	Sync.gen = Sync.gen + 1
 	Sync.Trim(name)
 	ns.Send("SYNC_CHANGED", name, key, rec)
 	return true
@@ -96,6 +98,7 @@ function Sync.Trim(name)
 	if #list <= def.max then return end
 	table.sort(list, function(a, b) return a.rev > b.rev end)
 	for i = def.max + 1, #list do store[list[i].k] = nil end
+	Sync.gen = Sync.gen + 1
 end
 
 local function Write(name, key, data, deleted, minRev)
@@ -117,6 +120,7 @@ local function Write(name, key, data, deleted, minRev)
 		ns.char.written[name .. "\1" .. key] = rev
 	end
 	store[key] = rec
+	Sync.gen = Sync.gen + 1
 	ns.Send("SYNC_CHANGED", name, key, rec)
 	Comm.Send("SU", Serialize(name, key, rec))
 	return true
@@ -273,6 +277,23 @@ Comm.Register("SQ", function(sender, payload)
 	if Comm.immediate then answer() else ns.After(math.random() * Sync.ANSWER_DELAY_MAX, answer) end
 end)
 
+-- A catch-up at login can bring hundreds of records at once. Accepting them all in one go made
+-- the game hitch, so they're taken a batch per frame (tests take them at once).
+Sync.ACCEPT_PER_FRAME = 40
+local queue, head, tail = {}, 1, 0
+local function Drain()
+	local stop = head + Sync.ACCEPT_PER_FRAME
+	while head < stop and queue[head] do
+		local piece = queue[head]
+		queue[head] = nil
+		head = head + 1
+		local name, key, rec = Deserialize(piece)
+		if name then Sync.Accept(name, key, rec) end
+	end
+	if head <= tail then ns.After(0, Drain) else queue, head, tail = {}, 1, 0 end
+end
+function Sync.Pending() return tail - head + 1 end
+
 Comm.Register("SR", function(sender, payload)
 	Sync.lastAnswer = ns.Now()
 	local first = true
@@ -283,9 +304,14 @@ Comm.Register("SR", function(sender, payload)
 			local heard = answered[nonce] or {}
 			answered[nonce] = heard
 			for d in digests:gmatch("[^,]+") do heard[d] = true end -- these sets are answered
-		else
+		elseif Comm.immediate then
 			local name, key, rec = Deserialize(piece)
 			if name then Sync.Accept(name, key, rec) end
+		else
+			local idle = head > tail
+			tail = tail + 1
+			queue[tail] = piece
+			if idle then ns.After(0, Drain) end
 		end
 	end
 end)
@@ -329,6 +355,7 @@ function Sync.MigrateNames()
 			if not fresh[k] or fresh[k].rev < rec.rev then fresh[k] = rec end
 		end
 		set.records = fresh
+		Sync.gen = Sync.gen + 1
 	end
 	if changed > 0 then ns.Log("names: %d saved records now use first name and surname", changed) end
 	return changed
