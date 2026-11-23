@@ -37,7 +37,7 @@ UI.THEMES = {
 		hover = A("e889b5", 0.15), stripe = A("e889b5", 0.06), input = Hex("fffaf2"),
 		gold = Hex("b03a74"), text = Hex("5a3349"), tabtext = Hex("8a5a74"), subtext = Hex("8a5a74"),
 		stamp = Hex("a07a90"), sys = Hex("8a7684"), primarytext = Hex("4a2038"),
-	}, ink = Hex("4a2038"), ref = Hex("fffaf2"), chat = { guild = Hex("2f8f6a"), officer = Hex("1f7a55") } },
+	}, ink = Hex("4a2038"), ref = Hex("fffaf2"), chat = { guild = Hex("1d6b4c"), officer = Hex("17573e") } },
 	{ id = "midnight", name = "Midnight", colors = {
 		bg = A("0c1220", 0.97), bar = Hex("131c30"), card = A("16213a", 0.9), edge = Hex("6f8fbf"), dim = Hex("2c3a58"),
 		button = Hex("18233b"), primary = Hex("2f5ea8"), close = Hex("3a4a6e"), selected = Hex("24365a"),
@@ -165,6 +165,18 @@ end
 -- Before any frame is made: the saved theme.
 function UI:OnLoad()
 	UI.ApplyTheme(ns.db.settings.theme)
+end
+
+-- The game's chat font often has a thick black outline (it does on Forever): fine on a dark
+-- panel, unreadable on a light one. On a light theme our chat text drops the outline and shadow.
+function UI.PlainFont(obj)
+	local t = UI.theme
+	if not (t and t.light and obj and obj.GetFont and obj.SetFont) then return false end
+	local file, size = obj:GetFont()
+	if not file then return false end
+	obj:SetFont(file, size, "")
+	if obj.SetShadowColor then obj:SetShadowColor(0, 0, 0, 0) end
+	return true
 end
 
 function UI.ChatColor(channel)

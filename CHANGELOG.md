@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1
+
+- **Kawaii Day chat is readable:** on light themes the chat text drops the game's thick black outline, and guild and officer chat use darker greens.
+- **Guild key:** the welcome card (and this update's What's new) offers to make your guild key (J unless you changed it) open Issues with Tissues instead of the game's Guild & Communities. It only changes on your click, and Key Bindings can change it back.
+
 ## 1.2.0
 
 - **"Guild craftable" on item tooltips:** a green line when someone in the guild has shared the recipe for the item, or already knows the recipe a Pattern, Plans, Formula or Schematic teaches. Nothing is shown otherwise. Settings can turn it off.
