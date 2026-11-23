@@ -10,6 +10,9 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.0.1", lines = {
+		"Fixed the key bindings: they have their own Issues with Tissues section in Key Bindings, with no stray row.",
+	} },
 	{ version = "1.0.0", lines = {
 		"Version 1.0: Issues with Tissues is now on CurseForge as well as GitHub.",
 		"Recipes and professions of characters who left the guild are cleared after three days.",
