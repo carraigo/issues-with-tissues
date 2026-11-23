@@ -4,11 +4,11 @@
 -- profession window (the game only lists them then). Both are shared with the guild:
 --   Sync "profs"   key = character, data = "Tailoring:225:300,Alchemy:150:150"
 --   Sync "recipes" key = character .. "#" .. profession, data = "i2b8.1.4;s5p9.2;nRecipe name"
---     (version 3, 1.3.0-beta.2): "i" then the item ids of recipes that make an item, "s" then the
+--     (version 3, 1.3.0): "i" then the item ids of recipes that make an item, "s" then the
 --     spell ids of ones that don't (enchants), each sorted and written as base 36 gaps from the
 --     one before (Record.Gaps); "n" .. name as a last resort. Names are looked up in game and
 --     remembered on this PC (db.recipeNames), so each name is stored once instead of once per
---     crafter. Version 2 (1.3.0-beta.1) was "12345;s7421;nName", version 1 "itemID:Name;...";
+--     crafter. Version 2 (a 1.3.0 beta) was "12345;s7421;nName", version 1 "itemID:Name;...";
 --     both are upgraded as they arrive.
 -- Only the crafting professions are tracked (0.9.0): gathering ones, First Aid and Fishing are
 -- left out, and guildmates' older records that still list them are filtered when read.
