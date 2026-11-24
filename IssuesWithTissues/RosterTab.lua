@@ -405,6 +405,7 @@ ns.UI.AddPage("Members", "Roster", Build, { order = 10 })
 -- New data: rebuild the rows (a moment later, once per burst).
 local Soon = ns.Coalesce(function() Tab.Refresh(true) end)
 ns.Listen("ROSTER_UPDATED", Soon)
+ns.Listen("ROSTER_DETAILS", Soon) -- the Where column shows zones, the tooltip notes
 ns.Listen("SYNC_CHANGED", function(set) if set == "alts" or set == "profs" or set == "kills" then Soon() end end)
 
 ns.RegisterCommand("roster", "open the roster", function() ns.UI.Open("Roster") end)

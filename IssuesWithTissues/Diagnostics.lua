@@ -283,6 +283,8 @@ function Diag.SessionStats()
 			heardBytes = C.heardBytes or 0, refused = C.throttled or 0, dropped = C.dropped or 0, peakQueue = C.peakQueue or 0 },
 		errors = Diag.sessionErrors or 0, records = records, sizes = sizes, perf = perf,
 		members = ns.Roster.count or 0, online = ns.Roster.online or 0, addonUsers = users,
+		-- false on a character outside the guild: nothing to sync, so the site leaves it out
+		inGuild = (IsInGuild and IsInGuild() and (ns.Roster.count or 0) > 0) and true or false,
 	}
 end
 
