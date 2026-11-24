@@ -10,6 +10,10 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.3.2", lines = {
+		"Gentler on the game's message limits: the addon slows down when asked and speeds back up after.",
+		"Catch-up answers are shared around the guild instead of falling on whoever is always online.",
+	} },
 	{ version = "1.3.1", lines = {
 		"Faster syncing: catching up with the guild usually finishes in one short round.",
 		"Lighter on the guild channel: a small change now sends a few records, not a whole list.",

@@ -166,7 +166,11 @@ function W.NewClient(baseDir, name, guild, opts)
 	env.SlashCmdList = {}
 	-- Timers wait until the test calls c.flush(), which runs the short ones (1s or less) once.
 	c.timers = {}
-	env.C_Timer = { After = function(sec, fn) table.insert(c.timers, { sec = sec, fn = fn }) end }
+	W.seq = (W.seq or 0) + 1
+	env.C_Timer = { After = function(sec, fn)
+		W.seq = W.seq + 1
+		table.insert(c.timers, { sec = sec, fn = fn, at = W.now + sec, seq = W.seq })
+	end }
 	function c.flush()
 		local due = c.timers
 		c.timers = {}
@@ -190,6 +194,29 @@ function W.NewClient(baseDir, name, guild, opts)
 	ns.Comm.immediate = true
 	W.clients[#W.clients + 1] = c
 	return c
+end
+
+-- A clock for timing tests: runs every timer of the given clients that falls due in the next
+-- `seconds`, earliest first (ties in the order they were set), moving W.now along, and leaves
+-- W.now at the end. Timers a timer sets run too, if they fall due in time. Set
+-- c.ns.Comm.immediate = false first so messages go through the paced queue.
+function W.Run(seconds, clients)
+	local stop = W.now + seconds
+	while true do
+		local bestC, bestI, best
+		for _, c in ipairs(clients) do
+			for i, t in ipairs(c.timers) do
+				if t.at <= stop and (not best or t.at < best.at or (t.at == best.at and t.seq < best.seq)) then
+					bestC, bestI, best = c, i, t
+				end
+			end
+		end
+		if not best then break end
+		table.remove(bestC.timers, bestI)
+		W.now = math.max(W.now, best.at)
+		best.fn()
+	end
+	W.now = stop
 end
 
 W.itemNames = {}

@@ -467,6 +467,115 @@ test("roster: pages hear only real changes", function()
 	eq(R.Changes({}, a), "members")
 end)
 
+-- Timing tests: messages go through the paced queue and timers run in order (W.Run).
+local function Timed(...)
+	for _, c in ipairs({ ... }) do c.ns.Comm.immediate = false; c.timers = {} end
+end
+
+test("timed: a catch-up ends a few seconds after its answer is in, in one round", function()
+	local g = Guild()
+	local offi = W.NewClient(base, "Offi", g)
+	DefineSets(offi)
+	for i = 1, 40 do offi.ns.Sync.Set("notes", "n" .. i, "note " .. i) end
+	local late = W.NewClient(base, "Mem", g)
+	DefineSets(late)
+	Timed(offi, late)
+	late.ns.Sync.StartCatchUp()
+	W.Run(15, { offi, late })
+	eq(late.ns.Sync.Digest("notes"), offi.ns.Sync.Digest("notes"), "has everything")
+	eq(late.ns.Sync.catching, false, "judged well before the 20 second wait")
+	eq(late.ns.Sync.stats.rounds, 1, "no second round: nothing left to ask for")
+	W.Run(60, { offi, late })
+	eq(late.ns.Sync.stats.asks, 1, "and it doesn't ask again")
+end)
+
+test("timed: nobody answers but guildmates' addons are online: already up to date", function()
+	local g = Guild()
+	local offi = W.NewClient(base, "Offi", g)
+	DefineSets(offi)
+	offi.ns.Sync.Set("notes", "n1", "same")
+	local mem = W.NewClient(base, "Mem", g)
+	DefineSets(mem)
+	mem.ns.Sync.Ask() -- gets n1 at once
+	mem.ns.Sync.round, mem.ns.Sync.catching, mem.ns.Sync.rounds = nil, nil, 0
+	mem.ns.Send("ADDON_HELLO", "Offi", true)
+	Timed(offi, mem)
+	mem.ns.loginAt = W.now
+	mem.ns.Sync.StartCatchUp()
+	W.Run(30, { offi, mem })
+	eq(mem.ns.Sync.catching, false)
+	eq(mem.ns.Sync.stats.asks, 2, "no retries")
+	assert(mem.ns.Sync.stats.caughtUpAfter and mem.ns.Sync.stats.caughtUpAfter <= 25, "counted as caught up")
+	-- with no addon heard at all, a quiet round is asked again a minute later
+	local alone = W.NewClient(base, "Vet", Guild())
+	DefineSets(alone)
+	alone.ns.Sync.Set("mine", "Vet", "x") -- not a fresh install
+	Timed(alone)
+	alone.ns.Sync.StartCatchUp()
+	W.Run(30, { alone })
+	eq(alone.ns.Sync.catching, true, "retry waiting")
+	W.Run(200, { alone })
+	eq(alone.ns.Sync.stats.asks, 1 + alone.ns.Sync.NOBODY_RETRIES)
+	eq(alone.ns.Sync.catching, false, "gives up after the retries")
+end)
+
+test("timed: refused packets slow the pace, which recovers, and nothing is lost", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local C = c.ns.Comm
+	Timed(c)
+	local sent, calls = {}, 0
+	C.sendHook = function(_, packet) calls = calls + 1; if calls == 3 or calls == 5 then return 3 end; sent[#sent + 1] = packet; return 0 end
+	for i = 1, 30 do C.Send("T" .. i, string.rep("x", 200)) end
+	W.Run(5, { c })
+	assert(C.rate < C.RATE_MAX, "slowed down")
+	eq(C.slowest, C.RATE_MAX / 4, "halved twice")
+	W.Run(120, { c })
+	eq(#sent, 30); eq(C.Queued(), 0)
+	for i = 1, 30 do assert(sent[i]:find("\tT" .. i .. "\t", 1, true), "in order") end
+	eq(C.throttled, 2); eq(C.dropped, nil)
+	-- recovery: a minute without refusals and the next send goes at full pace again
+	C.Send("U", "y")
+	W.Run(5, { c })
+	eq(C.rate, C.RATE_MAX, "back to full pace")
+	C.sendHook = nil
+end)
+
+test("timed: a guildmate who answered recently lets someone else answer", function()
+	local g = Guild()
+	local offi = W.NewClient(base, "Offi", g)
+	local vet = W.NewClient(base, "Vet", g)
+	DefineSets(offi, vet)
+	for i = 1, 20 do offi.ns.Sync.Set("notes", "n" .. i, "note " .. i) end
+	eq(vet.ns.Sync.Digest("notes"), offi.ns.Sync.Digest("notes"))
+	local S = offi.ns.Sync
+	assert(S.AnswerDelay() < S.ANSWER_DELAY_MAX)
+	S.lastAnswered = W.now
+	assert(S.AnswerDelay() >= S.ANSWER_BACKOFF)
+	local late = W.NewClient(base, "Mem", g)
+	DefineSets(late)
+	Timed(offi, vet, late)
+	late.ns.Sync.StartCatchUp()
+	W.Run(30, { offi, vet, late })
+	eq(late.ns.Sync.Digest("notes"), offi.ns.Sync.Digest("notes"))
+	eq(vet.ns.Sync.stats.answered, 1, "the one who hadn't answered lately did")
+	eq(offi.ns.Sync.stats.answered, 0, "and the other stood back")
+end)
+
+test("roster: updates in a burst scan once, then once more after a second", function()
+	local g = Guild2()
+	local c = W.NewClient(base, "Mem", g)
+	Timed(c)
+	c.env.GetTime = function() return W.now end
+	local scans = 0
+	local real = c.ns.Roster.Scan
+	c.ns.Roster.Scan = function() scans = scans + 1; return real() end
+	for _ = 1, 10 do c.env.__fire("GUILD_ROSTER_UPDATE") end
+	eq(scans, 1, "the first at once")
+	W.Run(2, { c })
+	eq(scans, 2, "the rest in one more")
+	c.ns.Roster.Scan = real
+end)
+
 test("roster reads days offline", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	eq(c.ns.Roster.Get("Vet").offlineDays, 20)
@@ -2787,6 +2896,9 @@ test("logout saves this session's stats for the site's performance page: numbers
 	assert(st.sizes.notes and st.memoryKB >= 0 and st.members > 0)
 	assert(offi.env.IwTDB.stats.sync.answered >= 1, "the answer counted")
 	eq(st.inGuild, true)
+	-- the game reports "not in a guild" during logout; the roster still knows
+	late.env.IsInGuild = function() return false end
+	eq(late.ns.Diagnostics.SessionStats().inGuild, true)
 	-- no names anywhere in it
 	local text = late.ns.Report.Json(st)
 	assert(not text:find("Mem") and not text:find("Offi"), text)

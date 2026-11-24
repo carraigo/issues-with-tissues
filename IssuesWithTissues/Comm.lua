@@ -9,7 +9,8 @@
 --   "member"  the sender is in our guild roster (the default)
 --   "officer" the sender's rank in OUR roster is GM or Officer (ns.Roster.IsOfficer)
 --   "any"     anyone (whispers from outside the guild, e.g. a version check)
--- Outgoing packets are queued and sent a few per second so the game never drops them. In
+-- Outgoing packets are queued and paced by size (Comm.rate bytes a second). When the game
+-- refuses one for speed, the pace halves and then creeps back up while sends go through. In
 -- combat they wait until it ends; in a raid or dungeon they go out slowly (one a second), so the addon
 -- never competes with the fight.
 
@@ -20,7 +21,13 @@ ns.Comm = Comm
 
 Comm.PREFIX = "IWT"
 Comm.MAX_PACKET = 250          -- the game allows 255 bytes
-Comm.SEND_INTERVAL = 0.1       -- seconds between queued packets
+Comm.SEND_INTERVAL = 0.1       -- seconds between queued packets, at the full pace
+-- Pace in bytes a second: a full 250-byte packet every 0.1s at most. A refusal halves it (to no
+-- less than RATE_MIN); each RATE_RECOVER seconds without one it goes back up by a quarter.
+Comm.RATE_MAX = 2500
+Comm.RATE_MIN = 400
+Comm.RATE_RECOVER = 10
+Comm.rate = Comm.RATE_MAX
 Comm.RAID_INTERVAL = 1         -- in a raid or a dungeon
 Comm.HOLD_CHECK = 2            -- in combat: how often to look again
 Comm.THROTTLE_WAIT = 1.5       -- the game said "too fast": wait this long, then send it again
@@ -114,11 +121,15 @@ function Comm.Pump()
 		ns.After(Comm.HOLD_CHECK, Comm.Pump)
 		return
 	end
+	Comm.SpeedUp()
 	local item = Pop()
 	local wait = held == "raid" and Comm.RAID_INTERVAL or Comm.SEND_INTERVAL
-	if item and Comm.Refused(RawSend(item.packet, item.distribution, item.target)) then
+	if item then wait = math.max(wait, #item.packet / Comm.rate) end
+	local refused = item and Comm.Refused(RawSend(item.packet, item.distribution, item.target))
+	if refused then
 		item.tries = (item.tries or 0) + 1
 		Comm.throttled = (Comm.throttled or 0) + 1
+		Comm.SlowDown()
 		if item.tries < Comm.MAX_TRIES then
 			PushFront(item) -- keep the order: a split message needs every piece
 			wait = Comm.THROTTLE_WAIT
@@ -133,6 +144,26 @@ function Comm.Pump()
 	else
 		Comm.pumping = false
 	end
+end
+
+-- The game refused a packet for speed: halve the pace.
+function Comm.SlowDown()
+	local was = Comm.rate
+	Comm.rate = math.max(Comm.RATE_MIN, math.floor(Comm.rate / 2))
+	Comm.rateAt = ns.Now()
+	Comm.slowest = math.min(Comm.slowest or Comm.RATE_MAX, Comm.rate)
+	if Comm.rate ~= was then ns.Trace("comm", "Slowing down to %d bytes a second", Comm.rate) end
+end
+
+-- A quarter faster for every RATE_RECOVER seconds since the last change without a refusal
+-- (sending or not), up to the full pace.
+function Comm.SpeedUp()
+	if Comm.rate >= Comm.RATE_MAX then return end
+	local steps = math.floor((ns.Now() - (Comm.rateAt or 0)) / Comm.RATE_RECOVER)
+	if steps < 1 then return end
+	Comm.rate = math.min(Comm.RATE_MAX, math.floor(Comm.rate * 1.25 ^ steps))
+	Comm.rateAt = ns.Now()
+	ns.Trace("comm", "Speeding up to %d bytes a second", Comm.rate)
 end
 
 -- Send to the guild (distribution "GUILD") or to one player ("WHISPER", target).
