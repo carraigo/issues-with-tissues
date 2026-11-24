@@ -25,7 +25,7 @@ end
 -- Spelling only, no roster: "First Surname-Realm", "First-Surname", "First-Surname-Realm",
 -- "First-Realm", "First Surname", "First" -> "First Surname" / "First"
 function Roster.ParseName(raw)
-	if type(raw) ~= "string" then return nil end
+	if type(raw) ~= "string" or ns.IsSecret(raw) then return nil end
 	raw = raw:match("^%s*(.-)%s*$")
 	if raw == "" then return nil end
 	local base, suffix = raw:match("^(.-)%-(.+)$")

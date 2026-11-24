@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.3.2"
+ns.VERSION = "1.3.3"
 
 -- Every setting, declared once: its default and how the Settings page shows it. The page builds
 -- itself from this list (Settings.lua); a feature reacts to a change with
@@ -90,6 +90,16 @@ function ns.Trace(kind, fmt, ...)
 		t.first = t.first + 1
 	end
 	if ns.onTrace then ns.onTrace(t[t.last]) end
+end
+
+-- Secret values: the game can hand addons a "secret" string (chat text or a name, in some
+-- situations) that can be shown but not read. Matching, indexing or comparing one errors, and it
+-- is not kept in the saved data. ns.IsSecret(v) is true for those (always false on clients
+-- without them). Check before reading any text that comes from the game's chat or system events.
+function ns.IsSecret(v)
+	if v == nil or not issecretvalue then return false end
+	local ok, secret = pcall(issecretvalue, v)
+	return ok and secret and true or false
 end
 
 function ns.Now()

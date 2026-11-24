@@ -48,6 +48,7 @@ end
 -- yet): fall back to the character behind the author's GUID, then to the club member record.
 function Chat.AuthorName(clubId, author)
 	if type(author) ~= "table" then return nil end
+	if ns.IsSecret(author.name) then return author.name end
 	if author.name and author.name ~= "" then return author.name end
 	if author.guid and GetPlayerInfoByGUID then
 		local ok, _, _, _, _, _, name, realm = pcall(GetPlayerInfoByGUID, author.guid)
@@ -79,7 +80,8 @@ function Chat.ReadServer()
 					local name = Chat.AuthorName(clubId, msg.author) or Chat.authors[id]
 					Chat.authors[id] = name
 					out[#out + 1] = { t = math.floor((msg.messageId.epoch or 0) / 1000000), k = "msg",
-						a = name, m = msg.content, srv = true }
+						a = name, m = msg.content, srv = true,
+						secret = (ns.IsSecret(msg.content) or ns.IsSecret(name)) or nil }
 				end
 			end
 			table.sort(out, function(a, b) return a.t < b.t end)
@@ -94,6 +96,7 @@ end
 -- squeezed, lower case. The game's server and the live chat event don't always spell a
 -- message, or its author, the same way.
 function Chat.Plain(text)
+	if ns.IsSecret(text) then return "" end
 	local s = tostring(text or "")
 	s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")
 	s = s:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
@@ -107,6 +110,7 @@ Chat.HIDDEN_WINDOW = 5         -- seconds, when one copy's text is hidden
 -- words on screen but can't be read by addons. Both the live event and the server's history
 -- do this, not always for the same message.
 function Chat.Hidden(text)
+	if ns.IsSecret(text) then return true end -- secret text can't be read either
 	return tostring(text or ""):find("|K", 1, true) ~= nil
 end
 
@@ -141,7 +145,10 @@ function Chat.View(channel)
 				local d = math.abs((m.t or 0) - e.t)
 				if d <= Chat.SAME_WINDOW or d <= Chat.HIDDEN_WINDOW then
 					Info(i)
-					if hidden or mHidden[i] then
+					if e.secret and m.secret then
+						-- both copies secret: the same moment is all there is to go on
+						if d <= Chat.HIDDEN_WINDOW then return i end
+					elseif hidden or mHidden[i] then
 						first = first or First(e.a)
 						if d <= Chat.HIDDEN_WINDOW and first ~= "" and mFirst[i] == first then return i end
 					elseif d <= Chat.SAME_WINDOW then

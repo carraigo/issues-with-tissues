@@ -51,6 +51,10 @@ function Chat:OnLoad()
 		for _, e in ipairs(lines) do
 			if e.k == "msg" and Chat.Hidden(e.m) then e.old = true end
 		end
+		-- A secret line (see ns.IsSecret) isn't saved: it comes back without its text or author.
+		for i = #lines, 1, -1 do
+			if type(lines[i].m) ~= "string" then table.remove(lines, i) end
+		end
 	end
 end
 
@@ -76,9 +80,11 @@ end
 function Chat.Add(channel, kind, author, text)
 	local lines = Chat.Lines(channel)
 	if not lines then return end
-	local entry = { t = ns.Now(), k = kind, a = author, m = tostring(text or "") }
+	local secret = ns.IsSecret(text) or ns.IsSecret(author)
+	-- A secret line keeps its text as given (it can only be shown) and lasts this session only.
+	local entry = { t = ns.Now(), k = kind, a = author, m = secret and text or tostring(text or ""), secret = secret or nil }
 	-- The game repeats the message of the day at every login: keep it once until it changes.
-	if kind == "motd" then
+	if kind == "motd" and not secret then
 		for i = #lines, 1, -1 do
 			if lines[i].k == "motd" then
 				if lines[i].m == entry.m then return nil end
@@ -141,6 +147,15 @@ function Chat.FullTime(t)
 	return (date("%A %d %B %Y", t):gsub(" 0", " ")) .. ", " .. clock
 end
 
+-- Chat.Format for the page: a line that can't be built (secret text the game won't let us join
+-- to the rest) is shown as the game gave it, and a line that lost its text shows nothing.
+function Chat.Display(channel, e)
+	if e.m == nil then return nil end
+	local ok, line = pcall(Chat.Format, channel, e)
+	if ok then return line end
+	return e.m
+end
+
 function Chat.Format(channel, e)
 	local C = ns.UI.COLORS
 	-- The timestamp is a link: hovering it shows the full date and time.
@@ -155,7 +170,10 @@ function Chat.Format(channel, e)
 		return stamp .. sys .. e.m .. "|r"
 	end
 	if not e.a then
-		return stamp .. sys .. "[Unknown]|r|cff" .. Chat.Hex(r, g, b) .. ": " .. e.m .. "|r"
+		return stamp .. sys .. "[Unknown]|r|cff" .. Chat.Hex(r, g, b) .. ": " .. (e.m or "") .. "|r"
+	end
+	if ns.IsSecret(e.a) then -- a name we can't look up: shown as the game gave it
+		return stamp .. "[" .. e.a .. "]|cff" .. Chat.Hex(r, g, b) .. ": " .. e.m .. "|r"
 	end
 	local key = ns.Roster.ParseName(e.a) or e.a
 	local m = ns.Roster.Get(key)
@@ -217,6 +235,7 @@ local function Pattern(fmt)
 end
 
 function Chat.SystemLine(text)
+	if ns.IsSecret(text) then return nil end
 	text = tostring(text or "")
 	for _, fmt in ipairs({ ERR_FRIEND_ONLINE_SS or "|Hplayer:%s|h[%s]|h has come online.", ERR_FRIEND_OFFLINE_S or "%s has gone offline." }) do
 		local p = Pattern(fmt)
@@ -246,10 +265,11 @@ end)
 
 function Chat.MOTD()
 	local motd = GetGuildRosterMOTD and GetGuildRosterMOTD()
+	if ns.IsSecret(motd) then return motd end
 	if type(motd) == "string" and motd ~= "" then return motd end
 end
 
 -- The message of the day is shown at the top of the Guild channel; a new one is added as a line.
 pcall(ns.On, "GUILD_MOTD", function(_, motd)
-	if type(motd) == "string" and motd ~= "" then Chat.Add("guild", "motd", nil, motd) end
+	if ns.IsSecret(motd) or (type(motd) == "string" and motd ~= "") then Chat.Add("guild", "motd", nil, motd) end
 end)
