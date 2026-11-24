@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.1
+
+**Performance**
+- **Catching up ends sooner:** after each round the addon checks whether its data now matches what the guildmates who answered hold, and stops there instead of asking again. A round is also judged a few seconds after its last record arrives instead of always waiting 20 seconds. A catch-up that took 2 minutes and 3 rounds should now usually finish in one round of about 15 seconds.
+- **Smaller catch-up answers:** sets of 8 to 31 records are now split into 8 buckets, like big sets are into 16, so one changed record brings that bucket (a few records) instead of the whole set. Older versions still answer with the whole set.
+- **Fewer roster redraws:** the game sends roster updates every few seconds, usually with nothing new. Pages now hear about them only when someone joins, leaves, comes online or changes rank, level or last seen; zone and note changes only redraw the Roster page.
+
+**Functionality**
+- Session stats say whether the character is in the guild, so the site's performance page can leave out sessions on characters outside it.
+
+**Refactoring**
+- **Sync split in two:** Sync.lua keeps the records (storing, accepting, live changes, data versions); SyncCatchUp.lua holds catching up (fingerprints, buckets, asks, answers, rounds).
+- **List.lua:** the list page builder moved out of Widgets.lua into its own file.
+
 ## 1.3.0
 
 **Performance**

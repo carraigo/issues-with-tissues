@@ -308,12 +308,47 @@ test("sync: catch-up asks again while rounds bring news, and a fresh install kee
 	eq(#alone.timers, before, "a re-ask is already waiting, so no second one")
 	alone.ns.Sync.Ask()
 	eq(alone.ns.Sync.Get("notes", "n1"), "hello")
-	alone.ns.Sync.CheckRound()
-	eq(alone.ns.Sync.catching, true, "that round brought news: one more round")
-	alone.ns.Sync.Ask()
-	alone.ns.Sync.CheckRound()
-	eq(alone.ns.Sync.catching, false, "a round with nothing new ends the catch-up")
-	eq(alone.ns.Sync.Status(), nil)
+	local S = alone.ns.Sync
+	-- The round brought news, but our sets now match what the answerer holds: done, no extra round.
+	eq(S.StillBehind(S.round), false)
+	S.CheckRound()
+	eq(S.catching, false, "caught up: no second round needed")
+	eq(S.Status(), nil)
+	-- Still different from every answerer after news: one more round.
+	S.catching, S.rounds = true, 0
+	S.Ask()
+	S.round.new, S.round.lastHeard = 1, W.now
+	S.round.theirs.notes = { ["9.12345"] = true }
+	eq(S.StillBehind(S.round), true)
+	S.CheckRound()
+	eq(S.catching, true, "that round brought news and we still differ: one more round")
+	S.Ask()
+	S.CheckRound()
+	eq(S.catching, false, "a round with nothing new ends the catch-up")
+end)
+
+test("sync: small sets are split into 8 buckets, so one change sends a few records, not the set", function()
+	local g = Guild()
+	local offi = W.NewClient(base, "Offi", g)
+	DefineSets(offi)
+	for i = 1, 20 do offi.ns.Sync.Set("notes", "n" .. i, "note " .. i) end
+	local late = W.NewClient(base, "Mem", g)
+	DefineSets(late)
+	late.ns.Sync.Ask()
+	eq(late.ns.Sync.Digest("notes"), offi.ns.Sync.Digest("notes"))
+	eq(#late.ns.Sync.Buckets("notes"), 8 * 3)
+	eq(late.ns.Sync.Buckets("notes", 16), offi.ns.Sync.Buckets("notes", 16), "any split agrees")
+	-- One record changes while Mem is away: the next catch-up brings far fewer than 20.
+	local saved = late.ns.Comm.handlers.SU.fn
+	late.ns.Comm.handlers.SU.fn = function() end
+	offi.ns.Sync.Set("notes", "n7", "changed")
+	late.ns.Comm.handlers.SU.fn = saved
+	late.ns.Sync.Ask()
+	eq(late.ns.Sync.Get("notes", "n7"), "changed")
+	local got = late.ns.Sync.round.got
+	assert(got >= 1 and got <= 8, "sent " .. got .. " records")
+	-- a set under 8 records is still sent whole
+	eq(late.ns.Sync.BucketCount(7), nil); eq(late.ns.Sync.BucketCount(8), 8); eq(late.ns.Sync.BucketCount(32), 16)
 end)
 
 test("sync: Sync now waits out a recent ask", function()
@@ -407,6 +442,30 @@ local function Guild2()
 		{ "Mem", 3, true, 0, 30 }, { "Memalt", 4, false, 40, 12 }, { "Gone", 4, false, 45, 9 },
 	} }
 end
+
+test("roster: pages hear only real changes", function()
+	local g = Guild2()
+	local c = W.NewClient(base, "Mem", g)
+	local updates, details = 0, 0
+	c.ns.Listen("ROSTER_UPDATED", function() updates = updates + 1 end)
+	c.ns.Listen("ROSTER_DETAILS", function() details = details + 1 end)
+	c.env.__fire("GUILD_ROSTER_UPDATE")
+	eq(updates, 0, "nothing changed: no redraws")
+	eq(details, 0)
+	g.members[2][3] = true -- Offi comes online
+	c.env.__fire("GUILD_ROSTER_UPDATE")
+	eq(updates, 1)
+	g.members[6] = nil -- Gone leaves
+	c.env.__fire("GUILD_ROSTER_UPDATE")
+	eq(updates, 2)
+	local R = c.ns.Roster
+	local a = { X = { level = 60, online = true, zone = "Orgrimmar" } }
+	eq(R.Changes(a, { X = { level = 60, online = true, zone = "Orgrimmar" } }), nil)
+	eq(R.Changes(a, { X = { level = 60, online = true, zone = "Ironforge" } }), "details")
+	eq(R.Changes(a, { X = { level = 60, online = false, zone = "Ironforge" } }), "members")
+	eq(R.Changes(a, {}), "members")
+	eq(R.Changes({}, a), "members")
+end)
 
 test("roster reads days offline", function()
 	local c = W.NewClient(base, "Mem", Guild2())
@@ -2727,6 +2786,7 @@ test("logout saves this session's stats for the site's performance page: numbers
 	eq(st.records.notes, 1)
 	assert(st.sizes.notes and st.memoryKB >= 0 and st.members > 0)
 	assert(offi.env.IwTDB.stats.sync.answered >= 1, "the answer counted")
+	eq(st.inGuild, true)
 	-- no names anywhere in it
 	local text = late.ns.Report.Json(st)
 	assert(not text:find("Mem") and not text:find("Offi"), text)

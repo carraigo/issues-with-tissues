@@ -116,12 +116,41 @@ function Roster.Scan()
 	if n ~= Roster.count or online ~= Roster.online then
 		ns.Trace("roster", "Roster: %d members, %d online", n, online)
 	end
+	local what = Roster.Changes(Roster.members, fresh)
 	Roster.members, Roster.count, Roster.online, Roster.byFirst = fresh, n, online, byFirst
 	local me, how = FindMe(guids)
+	local meChanged = me ~= Roster.me
 	Roster.me, Roster.meHow = me, how
 	if me and ns.char then ns.char.me = me end
 	Roster.updated = ns.Now()
-	ns.Send("ROSTER_UPDATED")
+	-- The game sends roster updates often (every few seconds while the guild window is open),
+	-- usually with nothing new. Pages hear only about what changed: ROSTER_UPDATED for who is
+	-- in the guild, online, rank, level or last seen; ROSTER_DETAILS for zones and notes only.
+	if what == "members" or meChanged then
+		ns.Send("ROSTER_UPDATED")
+	elseif what == "details" then
+		ns.Send("ROSTER_DETAILS")
+	end
+end
+
+-- "members" when anyone joined, left, or changed something pages list (online, rank, level,
+-- class, last seen); "details" when only zones or notes changed; nil when nothing did.
+local CORE = { "rankIndex", "rank", "level", "classFile", "online", "offlineDays" }
+local DETAILS = { "zone", "note", "officerNote" }
+function Roster.Changes(old, fresh)
+	local seen, details = 0, false
+	for key, m in pairs(fresh) do
+		local o = old[key]
+		if not o then return "members" end
+		seen = seen + 1
+		for _, f in ipairs(CORE) do if o[f] ~= m[f] then return "members" end end
+		if not details then
+			for _, f in ipairs(DETAILS) do if o[f] ~= m[f] then details = true break end end
+		end
+	end
+	for _ in pairs(old) do seen = seen - 1 end
+	if seen ~= 0 then return "members" end -- someone left
+	return details and "details" or nil
 end
 
 -- A copy of the roster in the saved data, written on logout and /reload, for tools outside

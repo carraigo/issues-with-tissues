@@ -10,6 +10,11 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.3.1", lines = {
+		"Faster syncing: catching up with the guild usually finishes in one short round.",
+		"Lighter on the guild channel: a small change now sends a few records, not a whole list.",
+		"Smoother: pages only redraw when the roster really changed.",
+	} },
 	{ version = "1.3.0", lines = {
 		"New themes: Solarized Dark and Solarized Light, picked from a drop-down in Settings.",
 		"Kawaii Day has its own class colours, easy to read and easy to tell apart.",
