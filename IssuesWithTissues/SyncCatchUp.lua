@@ -98,6 +98,8 @@ Sync.NEXT_ROUND = 10     -- a round brought something new: ask again this soon
 Sync.FRESH_RETRY = 60    -- nobody answered a fresh install: ask again this often
 Sync.MAX_ROUNDS = 5
 Sync.MAX_FRESH_TRIES = 10
+Sync.NOBODY_RETRY = 60   -- nobody answered (not a fresh install): ask again this soon
+Sync.NOBODY_RETRIES = 2
 Sync.NOW_COOLDOWN = 30   -- "Sync now" at most this often
 Sync.QUIET = 5           -- a round with all its answers in is judged after this long without news
 Sync.rounds, Sync.tries = 0, 0
@@ -133,6 +135,21 @@ function Sync.Ask()
 	ns.Send("SYNC_PROGRESS")
 	local round = Sync.round
 	if not Comm.immediate then ns.After(Sync.ROUND_WAIT, function() Sync.CheckRound(round) end) end
+end
+
+-- How long to wait before answering an ask: a random moment in the first ANSWER_DELAY_MAX
+-- seconds, so usually one guildmate answers. Having answered in the last ANSWER_RECENT seconds
+-- adds ANSWER_BACKOFF, so someone who hasn't answered lately (and whose answer takes a moment to
+-- arrive) gets there first and the work is shared out. We still answer if nobody with our
+-- records does.
+Sync.ANSWER_RECENT = 300
+Sync.ANSWER_BACKOFF = 5
+function Sync.AnswerDelay()
+	local wait = math.random() * Sync.ANSWER_DELAY_MAX
+	if Sync.lastAnswered and ns.Now() - Sync.lastAnswered < Sync.ANSWER_RECENT then
+		wait = wait + Sync.ANSWER_BACKOFF
+	end
+	return wait
 end
 
 local function AskLater(seconds)
@@ -187,11 +204,22 @@ function Sync.CheckRound(round)
 		Sync.tries = Sync.tries + 1
 		ns.Trace("sync", "Nobody answered. Asking again in %ds (try %d of %d).", Sync.FRESH_RETRY, Sync.tries, Sync.MAX_FRESH_TRIES)
 		AskLater(Sync.FRESH_RETRY)
+	elseif not Sync.fresh and Sync.addonPeers then
+		-- Nobody answered, but guildmates with the addon are online: nobody holds anything we
+		-- lack (they answer only when they do), so we are up to date.
+		ns.Trace("sync", "Nobody answered: we hold what the guild holds. Caught up.")
+		Sync.catching, Sync.upToDate = false, true
+	elseif not Sync.fresh and not Sync.answeredEver and (Sync.retries or 0) < Sync.NOBODY_RETRIES then
+		-- Nobody answered and no guildmate's addon has said hello yet (still loading, or nobody
+		-- on): try again soon rather than waiting for the next catch-up.
+		Sync.retries = (Sync.retries or 0) + 1
+		ns.Trace("sync", "Nobody answered. Asking again in %ds.", Sync.NOBODY_RETRY)
+		AskLater(Sync.NOBODY_RETRY)
 	else
 		ns.Trace("sync", "%s. Done.", summary)
 		Sync.catching = false
 	end
-	if not Sync.catching and r.lastHeard and not st.caughtUpAfter and ns.loginAt then
+	if not Sync.catching and (r.lastHeard or Sync.upToDate) and not st.caughtUpAfter and ns.loginAt then
 		st.caughtUpAfter = ns.Now() - ns.loginAt -- seconds from login to caught up
 	end
 	ns.Send("SYNC_PROGRESS")
@@ -324,6 +352,7 @@ Comm.Register("SQ", function(sender, payload)
 		end
 		ns.Trace("sync", "Answering %s's catch-up: %d records (%s)%s", sender, #records, table.concat(sets, ", "),
 			private and ", whispered" or "")
+		Sync.lastAnswered = ns.Now()
 		Sync.stats.answered = Sync.stats.answered + 1
 		Sync.stats.answeredRecords = Sync.stats.answeredRecords + #records
 		Comm.Send("SC", nonce .. "," .. table.concat(sets, ","))
@@ -345,7 +374,7 @@ Comm.Register("SQ", function(sender, payload)
 		end
 		flush()
 	end
-	if Comm.immediate then answer() else ns.After(math.random() * Sync.ANSWER_DELAY_MAX, answer) end
+	if Comm.immediate then answer() else ns.After(Sync.AnswerDelay(), answer) end
 end)
 
 Comm.Register("SC", function(sender, payload)
@@ -444,6 +473,7 @@ end)
 
 -- A guildmate with the addon logged in: if we're still waiting for anyone to answer, ask them.
 ns.Listen("ADDON_HELLO", function(sender, isReply)
+	if sender ~= ns.PlayerName() then Sync.addonPeers = true end
 	if isReply or not Sync.catching or Sync.answeredEver or Sync.round or nextAsk then return end
 	if sender == ns.PlayerName() then return end
 	AskLater(3 + math.random() * 5)

@@ -235,5 +235,25 @@ function Roster:OnLogin()
 	Roster.Request()
 end
 
-ns.On("GUILD_ROSTER_UPDATE", function() Roster.Scan() end)
+-- The game can send several roster updates a second (more while the guild window is open).
+-- Scan at most once per SCAN_GAP seconds: the first at once, then one more after the gap for
+-- anything that came in meanwhile. (Without GetTime, as in tests, every update scans.)
+Roster.SCAN_GAP = 1
+local lastScan, scanWaiting = nil, false
+function Roster.ScanSoon()
+	local now = GetTime and GetTime()
+	if not now then return Roster.Scan() end
+	if scanWaiting then return end
+	if not lastScan or now - lastScan >= Roster.SCAN_GAP then
+		lastScan = now
+		return Roster.Scan()
+	end
+	scanWaiting = true
+	ns.After(Roster.SCAN_GAP - (now - lastScan), function()
+		scanWaiting = false
+		lastScan = GetTime()
+		Roster.Scan()
+	end)
+end
+ns.On("GUILD_ROSTER_UPDATE", function() Roster.ScanSoon() end)
 ns.On("PLAYER_GUILD_UPDATE", function() Roster.Request() end)

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.2
+
+**Performance**
+- **Gentler sending:** messages are paced by size, and when the game refuses one for going too fast, the addon halves its pace and then speeds back up a quarter every 10 seconds without a refusal. Before, it kept sending at full speed and resent each refused piece 1.5 seconds later (up to 43 refusals in one session while answering catch-ups).
+- **Answering is shared out:** a guildmate who answered a catch-up in the last 5 minutes waits 5 seconds longer before answering the next, so someone who hasn't answered lately goes first.
+- **Fewer roster scans:** the game can send several roster updates a second; the addon now reads the roster at most once a second.
+
+**Functionality**
+- **No answer means up to date:** guildmates only answer a catch-up when they hold something you lack. If nobody answers while their addons are online, the catch-up now ends there (counted as caught up). If no guildmate's addon has said hello yet, it asks again a minute later (twice) instead of waiting for the 10-minute catch-up.
+- Session stats know the character is in the guild from the roster; the game already says "not in a guild" while logging out, so 1.3.1 marked every session as outside it.
+
+**Refactoring**
+- **Timing tests:** the test harness has a clock (`W.Run`) that runs timers in order with messages going through the paced queue, so catch-up rounds, the send pace, answer sharing and roster scans are tested as they really run.
+
 ## 1.3.1
 
 **Performance**

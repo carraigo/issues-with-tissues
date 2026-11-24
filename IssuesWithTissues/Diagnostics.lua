@@ -280,11 +280,13 @@ function Diag.SessionStats()
 		sync = { asks = st.asks or 0, rounds = st.rounds or 0, got = st.got or 0, new = st.new or 0,
 			answered = st.answered or 0, answeredRecords = st.answeredRecords or 0, caughtUpAfter = st.caughtUpAfter },
 		comm = { sent = C.sentCount or 0, sentBytes = C.sentBytes or 0, heard = C.heardCount or 0,
-			heardBytes = C.heardBytes or 0, refused = C.throttled or 0, dropped = C.dropped or 0, peakQueue = C.peakQueue or 0 },
+			heardBytes = C.heardBytes or 0, refused = C.throttled or 0, dropped = C.dropped or 0, peakQueue = C.peakQueue or 0,
+			slowest = C.slowest or C.RATE_MAX },
 		errors = Diag.sessionErrors or 0, records = records, sizes = sizes, perf = perf,
 		members = ns.Roster.count or 0, online = ns.Roster.online or 0, addonUsers = users,
-		-- false on a character outside the guild: nothing to sync, so the site leaves it out
-		inGuild = (IsInGuild and IsInGuild() and (ns.Roster.count or 0) > 0) and true or false,
+		-- false on a character outside the guild: nothing to sync, so the site leaves it out.
+		-- From the roster, not IsInGuild(): the game already says "not in a guild" at logout.
+		inGuild = (ns.Roster.count or 0) > 0,
 	}
 end
 
