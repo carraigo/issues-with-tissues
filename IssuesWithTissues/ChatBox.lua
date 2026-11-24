@@ -45,7 +45,10 @@ function Chat.Redraw()
 		end
 	end
 	local lines = Chat.View(Chat.channel)
-	for _, e in ipairs(lines) do box:AddMessage(Chat.Format(Chat.channel, e)) end
+	for _, e in ipairs(lines) do
+		local line = Chat.Display(Chat.channel, e)
+		if line then box:AddMessage(line) end
+	end
 	box:ScrollToBottom()
 	Chat.unseen = 0
 	Chat.UpdateJump()
@@ -223,7 +226,8 @@ ns.UI.AddPage("Chat", "Chat", Build)
 -- New lines go straight into the open page.
 ns.Listen("CHAT_LINE", function(channel, entry)
 	if Chat.messages and channel == Chat.channel then
-		Chat.messages:AddMessage(Chat.Format(channel, entry))
+		local line = Chat.Display(channel, entry)
+		if line then Chat.messages:AddMessage(line) end
 		if Chat.hint then Chat.hint:Hide() end
 		if Chat.ScrolledUp() then Chat.unseen = Chat.unseen + 1 end
 		Chat.UpdateJump()

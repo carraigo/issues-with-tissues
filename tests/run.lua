@@ -576,6 +576,49 @@ test("roster: updates in a burst scan once, then once more after a second", func
 	c.ns.Roster.Scan = real
 end)
 
+test("secret chat text and names (shown but unreadable) never error, and lost lines are dropped", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local Chat, ns = c.ns.Chat, c.ns
+	-- A stand-in for the game's secret strings: joining works (the result is secret too), but
+	-- reading, matching or comparing one errors.
+	local SECRET = {}
+	local function Secret(text)
+		return setmetatable({ text = text }, SECRET)
+	end
+	SECRET.__index = function() error("attempt to index a secret string value") end
+	SECRET.__eq = function() error("attempt to compare a secret string value") end
+	SECRET.__lt = SECRET.__eq
+	SECRET.__concat = function() return Secret("joined") end
+	c.env.issecretvalue = function(v) return getmetatable(v) == SECRET end
+	eq(ns.IsSecret(Secret("x")), true); eq(ns.IsSecret("x"), false); eq(ns.IsSecret(nil), false)
+	eq(ns.Roster.ParseName(Secret("Gm-Realm")), nil)
+	eq(Chat.Hidden(Secret("hi")), true); eq(Chat.Plain(Secret("hi")), "")
+	eq(Chat.SystemLine(Secret("Gm has come online.")), nil)
+	eq(ns.News.Joined(Secret("Bob has joined the guild.")), nil)
+	c.ns.UI.Open("Chat")
+	c.env.__fire("CHAT_MSG_GUILD", Secret("hello"), Secret("Gm-Realm"))
+	c.env.__fire("CHAT_MSG_GUILD", Secret("hello"), "Gm-Realm")
+	c.env.__fire("CHAT_MSG_SYSTEM", Secret("Gm has come online."))
+	c.env.__fire("GUILD_MOTD", Secret("motd"))
+	local lines = Chat.Lines("guild")
+	assert(lines[#lines].secret, "kept for this session, marked secret")
+	Chat.Redraw()
+	for _, e in ipairs(Chat.View("guild")) do assert(Chat.Display("guild", e) ~= nil) end
+	eq(#c.env.IwTDB.errors, 0, "no errors")
+	-- After a reload the saved copies come back without their text: dropped, not drawn as nil
+	for _, e in ipairs(lines) do if e.secret then e.m, e.a = nil, nil end end
+	Chat:OnLoad()
+	for _, e in ipairs(Chat.Lines("guild")) do eq(type(e.m), "string") end
+	Chat.Redraw()
+	eq(#c.env.IwTDB.errors, 0)
+	-- the server's copy and ours, both secret and a moment apart, show once
+	Chat.server.guild = { { t = W.now, k = "msg", a = Secret("Gm"), m = Secret("x"), srv = true, secret = true } }
+	local before = #Chat.View("guild")
+	Chat.Add("guild", "msg", Secret("Gm"), Secret("x"))
+	eq(#Chat.View("guild"), before, "matched, not shown twice")
+	eq(#c.env.IwTDB.errors, 0)
+end)
+
 test("roster reads days offline", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	eq(c.ns.Roster.Get("Vet").offlineDays, 20)

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.3
+
+**Fixes**
+- **Chat errors after a reload:** the game sometimes hands addons a guild chat line's text or author as a "secret" value, which can be shown but not read and isn't saved. After a reload those saved lines came back empty and every redraw of the Chat page errored ("attempt to concatenate field 'm'"). Empty lines are now dropped at load, and a line that can't be drawn is skipped instead of breaking the page.
+- **Secret text everywhere it's read:** chat lines, names, online/offline and "joined the guild" messages and the message of the day are checked first (`ns.IsSecret`). A secret line is shown as the game gave it for this session, and is never matched, searched or looked up in the roster (which is what errored in 1.3.1: "attempt to index a secret string value").
+
 ## 1.3.2
 
 **Performance**

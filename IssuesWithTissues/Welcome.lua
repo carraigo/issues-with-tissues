@@ -10,6 +10,9 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.3.3", lines = {
+		"Fixed errors on the Chat page after a reload, from chat lines the game keeps hidden from addons.",
+	} },
 	{ version = "1.3.2", lines = {
 		"Gentler on the game's message limits: the addon slows down when asked and speeds back up after.",
 		"Catch-up answers are shared around the guild instead of falling on whoever is always online.",
