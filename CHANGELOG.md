@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0
+## 1.4.0-beta.1
 
 **Features**
 - **Quest buddies (Home > Quest buddies):** your elite, dungeon and raid quests that guildmates are also on, with who (online first, then in your zone, then nearest your level). Click to whisper, right-click to invite everyone online. "By place" lists the dungeons and zones where online guildmates have group quests. Quests guildmates share get a green "2 guild" beside them in the quest log, and the guildmates are listed in the quest's tooltip and on quest links. Only group quests are shared, by id (names never travel), in the character sheet. Setting: "Share my group quests".
