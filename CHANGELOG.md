@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.4.0-beta.2
+
+**Features**
+- **Tissue Issuer of the Week:** a weekly race for the most honorable kills, from one weekly reset to the next. Home shows this week's leader under Elite Soldier, and when the week ends the guild news says who won ("Bo Finch won the week with 212 kills"). Counted by the game where it can, else from your total at your first login of the week.
+- **Wishes tick themselves off:** when an item on your wishlist reaches your bags, it comes off the list and the guild news says so ("Mem got Lionheart Helm!"). Items you already had when you wished for them only count once you have one more.
+- **Alt-click to wish:** alt-click any item (bags, chat links, loot) to add it to your wishlist, or take it off again. Setting: "Alt-click an item to wish for it".
+
+**Performance**
+- **Smaller saved chat:** the game's server already keeps recent guild and officer chat, so messages are no longer saved between sessions when it has them. Only the last 100 online/offline and message of the day lines are kept. Saved chat was the biggest thing in the saved data. When the server gives no history for a channel, everything is saved as before.
+
+**UX**
+- **Quests tab:** Quest buddies moved from Home to a tab of its own, between Crafting and Guild life.
+- **Home fits the window:** Home's cards stack themselves one under another, and the page scrolls if they ever run longer than the window.
+
+**Refactoring**
+- **`UI.Stack` and `UI.ScrollPage`:** a column of cards that places each row under the last, and a page that scrolls with the mouse wheel. Home is built with them, so a taller card no longer needs every card below it moved by hand.
+- **Kills data version 2:** the kills record gains the week and this week's kills (`hk;mobs;s;week;gain`). 1.3 and beta.1 clients keep the last version 1 copy they had; this version upgrades version 1 records as they arrive.
+- **The character sheet's fifth field** lists wishes that came true in the last week, for the guild news. Left off when empty.
+
 ## 1.4.0-beta.1
 
 **Features**

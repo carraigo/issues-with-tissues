@@ -3,13 +3,14 @@
 -- quest is handed in, the bags change or the game's raid info updates, and it is sent only
 -- when something in it changed, so it costs a packet now and then.
 --
--- Record data: "<codes>;<lockouts>[;<quests>[;<wishlist>]]"
+-- Record data: "<codes>;<lockouts>[;<quests>[;<wishlist>[;<got>]]]"
 --   codes     attunement codes joined by "."            mc.ony.ubrs
 --   lockouts  name:resetAt:done:total joined by "/"     Molten Core:1795000000:7:10
 --   quests    (1.4.0) group quests in the log, by quest log heading: heading~ids joined by ","
 --             with the ids as base 36 gaps (Record.Gaps)   Razorfen Downs~1n9.4,Duskwood~2xk
 --   wishlist  (1.4.0) item ids the player wants, as base 36 gaps
--- The last two are left off when empty, so most records read as before. A 1.3 client folds
+--   got       (1.4.0) wished items that reached their bags in the last week, as base 36 gaps
+-- The last three are left off when empty, so most records read as before. A 1.3 client folds
 -- them into its lockouts text, where they never match a lockout (no ":"), so it reads on.
 -- resetAt is server time, rounded to 5 minutes so the same lockout always reads the same.
 
@@ -104,9 +105,9 @@ function Sheet.Encode(s)
 		local ids = ns.Record.Gaps(g.ids or {})
 		if ids ~= "" then q[#q + 1] = ns.Record.Clean(g.where, 30, ":/%.~,") .. "~" .. ids end
 	end
-	local wish = ns.Record.Gaps(s.wish or {})
-	if #q > 0 or wish ~= "" then out = out .. ";" .. table.concat(q, ",") end
-	if wish ~= "" then out = out .. ";" .. wish end
+	local tail = { table.concat(q, ","), ns.Record.Gaps(s.wish or {}), ns.Record.Gaps(s.got or {}) }
+	while #tail > 0 and tail[#tail] == "" do tail[#tail] = nil end
+	if #tail > 0 then out = out .. ";" .. table.concat(tail, ";") end
 	return out
 end
 
@@ -120,7 +121,7 @@ function Sheet.Decode(data, now)
 		if codes:find("[^%w%.]") then return nil end
 	end
 	now = now or ns.Now()
-	local s = { has = {}, locks = {}, quests = {}, wish = ns.Record.Ungaps(parts[4]) }
+	local s = { has = {}, locks = {}, quests = {}, wish = ns.Record.Ungaps(parts[4]), got = ns.Record.Ungaps(parts[5]) }
 	for where, ids in (parts[3] or ""):gmatch("([^~,]*)~([^,]*)") do
 		s.quests[#s.quests + 1] = { where = where, ids = ns.Record.Ungaps(ids) }
 	end
@@ -136,14 +137,15 @@ end
 
 ns.Record.Define("sheet", { encode = Sheet.Encode, decode = function(data) return Sheet.Decode(data, 0) end,
 	sample = { has = { mc = true, ony = true, ubrs = true }, locks = { { name = "Molten Core", resetAt = 1795000200, done = 7, total = 10 } },
-		quests = { { where = "Razorfen Downs", ids = { 3525, 3636 } }, { where = "Duskwood", ids = { 228 } } }, wish = { 12640, 18832 } } })
+		quests = { { where = "Razorfen Downs", ids = { 3525, 3636 } }, { where = "Duskwood", ids = { 228 } } }, wish = { 12640, 18832 }, got = { 12345 } } })
 
 function Sheet.Read()
 	local has = {}
 	for _, a in ipairs(Sheet.ATTUNEMENTS) do has[a.code] = Sheet.Has(a) or nil end
 	local quests = ns.QuestBuddies and ns.QuestBuddies.ForSheet() or nil
 	local wish = ns.Wishlist and ns.Wishlist.Mine() or nil
-	return Sheet.Encode({ has = has, locks = Sheet.ReadLockouts(), quests = quests, wish = wish })
+	local got = ns.Wishlist and ns.Wishlist.GotRecently() or nil
+	return Sheet.Encode({ has = has, locks = Sheet.ReadLockouts(), quests = quests, wish = wish, got = got })
 end
 
 -- Share this character's sheet (only when it changed).

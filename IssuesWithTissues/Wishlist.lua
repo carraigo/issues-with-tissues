@@ -1,7 +1,9 @@
 -- Wishlists (1.4.0): items each character would like. They travel in the character sheet
 -- (Sheet.lua, fourth field, as item ids), so crafters and officers can see who wants what:
 -- on item tooltips ("Wanted by 3 guildmates"), and on Crafting > Wishlists with who can make it.
--- Add an item by shift-clicking it while the page's box has focus, or with /iwt wish <item>.
+-- Add an item by shift-clicking it while the page's box has focus, alt-clicking it anywhere, or
+-- with /iwt wish <item>. When a wished item reaches your bags it comes off the list by itself,
+-- and the guild news says so (the sheet's fifth field lists the week's wishes that came true).
 
 local _, ns = ...
 
@@ -9,6 +11,7 @@ local W = ns.RegisterModule("Wishlist", {})
 ns.Wishlist = W
 
 W.MAX = 30 -- items per character
+W.GOT_KEEP = 7 * 86400 -- a wish that came true stays in the sheet (and so the news) this long
 
 local function List()
 	ns.char.wish = ns.char.wish or {}
@@ -53,8 +56,18 @@ function W.Add(item)
 	local list = List()
 	if #list >= W.MAX then return false, "Your wishlist is full (" .. W.MAX .. " items). Remove one first." end
 	list[#list + 1] = id
+	-- How many we have now: it comes off the list once we have more than this.
+	ns.char.wishHave = ns.char.wishHave or {}
+	ns.char.wishHave[id] = W.Count(id)
 	Changed()
 	return true
+end
+
+-- How many of an item are in the bags or worn.
+function W.Count(id)
+	if not GetItemCount then return 0 end
+	local ok, n = pcall(GetItemCount, id)
+	return ok and tonumber(n) or 0
 end
 
 function W.Remove(id)
@@ -62,11 +75,61 @@ function W.Remove(id)
 	for i, x in ipairs(list) do
 		if x == id then
 			table.remove(list, i)
+			if ns.char.wishHave then ns.char.wishHave[id] = nil end
 			Changed()
 			return true
 		end
 	end
 	return false
+end
+
+---------------------------------------------------------------------------
+-- Wishes that came true
+---------------------------------------------------------------------------
+-- Wished items now in the bags come off the list: { id, ... } of those that did.
+function W.CheckBags()
+	local have, got = ns.char.wishHave or {}, {}
+	for _, id in ipairs(W.Mine()) do
+		if W.Count(id) > (have[id] or 0) then got[#got + 1] = id end
+	end
+	if #got == 0 then return got end
+	ns.char.wishGot = ns.char.wishGot or {}
+	local now = ns.Now()
+	for _, id in ipairs(got) do
+		W.Remove(id)
+		table.insert(ns.char.wishGot, { id = id, t = now })
+		if ns.News then ns.News.Add("got", ns.PlayerName(), nil, { item = id }) end
+		ns.Print("%s came off your wishlist. Enjoy!", W.Name(id) or ("Item " .. id))
+	end
+	return got
+end
+
+-- Item ids of this character's wishes that came true in the last week (for the sheet).
+function W.GotRecently()
+	local list, now, out = ns.char.wishGot or {}, ns.Now(), {}
+	for i = #list, 1, -1 do
+		if now - list[i].t > W.GOT_KEEP then table.remove(list, i) end
+	end
+	for _, g in ipairs(list) do out[#out + 1] = g.id end
+	table.sort(out)
+	return out
+end
+
+-- Guildmates' wishes that came true go in this PC's guild news, once each.
+function W.NewsFromSheets()
+	local db, me, added = ns.db, ns.PlayerName(), 0
+	db.wishGotSeen = db.wishGotSeen or {}
+	for who, s in pairs(ns.Sheet.All()) do
+		if who ~= me and s.got and ns.Roster.IsMember(who) then
+			local seen, now = db.wishGotSeen[who] or {}, {}
+			for _, id in ipairs(s.got) do
+				now[id] = true
+				if not seen[id] and ns.News and ns.News.Add("got", who, nil, { item = id }) then added = added + 1 end
+			end
+			db.wishGotSeen[who] = next(now) and now or nil
+		end
+	end
+	return added
 end
 
 ---------------------------------------------------------------------------
@@ -261,7 +324,7 @@ local function Build(panel)
 			end
 		end,
 	})
-	list:SetEmpty("No wishes yet. Shift-click an item you'd like into the box above (or type /iwt wish and shift-click it). Crafters and officers see who wants what.")
+	list:SetEmpty("No wishes yet. Alt-click any item you'd like (in your bags, chat or loot), or shift-click one into the box above. It comes off by itself once it reaches your bags. Crafters and officers see who wants what.")
 	panel:SetScript("OnShow", W.Refresh)
 	W.list = list
 	W.Refresh()
@@ -271,8 +334,50 @@ ns.UI.AddPage("Crafting", "Wishlists", Build, { order = 20 })
 local Soon = ns.Coalesce(function() W.Refresh() end, 0.5)
 ns.Listen("ROSTER_UPDATED", Soon)
 ns.Listen("WISHLIST_CHANGED", Soon)
-ns.Listen("SYNC_CHANGED", function(set) if set == "sheet" or set == "recipes" then Soon() end end)
+local NewsSoon = ns.Coalesce(function() W.NewsFromSheets() end, 2)
+ns.Listen("SYNC_CHANGED", function(set)
+	if set == "sheet" or set == "recipes" then Soon() end
+	if set == "sheet" then NewsSoon() end
+end)
+local BagsSoon = ns.Coalesce(function() W.CheckBags() end, 1)
+pcall(ns.On, "BAG_UPDATE_DELAYED", function() if ns.char.wish and #ns.char.wish > 0 then BagsSoon() end end)
 pcall(ns.On, "GET_ITEM_INFO_RECEIVED", function(_, id) if asked[tonumber(id)] then Soon() end end)
+
+-- Items wished for before 1.4.0-beta.2 start counting from what's in the bags now.
+function W:OnLogin()
+	ns.char.wishHave = ns.char.wishHave or {}
+	for _, id in ipairs(W.Mine()) do
+		if not ns.char.wishHave[id] then ns.char.wishHave[id] = W.Count(id) end
+	end
+end
+
+-- Alt-click (on its own) an item anywhere, in bags, chat links or loot: on or off the wishlist.
+function W.Toggle(item)
+	local id = W.ItemId(item)
+	if not id then return false end
+	local name = W.Name(id) or ("Item " .. id)
+	if W.Has(id) then
+		W.Remove(id)
+		ns.Print("%s taken off your wishlist.", name)
+		return true
+	end
+	local ok, why = W.Add(id)
+	ns.Print(ok and "%s added to your wishlist (alt-click it again to take it off)." or why, name)
+	return ok
+end
+
+function W.OnModifiedClick(link)
+	if ns.db.settings.altClickWish == false then return false end
+	if not (IsAltKeyDown and IsAltKeyDown()) or (IsShiftKeyDown and IsShiftKeyDown()) or (IsControlKeyDown and IsControlKeyDown()) then
+		return false
+	end
+	link = ns.Readable(link)
+	if not link or not link:find("item:%d+") then return false end
+	return W.Toggle(link)
+end
+if hooksecurefunc and HandleModifiedItemClick then
+	hooksecurefunc("HandleModifiedItemClick", function(link) pcall(W.OnModifiedClick, link) end)
+end
 
 -- Shift-clicking an item while the box has focus puts the link in it, as in chat.
 if hooksecurefunc and ChatEdit_InsertLink then

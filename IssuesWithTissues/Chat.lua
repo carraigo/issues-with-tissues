@@ -5,7 +5,9 @@
 -- Earlier chat comes from two places: the game's server, which keeps recent guild and officer
 -- chat for the guild window (C_Club, read when the Chat tab opens), and the last lines of each
 -- channel kept in this character's saved data (IwTCharDB.chat). The two are merged, without
--- duplicates; if the server can't be read, the saved lines are shown on their own. They stay on this PC: never shared with
+-- duplicates; if the server can't be read, the saved lines are shown on their own. Since
+-- 1.4.0-beta.2 only online/offline and message of the day lines are saved when the server has the
+-- messages (Chat.TrimForSave). They stay on this PC: never shared with
 -- guildmates, never in the diagnostics report or the guild web page. Settings can turn it off.
 --
 -- The chat lives in four files: Chat.lua (lines, storage, sending, chat events), ChatHistory.lua

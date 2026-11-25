@@ -188,3 +188,32 @@ end)
 function Chat:OnLogin()
 	ns.Later("chatHistory", Chat.RequestServer)
 end
+
+---------------------------------------------------------------------------
+-- Saving less (1.4.0-beta.2)
+---------------------------------------------------------------------------
+-- The server keeps the guild's recent messages, so saved messages mostly repeated them (and were
+-- the biggest thing in the saved data). At logout, a channel the server gave history for keeps
+-- only its newest online/offline and message of the day lines; one it gave none for keeps all.
+Chat.KEEP_SYS = 100
+
+function Chat.TrimForSave()
+	local saved = ns.char and ns.char.chat
+	if not saved then return 0 end
+	local dropped = 0
+	for _, ch in ipairs(Chat.CHANNELS) do
+		if #(Chat.server[ch] or {}) == 0 then pcall(Chat.ReadServer) end
+		local lines = saved[ch]
+		if lines and #(Chat.server[ch] or {}) > 0 then
+			local keep = {}
+			for i = #lines, 1, -1 do
+				local e = lines[i]
+				if e.k ~= "msg" and type(e.m) == "string" and #keep < Chat.KEEP_SYS then table.insert(keep, 1, e) end
+			end
+			dropped = dropped + #lines - #keep
+			saved[ch] = keep
+		end
+	end
+	return dropped
+end
+pcall(ns.On, "PLAYER_LOGOUT", function() pcall(Chat.TrimForSave) end)

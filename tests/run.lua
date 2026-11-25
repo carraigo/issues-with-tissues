@@ -916,7 +916,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home|Quest buddies|Guild news),Chat(Chat),Members(Roster|Raid|Officers),Crafting(Crafters|Wishlists),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home|Guild news),Chat(Chat),Members(Roster|Raid|Officers),Crafting(Crafters|Wishlists),Quests(Quest buddies),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -1453,7 +1453,7 @@ test("home: what's on shows open polls and the donation goal; the calendar is go
 	eq(f.nextEvent, nil); eq(f.openPolls, 1); eq(f.donations.title, "Guild bank")
 	mem.ns.UI.Toggle()
 	mem.ns.GeneralTab.Refresh()
-	eq(mem.ns.UI.tabs[5].title, "Guild life"); eq(mem.ns.UI.tabs[6], nil, "no Hop tab since 0.9.0")
+	eq(mem.ns.UI.tabs[6].title, "Guild life"); eq(mem.ns.UI.tabs[7], nil, "no Hop tab since 0.9.0")
 	eq(#mem.env.IwTDB.errors, 0)
 end)
 
@@ -1857,15 +1857,15 @@ test("layout: pages open by name, tabs remember their sub-tab, Settings is behin
 	UI.Open("Donations")
 	eq(UI.tabs[UI.current].title, "Guild life")
 	UI.Open("Home")
-	UI.SelectTab(5) -- Guild life again: back on Donations
-	eq(UI.tabs[5].pages[UI.tabs[5].current].title, "Donations")
+	UI.SelectTab(6) -- Guild life again: back on Donations
+	eq(UI.tabs[6].pages[UI.tabs[6].current].title, "Donations")
 	eq(c.env.IwTDB.window.pages["Guild life"], "Donations", "remembered across sessions")
 	UI.Open("Settings")
 	eq(UI.settings.panel:IsShown(), true)
-	eq(UI.tabs[5].frame:IsShown(), false)
+	eq(UI.tabs[6].frame:IsShown(), false)
 	UI.cog:GetScript("OnClick")()
 	UI.Open("Polls")
-	eq(UI.tabs[5].title, "Guild life"); eq(UI.tabs[5].frame:IsShown(), true)
+	eq(UI.tabs[6].title, "Guild life"); eq(UI.tabs[6].frame:IsShown(), true)
 	eq(#c.env.IwTDB.errors, 0)
 end)
 
@@ -3141,6 +3141,101 @@ test("wishlists: add by link, shared in the sheet, shown to crafters and on tool
 	for i = 1, Wl.MAX do Wl.Add(1000 + i) end
 	eq(Wl.Add(5000), false, "full")
 	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("Tissue Issuer of the Week: the most honorable kills since the reset, then the news", function()
+	local g = Guild2()
+	local mem, gm = W.NewClient(base, "Mem", g), W.NewClient(base, "Gm", g)
+	local K = gm.ns.Kills
+	-- without the game's timer, the week ends on Wednesday 07:00 UTC
+	local reset = K.ResetAt(W.now)
+	eq(os.date("!%w %H:%M", reset), "3 07:00"); assert(reset > W.now and reset - W.now <= 7 * 86400)
+	eq(K.Week(W.now), K.Week(reset - 1)); eq(K.Week(reset), K.Week(W.now) + 1)
+	-- Mem's client counts from its total at the first look this week; Gm's game counts for it
+	local hk = 12
+	mem.env.GetPVPLifetimeStats = function() return hk, 0 end
+	gm.env.GetPVPLifetimeStats = function() return 40, 0 end
+	gm.env.GetPVPThisWeekStats = function() return 3, 0 end
+	assert(mem.ns.Kills.Share()); assert(gm.ns.Kills.Share())
+	eq(K.WeekLeader().who, "Gm")
+	hk = 20
+	assert(mem.ns.Kills.Share())
+	local lead = K.WeekLeader()
+	eq(lead.who, "Mem"); eq(lead.gain, 8)
+	eq(mem.ns.GeneralTab.Facts().weekLeader.gain, 8)
+	-- a 1.3 record reads as no kills this week
+	local old = K.Decode("12;1500;s")
+	eq(old.hk, 12); eq(old.week, 0); eq(old.gain, 0)
+	eq(K.Decode(K.Encode({ hk = 1, mobs = 2, source = "stat", week = 5, gain = 1 })).week, 5)
+	-- the week is over: Mem's win goes in the news, once
+	eq(K.CloseWeek(), false, "not yet")
+	W.now = reset + 60
+	eq(K.CloseWeek(), true); eq(K.CloseWeek(), false)
+	local e = gm.ns.News.List()[1]
+	eq(e.kind, "week"); eq(gm.ns.News.Short(e), "Mem won the week with 8 kills")
+	eq(K.WeekLeader(), nil, "nobody yet this week")
+	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("wishlists: a wish that reaches the bags comes off, and the guild news says so", function()
+	local g = Guild2()
+	local mem, gm = W.NewClient(base, "Mem", g), W.NewClient(base, "Gm", g)
+	W.itemNames[12640] = "Lionheart Helm"
+	local count = { [5] = 1 }
+	mem.env.GetItemCount = function(id) return count[id] or 0 end
+	local Wl = mem.ns.Wishlist
+	assert(Wl.Add(12640)); assert(Wl.Add(5))
+	eq(#Wl.CheckBags(), 0, "having one already doesn't count")
+	count[12640] = 1
+	local got = Wl.CheckBags()
+	eq(#got, 1); eq(got[1], 12640); eq(Wl.Has(12640), false); eq(Wl.Has(5), true)
+	eq(mem.ns.News.Short(mem.ns.News.List()[1]), "Mem got Lionheart Helm!")
+	assert(mem.ns.Sheet.Share())
+	eq(gm.ns.Sheet.Of("Mem").got[1], 12640)
+	eq(gm.ns.Wishlist.NewsFromSheets(), 1); eq(gm.ns.Wishlist.NewsFromSheets(), 0, "once")
+	eq(gm.ns.News.Text(gm.ns.News.List()[1]), "Mem got Lionheart Helm from their wishlist")
+	-- a week later it's out of the sheet
+	W.now = W.now + 8 * 86400
+	eq(#Wl.GotRecently(), 0)
+	eq(mem.ns.Sheet.Encode({ has = {}, locks = {}, got = { 7 } }), ";;;;7")
+	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("wishlists: alt-click an item to add it or take it off", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local Wl, alt, shift = c.ns.Wishlist, true, false
+	c.env.IsAltKeyDown = function() return alt end
+	c.env.IsShiftKeyDown = function() return shift end
+	local link = "|cffa335ee|Hitem:12640::::::::60:::::|h[Lionheart Helm]|h|r"
+	eq(Wl.OnModifiedClick(link), true); eq(Wl.Has(12640), true)
+	Wl.OnModifiedClick(link); eq(Wl.Has(12640), false, "off again")
+	shift = true
+	eq(Wl.OnModifiedClick(link), false, "shift-alt is left alone"); eq(Wl.Has(12640), false)
+	shift, alt = false, false
+	eq(Wl.OnModifiedClick(link), false, "a plain click")
+	alt = true
+	c.env.IwTDB.settings.altClickWish = false
+	eq(Wl.OnModifiedClick(link), false, "setting off")
+	eq(Wl.OnModifiedClick("|Hspell:133|h[Fireball]|h"), false)
+end)
+
+test("chat: with the server's history, only online/offline and MOTD lines are saved", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local Chat = c.ns.Chat
+	Chat.Add("guild", "motd", nil, "Raid at 8")
+	for i = 1, 5 do Chat.Add("guild", "msg", "Gm", "hi " .. i); Chat.Add("guild", "sys", nil, "Gm has come online.") end
+	Chat.Add("officer", "msg", "Gm", "secret plans")
+	-- no history from the server: everything is kept
+	eq(Chat.TrimForSave(), 0)
+	eq(#c.env.IwTCharDB.chat.guild, 11)
+	Chat.server.guild = { { t = W.now, k = "msg", a = "Gm", m = "hi 5", srv = true } }
+	eq(Chat.TrimForSave(), 5)
+	local kept = c.env.IwTCharDB.chat.guild
+	eq(#kept, 6); eq(kept[1].k, "motd"); for _, e in ipairs(kept) do assert(e.k ~= "msg") end
+	eq(#c.env.IwTCharDB.chat.officer, 1, "officer chat had no server history")
+	Chat.KEEP_SYS = 2
+	Chat.TrimForSave()
+	eq(#c.env.IwTCharDB.chat.guild, 2, "the newest few")
 end)
 
 test("guild news: short lines on Home, a month on the Guild news page", function()

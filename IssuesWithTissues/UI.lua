@@ -12,7 +12,7 @@ ns.UI = UI
 
 -- The tabs, in order. UI.tabs is the ones with pages, set when the window is made.
 UI.groups = {}
-for _, title in ipairs({ "Home", "Chat", "Members", "Crafting", "Guild life" }) do
+for _, title in ipairs({ "Home", "Chat", "Members", "Crafting", "Quests", "Guild life" }) do
 	UI.groups[#UI.groups + 1] = { title = title, pages = {} }
 end
 UI.tabs = {}

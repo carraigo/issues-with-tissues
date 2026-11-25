@@ -2,7 +2,7 @@
 --
 -- Each character puts the group quests in its log (elite, dungeon and raid quests; solo ones are
 -- left out) into its character sheet (Sheet.lua, third field), by quest log heading. Quest names
--- never travel: each PC names the quests in its own log. Shown on Home > Quest buddies, in the
+-- never travel: each PC names the quests in its own log. Shown on the Quests tab (Quest buddies), in the
 -- quest log (a small "2 guild" beside a quest) and in quest tooltips.
 -- Setting: shareQuests (on by default). Off, the field is left empty.
 
@@ -278,7 +278,7 @@ end
 ns.Settings.OnChange("shareQuests", function() ns.Sheet.Share() end)
 
 ---------------------------------------------------------------------------
--- Home > Quest buddies: your group quests that guildmates share, and (By place) which
+-- Quests > Quest buddies: your group quests that guildmates share, and (By place) which
 -- dungeons and zones online guildmates have group quests in.
 ---------------------------------------------------------------------------
 local list
@@ -387,7 +387,7 @@ local function Build(panel)
 	Q.list = list
 	Q.Refresh()
 end
-ns.UI.AddPage("Home", "Quest buddies", Build, { order = 20 })
+ns.UI.AddPage("Quests", "Quest buddies", Build)
 
 local Soon = ns.Coalesce(function() Q.Refresh(); pcall(Q.UpdateQuestLog) end)
 ns.Listen("ROSTER_UPDATED", Soon)

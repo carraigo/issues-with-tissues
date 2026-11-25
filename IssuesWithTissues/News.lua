@@ -1,4 +1,5 @@
--- Guild news: who joined, left, reached level 60 or was promoted. Home shows this week in short;
+-- Guild news: who joined, left, reached level 60 or was promoted; the week's Tissue Issuer
+-- (Kills.lua) and wishes that came true (Wishlist.lua). Home shows this week in short;
 -- Home > Guild news lists the last month. Worked
 -- out on this PC from changes in the guild roster, including changes while you were offline,
 -- so nothing is shared and nothing extra is sent. Officers also get a nudge in chat when
@@ -33,18 +34,39 @@ end
 -- A news line short enough for Home's column: "Bo Finch hit 60".
 News.SHORT = { join = "joined", leave = "left", ["60"] = "hit " .. 60, promote = "promoted" }
 function News.Short(e)
+	if e.kind == "week" and e.who and e.gain then
+		return string.format("%s won the week with %s kills", ns.Roster.DisplayName(e.who), ns.Kills.Format(e.gain))
+	end
+	if e.kind == "got" and e.who and e.item then
+		local name = ns.Wishlist and ns.Wishlist.Name(e.item)
+		return ns.Roster.DisplayName(e.who) .. " got " .. (name or "a wish") .. "!"
+	end
 	local what = News.SHORT[e.kind]
-	if not what or not e.who then return e.text end
+	if not what or not e.who then return News.Text(e) end
 	return ns.Roster.DisplayName(e.who) .. " " .. what
 end
 
--- One line of news; the same thing about the same person within a day is kept once.
-function News.Add(kind, who, text)
-	local list, now = DB(), ns.Now()
-	for _, e in ipairs(list) do
-		if e.kind == kind and e.who == who and now - e.t < 86400 then return false end
+-- The full line. A wishlist line ("got") names its item when shown, as the game may only
+-- know the item's name later.
+function News.Text(e)
+	if e.kind == "got" and e.item then
+		local name = ns.Wishlist and ns.Wishlist.Name(e.item) or ("an item from their wishlist")
+		return string.format("%s got %s from their wishlist", e.who and ns.Roster.DisplayName(e.who) or "Someone", name or "an item")
 	end
-	table.insert(list, 1, { t = now, kind = kind, who = who, text = text })
+	return e.text or ""
+end
+
+-- One line of news; the same thing about the same person (and item) within a day is kept once.
+-- `extra` adds fields: item (an item id, for "got"), gain (kills, for "week").
+function News.Add(kind, who, text, extra)
+	local list, now = DB(), ns.Now()
+	local item = extra and extra.item
+	for _, e in ipairs(list) do
+		if e.kind == kind and e.who == who and e.item == item and now - e.t < 86400 then return false end
+	end
+	local e = { t = now, kind = kind, who = who, text = text }
+	for k, v in pairs(extra or {}) do e[k] = v end
+	table.insert(list, 1, e)
 	for i = #list, 1, -1 do
 		if i > News.MAX or now - list[i].t > News.KEEP then table.remove(list, i) end
 	end
@@ -140,10 +162,11 @@ end
 ---------------------------------------------------------------------------
 -- Home > Guild news: the last month, newest first.
 ---------------------------------------------------------------------------
-News.KINDS = { join = "Joined", leave = "Left", ["60"] = "Level 60", promote = "Promoted" }
-News.KIND_COLOR = { join = { 0.25, 1, 0.25 }, leave = { 1, 0.45, 0.35 }, ["60"] = { 1, 0.82, 0 }, promote = { 0.45, 0.7, 1 } }
+News.KINDS = { join = "Joined", leave = "Left", ["60"] = "Level 60", promote = "Promoted", week = "Kills", got = "Wish" }
+News.KIND_COLOR = { join = { 0.25, 1, 0.25 }, leave = { 1, 0.45, 0.35 }, ["60"] = { 1, 0.82, 0 }, promote = { 0.45, 0.7, 1 },
+	week = { 1, 0.56, 0.31 }, got = { 0.9, 0.6, 1 } }
 News.FILTERS = { { key = "all", label = "All" } }
-for _, k in ipairs({ "join", "leave", "60", "promote" }) do
+for _, k in ipairs({ "join", "leave", "60", "promote", "week", "got" }) do
 	table.insert(News.FILTERS, { key = k, label = News.KINDS[k], test = function(r) return r.kind == k end })
 end
 
@@ -162,7 +185,7 @@ function News.Refresh()
 	if not News.panel or not News.panel:IsShown() then return end
 	local rows, now = {}, ns.Now()
 	for _, e in ipairs(News.List(News.KEEP)) do
-		rows[#rows + 1] = { t = e.t, kind = e.kind, who = e.who, text = e.text,
+		rows[#rows + 1] = { t = e.t, kind = e.kind, who = e.who, text = News.Text(e),
 			name = e.who and ns.Roster.DisplayName(e.who) or "" }
 	end
 	list:SetRows(rows, function(row, key)
