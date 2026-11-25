@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.4.0"
+ns.VERSION = "1.4.1"
 
 -- Every setting, declared once: its default and how the Settings page shows it. The page builds
 -- itself from this list (Settings.lua); a feature reacts to a change with
@@ -28,7 +28,7 @@ ns.SETTINGS = {
 	{ key = "chatHistory", default = true, kind = "toggle", label = "Keep guild chat between sessions (this PC)" },
 	{ key = "clock24", default = true, kind = "toggle", label = "24-hour times in chat (off: 2:05pm)" },
 	{ key = "relativeTimes", default = true, kind = "toggle", label = "\"5 min ago\" times in chat for the last hour" },
-	{ key = "chatOnlineLines", default = true, kind = "toggle", label = "Show \"has come online\" and \"gone offline\" in chat" },
+	{ key = "chatOnlineLines", default = true, kind = "toggle", label = "Online and offline lines in chat" },
 	{ key = "debug", default = false, kind = "toggle", label = "Print addon errors in chat" },
 	{ key = "theme", default = "default", kind = "dropdown", label = "Theme", reload = true,
 		choices = function()

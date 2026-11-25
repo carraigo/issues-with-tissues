@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1
+
+**Fixes**
+- **Promote, Demote and Remove work again:** the game blocked them ("the game blocked Promote()"), even typed into chat, because the addon had opened the chat box. They're now secure buttons on the roster's right-click menu, which the game treats like your own macro. Click once and the button asks you to click again; the second click does it. In combat the menu tells you the command to type instead.
+- **Guild news filters:** the seven filter buttons ran under the search box. They're narrower now, and a test checks every list page for this.
+- **Settings labels:** the long "online and offline" label ran off the window. It's shorter, and every setting's label now stays inside its column (a long one ends in "...").
+
 ## 1.4.0
 
 **Features**

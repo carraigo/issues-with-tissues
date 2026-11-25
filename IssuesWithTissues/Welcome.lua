@@ -10,6 +10,10 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.4.1", lines = {
+		"Promote, Demote and Remove on the roster's right-click menu work again: click, then click again to confirm.",
+		"Tidier Guild news filters and Settings labels.",
+	} },
 	{ version = "1.4.0", lines = {
 		"Quest buddies (its own Quests tab): see which guildmates are on the same elite and dungeon quests as you, and invite them in a click.",
 		"Wishlists (Crafting): shift-click items you'd like. Crafters see who wants what, and item tooltips show it too.",

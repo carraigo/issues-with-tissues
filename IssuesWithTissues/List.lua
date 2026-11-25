@@ -92,6 +92,9 @@ function UI.CreateList(panel, opts)
 		x = x + (opts.filterWidth or 72) + 4
 	end
 	list.toolbarX = x -- where a page can add its own controls
+	-- Every list, for the test that filter buttons never run under the search box.
+	UI.lists = UI.lists or {}
+	UI.lists[#UI.lists + 1] = { list = list, filtersEnd = x, search = opts.search and (opts.search.width or 136) or 0 }
 	if opts.search then
 		local box = UI.CreateInput(panel, opts.search.width or 136, opts.search.hint or "Search")
 		box:SetPoint("TOPRIGHT", -4, 0)
