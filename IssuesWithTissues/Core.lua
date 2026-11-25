@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.4.0-beta.2"
+ns.VERSION = "1.4.0"
 
 -- Every setting, declared once: its default and how the Settings page shows it. The page builds
 -- itself from this list (Settings.lua); a feature reacts to a change with

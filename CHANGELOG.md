@@ -1,33 +1,23 @@
 # Changelog
 
-## 1.4.0-beta.2
+## 1.4.0
 
 **Features**
+- **Quest buddies (new Quests tab):** your elite, dungeon and raid quests that guildmates are also on, with who (online first, then in your zone, then nearest your level). Click to whisper, right-click to invite everyone online. "By place" lists the dungeons and zones where online guildmates have group quests. Quests guildmates share get a green "2 guild" beside them in the quest log, and the guildmates are listed in the quest's tooltip and on quest links. Only group quests are shared, by id (names never travel), in the character sheet. Setting: "Share my group quests".
+- **Wishlists (Crafting > Wishlists):** alt-click any item (bags, chat links, loot) to wish for it, and again to take it off, or shift-click it into the page's box, or use `/iwt wish`. The page lists every wish in the guild with who wants it and who can make it; item tooltips say "Wanted by 2 guildmates: ...". When a wished item reaches your bags it comes off the list by itself, and the guild news says so ("Mem got Lionheart Helm!"). Up to 30 items each, shared in the character sheet. Settings: "Alt-click an item to wish for it", "Guildmates' wishlists on item tooltips".
 - **Tissue Issuer of the Week:** a weekly race for the most honorable kills, from one weekly reset to the next. Home shows this week's leader under Elite Soldier, and when the week ends the guild news says who won ("Bo Finch won the week with 212 kills"). Counted by the game where it can, else from your total at your first login of the week.
-- **Wishes tick themselves off:** when an item on your wishlist reaches your bags, it comes off the list and the guild news says so ("Mem got Lionheart Helm!"). Items you already had when you wished for them only count once you have one more.
-- **Alt-click to wish:** alt-click any item (bags, chat links, loot) to add it to your wishlist, or take it off again. Setting: "Alt-click an item to wish for it".
+- **Guild news page (Home > Guild news):** the last month of joins, leavers, level 60s, promotions, weekly winners and wishes that came true, with filters and a name search. Home shows the three newest in short ("Bo Finch hit 60"); click them for the page.
 
 **Performance**
 - **Smaller saved chat:** the game's server already keeps recent guild and officer chat, so messages are no longer saved between sessions when it has them. Only the last 100 online/offline and message of the day lines are kept. Saved chat was the biggest thing in the saved data. When the server gives no history for a channel, everything is saved as before.
 
 **UX**
-- **Quests tab:** Quest buddies moved from Home to a tab of its own, between Crafting and Guild life.
 - **Home fits the window:** Home's cards stack themselves one under another, and the page scrolls if they ever run longer than the window.
 
 **Refactoring**
 - **`UI.Stack` and `UI.ScrollPage`:** a column of cards that places each row under the last, and a page that scrolls with the mouse wheel. Home is built with them, so a taller card no longer needs every card below it moved by hand.
-- **Kills data version 2:** the kills record gains the week and this week's kills (`hk;mobs;s;week;gain`). 1.3 and beta.1 clients keep the last version 1 copy they had; this version upgrades version 1 records as they arrive.
-- **The character sheet's fifth field** lists wishes that came true in the last week, for the guild news. Left off when empty.
-
-## 1.4.0-beta.1
-
-**Features**
-- **Quest buddies (Home > Quest buddies):** your elite, dungeon and raid quests that guildmates are also on, with who (online first, then in your zone, then nearest your level). Click to whisper, right-click to invite everyone online. "By place" lists the dungeons and zones where online guildmates have group quests. Quests guildmates share get a green "2 guild" beside them in the quest log, and the guildmates are listed in the quest's tooltip and on quest links. Only group quests are shared, by id (names never travel), in the character sheet. Setting: "Share my group quests".
-- **Wishlists (Crafting > Wishlists):** add items you'd like by shift-clicking them into the box, or with `/iwt wish` (the same again takes one off). The page lists every wish in the guild with who wants it and who can make it; item tooltips say "Wanted by 2 guildmates: ...". Up to 30 items each, shared in the character sheet. Setting: "Guildmates' wishlists on item tooltips".
-- **Guild news page (Home > Guild news):** the last month of joins, leavers, level 60s and promotions, with filters and a name search. Home shows the three newest in short ("Bo Finch hit 60"); click them for the page.
-
-**Functionality**
-- The character sheet has two more fields (group quests and wishlist), left off when empty. 1.3 clients read the sheet as before.
+- **Character sheet:** three more fields (group quests, wishlist, and wishes that came true in the last week), left off when empty. 1.3 clients read the sheet as before.
+- **Kills data version 2:** the kills record gains the week and this week's kills (`hk;mobs;s;week;gain`). 1.3 clients keep the last version 1 copy they had; 1.4 upgrades version 1 records as they arrive.
 
 ## 1.3.4
 
