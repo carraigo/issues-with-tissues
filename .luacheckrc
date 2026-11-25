@@ -27,7 +27,7 @@ read_globals = {
 	"GetCraftItemLink", "GetCursorPosition", "GetGuildBankMoney", "GetGuildInfo", "GetGuildRosterInfo",
 	"GetGuildRosterLastOnline", "GetGuildRosterMOTD", "GetItemInfo", "GetLocale", "GetMinimapShape",
 	"GetNormalizedRealmName", "GetNumCrafts", "GetNumGuildMembers", "GetNumSkillLines", "GetNumTradeSkills",
-	"GetPVPLifetimeStats", "GetPVPThisWeekStats", "C_DateAndTime", "IsAltKeyDown", "HandleModifiedItemClick", "GetPlayerInfoByGUID", "GetProfessionInfo", "GetProfessions", "GetServerTime",
+	"GetPVPLifetimeStats", "SecureCmdOptionParse", "SecureActionButton_OnClick", "GetPVPThisWeekStats", "C_DateAndTime", "IsAltKeyDown", "HandleModifiedItemClick", "GetPlayerInfoByGUID", "GetProfessionInfo", "GetProfessions", "GetServerTime",
 	"GetSkillLineInfo", "GetStatistic", "GetTime", "GetTradeSkillInfo", "GetTradeSkillItemLink", "GetTradeSkillLine",
 	"GuildControlGetNumRanks", "GuildControlGetRankName", "GuildRoster", "HideUIPanel", "ITEM_QUALITY_COLORS",
 	"InCombatLockdown", "InterfaceOptions_AddCategory", "InviteUnit", "IsControlKeyDown", "IsInGuild",

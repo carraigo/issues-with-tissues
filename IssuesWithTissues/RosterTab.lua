@@ -289,28 +289,29 @@ local function RankName(index)
 	return GuildControlGetRankName and GuildControlGetRankName(index + 1) or ("rank " .. (index + 1))
 end
 
--- Forever forbids addons from calling GuildPromote and GuildDemote (ADDON_ACTION_FORBIDDEN), so
--- the addon types the game's own command into the chat box: "/gpromote Sara Exe". Pressing
--- Enter runs it as if typed, and that press is the confirmation. The server finds the
--- character by "First Surname", as for whispers.
-function Tab.ChangeRank(target, up)
+-- Forever forbids addons from calling GuildPromote and GuildDemote (ADDON_ACTION_FORBIDDEN), and
+-- the game's own command typed into chat by an addon is blocked too (the chat box carries the
+-- addon's taint: "the game blocked Promote()", 1.4.0). What works is the game's command run from
+-- a secure macro button that the player clicks, as from their own macro. So the menu's Promote,
+-- Demote and Remove are such buttons: the first click arms it ("Click again to ..."), the second
+-- runs "/gpromote Sara Exe". The server finds the character by "First Surname", as for whispers.
+-- In combat secure buttons can't be set up, so the menu says what to type instead.
+function Tab.RankCommand(target, up)
 	local promote, demote = Tab.RankActions(target)
-	if (up and not promote) or (not up and not demote) then return false end
-	local them = ns.Roster.Get(target)
-	local name = ns.Roster.DisplayName(target)
-	local command = (up and "/gpromote " or "/gdemote ") .. name
-	if not ChatFrame_OpenChat then
-		ns.Print("Type %s to %s.", command, up and "promote" or "demote")
-		return false
-	end
-	ChatFrame_OpenChat(command)
-	ns.Print("Press Enter to %s %s to %s (or type %s).", up and "promote" or "demote", name,
-		RankName(them.rankIndex + (up and -1 or 1)), command)
+	if (up and not promote) or (not up and not demote) then return nil end
+	return (up and "/gpromote " or "/gdemote ") .. ns.Roster.DisplayName(target)
+end
+
+-- Kept for /iwt and older callers: says what to type, as nothing else can do it.
+function Tab.ChangeRank(target, up)
+	local command = Tab.RankCommand(target, up)
+	if not command then return false end
+	ns.Print("Type %s to %s %s, or use Promote/Demote on the roster's right-click menu.", command,
+		up and "promote" or "demote", ns.Roster.DisplayName(target))
 	return command
 end
 
--- Removing someone: officers, only for a rank below their own, the same way as rank changes
--- (the game's /gremove command typed into chat; Enter confirms).
+-- Removing someone: officers, only for a rank below their own, the same way as rank changes.
 function Tab.CanRemove(target)
 	if not Tab.CanManage() then return false end
 	local me = ns.Roster.Get(ns.Roster.me)
@@ -319,20 +320,82 @@ function Tab.CanRemove(target)
 	return them.rankIndex > me.rankIndex and GameAllows(CanGuildRemove or (C_GuildInfo and C_GuildInfo.CanGuildRemove))
 end
 
+function Tab.RemoveCommand(target)
+	if not Tab.CanRemove(target) then return nil end
+	return "/gremove " .. ns.Roster.DisplayName(target)
+end
+
 function Tab.Remove(target)
-	if not Tab.CanRemove(target) then return false end
-	local name = ns.Roster.DisplayName(target)
-	local command = "/gremove " .. name
-	if not ChatFrame_OpenChat then
-		ns.Print("Type %s to remove them from the guild.", command)
-		return false
-	end
-	ChatFrame_OpenChat(command)
-	ns.Print("Press Enter to remove %s from the guild (or Escape to keep them).", name)
+	local command = Tab.RemoveCommand(target)
+	if not command then return false end
+	ns.Print("Type %s to remove %s from the guild.", command, ns.Roster.DisplayName(target))
 	return command
 end
 
 local menu
+
+-- A secure macro button laid over a menu button, for the game's guild commands (see above).
+-- First click: arms it (the label asks to click again). Second click: the game runs the command.
+-- It's parented to UIParent, not the menu: a protected child would make the addon's window
+-- protected too, so it couldn't hide in combat. All of them hide when the menu does and when
+-- combat starts, and the menu's officer entries fall back to "Type ..." in combat.
+local overlays = {}
+local function HideOverlays()
+	if InCombatLockdown and InCombatLockdown() then return end
+	for _, o in ipairs(overlays) do
+		o:Hide()
+		o.armed = false
+		o:SetAttribute("type", nil)
+		o:SetAttribute("macrotext", nil)
+	end
+end
+Tab.HideOverlays = HideOverlays
+pcall(ns.On, "PLAYER_REGEN_DISABLED", HideOverlays) -- just before combat locks them
+
+local function Secure(b)
+	if b.secure or b.secureTried then return b.secure end
+	if not (SecureCmdOptionParse or SecureActionButton_OnClick) then return false end -- no secure buttons here
+	b.secureTried = true
+	local ok, s = pcall(CreateFrame, "Button", nil, UIParent, "SecureActionButtonTemplate")
+	if not ok or not s then return false end
+	s:SetFrameStrata("TOOLTIP")
+	s:SetAllPoints(b)
+	overlays[#overlays + 1] = s
+	if s.RegisterForClicks then s:RegisterForClicks("AnyUp", "AnyDown") end
+	local hl = s:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetAllPoints()
+	ns.UI.Fill(hl, ns.UI.COLORS.hover)
+	s:HookScript("PostClick", function(self, _, down)
+		if down then return end
+		if self.armed then
+			ns.Print("Sent %s.", self.macro)
+			if menu then menu:Hide() end
+		elseif not (InCombatLockdown and InCombatLockdown()) then
+			self.armed = true
+			self:SetAttribute("type", "macro")
+			self:SetAttribute("macrotext", self.macro)
+			b:SetText(self.confirm)
+		end
+	end)
+	b.secure = s
+	return s
+end
+
+-- Puts the item's command on the button's secure overlay, unarmed; nil takes it off.
+function Tab.SetSecure(b, item)
+	local inCombat = InCombatLockdown and InCombatLockdown()
+	if inCombat then return false end
+	local s = (item and item.macro) and Secure(b) or b.secure
+	if not s then return false end
+	s:SetAttribute("type", nil)
+	s:SetAttribute("macrotext", nil)
+	s.armed, s.macro, s.confirm = false, item and item.macro, item and item.confirm
+	if item and item.macro then s:Show() else s:Hide() end
+	return item and item.macro and true or false
+end
+
+function Tab.MenuButton(i) return menu and menu.buttons[i] end
+
 function Tab.HideMenu()
 	if menu then menu:Hide() end
 end
@@ -346,14 +409,21 @@ function Tab.MenuItems(row)
 	}
 	local promote, demote = Tab.RankActions(who)
 	local them = ns.Roster.Get(who)
+	local name = ns.Roster.DisplayName(who)
+	-- { label, fallback action, macro = the game's command, confirm = the armed label }
 	if promote then
-		items[#items + 1] = { "Promote to " .. RankName(them.rankIndex - 1), function() Tab.ChangeRank(who, true) end }
+		local to = RankName(them.rankIndex - 1)
+		items[#items + 1] = { "Promote to " .. to, function() Tab.ChangeRank(who, true) end,
+			macro = Tab.RankCommand(who, true), confirm = "Click again: promote" }
 	end
 	if demote then
-		items[#items + 1] = { "Demote to " .. RankName(them.rankIndex + 1), function() Tab.ChangeRank(who, false) end }
+		local to = RankName(them.rankIndex + 1)
+		items[#items + 1] = { "Demote to " .. to, function() Tab.ChangeRank(who, false) end,
+			macro = Tab.RankCommand(who, false), confirm = "Click again: demote" }
 	end
 	if Tab.CanRemove(who) then
-		items[#items + 1] = { "Remove from guild", function() Tab.Remove(who) end }
+		items[#items + 1] = { "Remove from guild", function() Tab.Remove(who) end,
+			macro = Tab.RemoveCommand(who), confirm = "Click again: remove " .. name }
 	end
 	return items
 end
@@ -377,6 +447,10 @@ function Tab.ShowMenu(row, line, parent)
 		end)
 	end
 	if menu.SetParent then menu:SetParent(parent) end
+	if not menu.hooked then
+		menu.hooked = true
+		menu:HookScript("OnHide", HideOverlays)
+	end
 	menu:SetFrameStrata("DIALOG")
 	local items = Tab.MenuItems(row)
 	menu.title:SetText(row.name)
@@ -384,14 +458,19 @@ function Tab.ShowMenu(row, line, parent)
 		local b = menu.buttons[i]
 		if not b then
 			b = ns.UI.Button(menu, "", 150, 20)
+			b.secure, b.secureTried = false, false
 			b:SetPoint("TOPLEFT", 6, -6 - i * 22)
 			menu.buttons[i] = b
 		end
 		b:SetText(item[1])
 		b:SetScript("OnClick", function() menu:Hide(); item[2]() end)
 		b:Show()
+		Tab.SetSecure(b, item)
 	end
-	for i = #items + 1, #menu.buttons do menu.buttons[i]:Hide() end
+	for i = #items + 1, #menu.buttons do
+		menu.buttons[i]:Hide()
+		if menu.buttons[i].secure then Tab.SetSecure(menu.buttons[i], nil) end
+	end
 	menu:SetSize(162, 12 + (#items + 1) * 22)
 	menu:ClearAllPoints()
 	menu:SetPoint("TOPLEFT", line or parent, "TOPLEFT", line and 180 or 200, line and -4 or -60)

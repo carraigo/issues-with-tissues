@@ -201,14 +201,14 @@ end
 local function Build(panel)
 	News.panel = panel
 	list = ns.UI.CreateList(panel, {
-		top = -30, rows = 19, filters = News.FILTERS, filterWidth = 80, save = "news",
+		top = -30, rows = 19, filters = News.FILTERS, filterWidth = 62, save = "news",
 		state = { sort = "t", desc = true },
 		columns = {
 			{ key = "t", label = "When", width = 110, sort = true, desc = true },
 			{ key = "kind", label = "What", width = 90, sort = true },
 			{ key = "text", label = "", width = 406 },
 		},
-		search = { width = 136, hint = "Search names", text = function(r) return r.name end,
+		search = { width = 130, hint = "Search names", text = function(r) return r.name end,
 			onEnter = function(first) if first.who then ns.UI.Whisper(first.who) end end },
 		count = function(shown, all)
 			return string.format("%d of %d in the last 30 days. Worked out from the roster on this PC.", #shown, #all)

@@ -5,11 +5,14 @@
 local W = {}
 
 local function Frame()
-	local f = { shown = false, scripts = {}, events = {} }
+	local f = { shown = false, scripts = {}, events = {}, hooks = {}, attrs = {} }
 	local mt = {}
 	mt.__index = function(t, k)
 		if k == "SetScript" then return function(self, name, fn) self.scripts[name] = fn end end
 		if k == "GetScript" then return function(self, name) return self.scripts[name] end end
+		if k == "HookScript" then return function(self, name, fn) self.hooks[name] = fn end end
+		if k == "SetAttribute" then return function(self, name, v) self.attrs[name] = v end end
+		if k == "GetAttribute" then return function(self, name) return self.attrs[name] end end
 		if k == "RegisterEvent" then return function(self, e) self.events[e] = true end end
 		if k == "Show" then return function(self) self.shown = true end end
 		if k == "Hide" then return function(self) self.shown = false end end

@@ -1021,22 +1021,40 @@ test("roster: officers and the Guild Master can promote and demote, following th
 	local items = gm.ns.RosterTab.ShowMenu({ full = "Vet", name = "Vet" })
 	eq(#items, 5); eq(items[3][1], "Promote to Officer"); eq(items[4][1], "Demote to Member")
 	eq(items[5][1], "Remove from guild")
-	-- Forever forbids GuildPromote from addons: the game's own command goes in the chat box,
-	-- and the player's Enter runs it.
-	local typed
+	-- Forever forbids GuildPromote from addons, and blocks the game's command typed into chat by
+	-- an addon too. The menu runs the game's command from a secure macro button: click to arm,
+	-- click again to run. Without secure buttons (or in combat) it says what to type.
 	gm.env.GuildPromote = function() error("forbidden on Forever") end
-	gm.env.ChatFrame_OpenChat = function(text) typed = text end
+	gm.env.ChatFrame_OpenChat = function() error("tainted: the game blocks Promote() from here") end
+	eq(items[3].macro, "/gpromote Vet"); eq(items[4].macro, "/gdemote Vet"); eq(items[5].macro, "/gremove Vet")
 	items[3][2]()
-	eq(typed, "/gpromote Vet")
-	items[4][2]()
-	eq(typed, "/gdemote Vet")
-	assert(gm.printed[#gm.printed]:find("Press Enter to demote Vet to Member", 1, true))
-	items[5][2]()
-	eq(typed, "/gremove Vet")
+	assert(gm.printed[#gm.printed]:find("Type /gpromote Vet", 1, true))
+	gm.env.SecureCmdOptionParse = function() end
+	gm.ns.RosterTab.HideMenu()
+	items = gm.ns.RosterTab.ShowMenu({ full = "Vet", name = "Vet" })
+	local overlays = {}
+	-- the overlay on the Promote button
+	local menuButtons = {}
+	for i = 1, 5 do
+		local b = gm.ns.RosterTab.MenuButton(i)
+		menuButtons[i] = b
+		overlays[i] = b and b.secure
+	end
+	eq(overlays[1] or false, false, "no overlay on Whisper")
+	local s = overlays[3]
+	assert(s, "secure overlay on Promote")
+	eq(s:GetAttribute("type"), nil, "not armed yet"); eq(s.macro, "/gpromote Vet")
+	s.hooks.PostClick(s, "LeftButton", false)
+	eq(s:GetAttribute("type"), "macro"); eq(s:GetAttribute("macrotext"), "/gpromote Vet")
+	s.hooks.PostClick(s, "LeftButton", false)
+	assert(gm.printed[#gm.printed]:find("Sent /gpromote Vet", 1, true))
+	-- combat starts: nothing stays armed
+	s.hooks.PostClick(s, "LeftButton", false)
+	gm.env.__fire("PLAYER_REGEN_DISABLED")
+	eq(s:GetAttribute("type"), nil); eq(s:IsShown(), false)
 	eq(mem.ns.RosterTab.CanRemove("Gone"), false, "members can't remove")
 	eq(off.ns.RosterTab.CanRemove("Gm"), false, "nobody at or above your rank")
 	-- Members can't get there even by calling it directly
-	mem.env.ChatFrame_OpenChat = function() error("should not be called") end
 	eq(mem.ns.RosterTab.ChangeRank("Gone", true), false)
 	gm.ns.RosterTab.HideMenu()
 	eq(#gm.env.IwTDB.errors, 0); eq(#mem.env.IwTDB.errors, 0)
@@ -1846,6 +1864,18 @@ test("every tab builds without errors", function()
 	local c = W.NewClient(base, "Mem", Guild2())
 	for _, t in ipairs(c.ns.UI.tabs) do c.ns.UI.Open(t.title) end
 	eq(#c.env.IwTDB.errors, 0)
+end)
+
+test("layout: list filter buttons never run under the search box", function()
+	local c = W.NewClient(base, "Gm", Guild2())
+	c.ns.UI.Toggle()
+	for _, t in ipairs(c.ns.UI.groups) do
+		for _, p in ipairs(t.pages) do c.ns.UI.Open(p.title) end
+	end
+	assert(#c.ns.UI.lists >= 5, "lists built: " .. #(c.ns.UI.lists or {}))
+	for _, l in ipairs(c.ns.UI.lists) do
+		assert(l.filtersEnd + l.search + 8 <= 616, "filters end at " .. l.filtersEnd .. " with a search box " .. l.search .. " wide")
+	end
 end)
 
 test("layout: pages open by name, tabs remember their sub-tab, Settings is behind the cog", function()
