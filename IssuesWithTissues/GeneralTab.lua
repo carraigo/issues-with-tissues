@@ -170,10 +170,11 @@ end
 
 local function Build(panel)
 	General.panel = panel
-	-- Three cards, as in the layout mock-up.
+	-- Three cards, then What's on. Home has sub-tabs since 1.4.0 (Quest buddies, Guild news), so
+	-- the cards fit in 386 px under them.
 	ns.UI.Card(panel, 0, 0, 300, 146)
 	ns.UI.Card(panel, 308, 0, 308, 146)
-	ns.UI.Card(panel, 0, -156, 616, 170)
+	ns.UI.Card(panel, 0, -156, 616, 122)
 
 	texts.guildTitle = Section(panel, 12, -10, "Issues with Tissues")
 	texts.guild = Body(panel, 12, -30, 280)
@@ -198,16 +199,16 @@ local function Build(panel)
 	scanHint:SetText(HINT)
 
 	-- What's on: open polls, the donation goal (Guild life tab) and this week's guild news.
-	ns.UI.Card(panel, 0, -334, 616, 100)
-	Section(panel, 12, -342, "What's on")
+	ns.UI.Card(panel, 0, -286, 616, 100)
+	Section(panel, 12, -294, "What's on")
 	local function Column(x, title, page)
 		local t = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		t:SetPoint("TOPLEFT", x, -362)
+		t:SetPoint("TOPLEFT", x, -314)
 		t:SetText(title)
 		t:SetTextColor(0.65, 0.61, 0.54)
-		local body = Body(panel, x, -376, 188)
+		local body = Body(panel, x, -328, 188)
 		local open = CreateFrame("Button", nil, panel)
-		open:SetPoint("TOPLEFT", x - 4, -358)
+		open:SetPoint("TOPLEFT", x - 4, -310)
 		open:SetSize(198, 70)
 		if page then open:SetScript("OnClick", function() ns.UI.Open(page) end) end
 		local hl = ns.UI.Fill(open:CreateTexture(nil, "HIGHLIGHT"), ns.UI.COLORS.hover)
