@@ -93,9 +93,10 @@ local function Pattern(fmt)
 end
 
 function News.Joined(text)
-	if ns.IsSecret(text) then return nil end
+	text = ns.Readable(text)
+	if not text then return nil end
 	local p = Pattern(ERR_GUILD_JOIN_S or "%s has joined the guild.")
-	local who = p and tostring(text or ""):match(p)
+	local who = p and text:match(p)
 	if not who or who == "" then return nil end
 	who = who:gsub("|H.-|h%[?(.-)%]?|h", "%1") -- a player link, when the game sends one
 	return who

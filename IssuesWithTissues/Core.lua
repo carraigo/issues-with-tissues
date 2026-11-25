@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.3.3"
+ns.VERSION = "1.3.4"
 
 -- Every setting, declared once: its default and how the Settings page shows it. The page builds
 -- itself from this list (Settings.lua); a feature reacts to a change with
@@ -25,6 +25,7 @@ ns.SETTINGS = {
 	{ key = "chatHistory", default = true, kind = "toggle", label = "Keep guild chat between sessions (this PC)" },
 	{ key = "clock24", default = true, kind = "toggle", label = "24-hour times in chat (off: 2:05pm)" },
 	{ key = "relativeTimes", default = true, kind = "toggle", label = "\"5 min ago\" times in chat for the last hour" },
+	{ key = "chatOnlineLines", default = true, kind = "toggle", label = "Show \"has come online\" and \"gone offline\" in chat" },
 	{ key = "debug", default = false, kind = "toggle", label = "Print addon errors in chat" },
 	{ key = "theme", default = "default", kind = "dropdown", label = "Theme", reload = true,
 		choices = function()
@@ -100,6 +101,13 @@ function ns.IsSecret(v)
 	if v == nil or not issecretvalue then return false end
 	local ok, secret = pcall(issecretvalue, v)
 	return ok and secret and true or false
+end
+
+-- The one check before reading text from the game: v when it is a string the addon may read,
+-- else nil (a secret, or not text at all).
+function ns.Readable(v)
+	if type(v) ~= "string" or ns.IsSecret(v) then return nil end
+	return v
 end
 
 function ns.Now()
@@ -207,6 +215,10 @@ ns.TIMERS = {
 	sheetChanged = 3,   -- Sheet: after a quest hand-in or the game's raid info
 	sheetBags = 10,     -- Sheet: after the bags change (keys)
 	sheetBoss = 5,      -- Sheet: after a boss kill, ask for saved raids again
+	search = 0.15,      -- Search boxes: filter once typing pauses this long
+	-- Repeating jobs (ns.Every):
+	chatStamps = 30,    -- Chat: look whether a "5 min ago" label needs redrawing
+	commSweep = 60,     -- Comm: forget stale partial messages
 }
 -- ns.Later("kills", fn): run fn after ns.TIMERS.kills seconds.
 function ns.Later(name, fn)
@@ -214,6 +226,17 @@ function ns.Later(name, fn)
 	assert(seconds, "unknown timer " .. tostring(name))
 	ns.Trace("timer", "%s in %ss", name, seconds)
 	ns.After(seconds, fn)
+end
+
+-- ns.Every("commSweep", fn): run fn every ns.TIMERS.commSweep seconds, for good.
+function ns.Every(name, fn)
+	local seconds = ns.TIMERS[name]
+	assert(seconds, "unknown timer " .. tostring(name))
+	if not (C_Timer and C_Timer.NewTicker) then return end
+	return C_Timer.NewTicker(seconds, function()
+		local ok, err = pcall(fn)
+		if not ok and ns.ReportError then ns.ReportError(err) end
+	end)
 end
 
 ---------------------------------------------------------------------------

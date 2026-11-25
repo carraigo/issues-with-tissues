@@ -16,6 +16,11 @@ function Chat.Visible()
 	return Chat.panel ~= nil and Chat.panel.IsVisible ~= nil and Chat.panel:IsVisible() and true or false
 end
 
+-- Online/offline lines are always kept; Settings can leave them out of the page.
+function Chat.Shown(e)
+	return e.k ~= "sys" or ns.db.settings.chatOnlineLines ~= false
+end
+
 -- Unread: what guildmates said. Not online/offline lines, the message of the day or your own.
 function Chat.CountsAsUnread(kind, author)
 	if kind ~= "msg" then return false end
@@ -44,12 +49,16 @@ function Chat.Redraw()
 			box:AddMessage("|cff" .. Chat.Hex(r, g, b) .. "Message of the day: " .. motd .. "|r")
 		end
 	end
-	local lines = Chat.View(Chat.channel)
+	local lines = {}
+	for _, e in ipairs(Chat.View(Chat.channel)) do
+		if Chat.Shown(e) then lines[#lines + 1] = e end
+	end
 	for _, e in ipairs(lines) do
 		local line = Chat.Display(Chat.channel, e)
 		if line then box:AddMessage(line) end
 	end
 	box:ScrollToBottom()
+	Chat.stampsChangeAt = Chat.NextStampChange(lines)
 	Chat.unseen = 0
 	Chat.UpdateJump()
 	if Chat.hint then Chat.hint:SetShown(#lines == 0) end
@@ -151,12 +160,12 @@ local function Build(panel)
 	end)
 	box:SetScript("OnHyperlinkLeave", function() GameTooltip:Hide() end)
 	Chat.messages = box
-	-- "5 min ago" moves on: redraw each half minute while the chat is open at the newest lines.
-	if C_Timer and C_Timer.NewTicker then
-		C_Timer.NewTicker(30, function()
-			if ns.db.settings.relativeTimes ~= false and Chat.Visible() and not Chat.ScrolledUp() then Chat.Redraw() end
-		end)
-	end
+	-- "5 min ago" moves on: while the chat is open at the newest lines, look every half minute
+	-- and redraw only when a time label shown would now read differently.
+	ns.Every("chatStamps", function()
+		local at = Chat.stampsChangeAt
+		if at and ns.Now() >= at and Chat.Visible() and not Chat.ScrolledUp() then Chat.Redraw() end
+	end)
 
 	local jump = UI.Button(frame, "Newest", 130, 20, "primary")
 	jump:SetPoint("BOTTOMRIGHT", -10, 8)
@@ -225,7 +234,7 @@ ns.UI.AddPage("Chat", "Chat", Build)
 
 -- New lines go straight into the open page.
 ns.Listen("CHAT_LINE", function(channel, entry)
-	if Chat.messages and channel == Chat.channel then
+	if Chat.messages and channel == Chat.channel and Chat.Shown(entry) then
 		local line = Chat.Display(channel, entry)
 		if line then Chat.messages:AddMessage(line) end
 		if Chat.hint then Chat.hint:Hide() end
@@ -246,5 +255,6 @@ end
 ns.Settings.OnChange("chatHistory", function(on) Chat.SetHistory(on) end)
 ns.Settings.OnChange("clock24", function() Chat.Redraw() end)
 ns.Settings.OnChange("relativeTimes", function() Chat.Redraw() end)
+ns.Settings.OnChange("chatOnlineLines", function() Chat.Redraw() end)
 
 ns.RegisterCommand("chat", "open guild chat", function() ns.UI.Open("Chat") end)

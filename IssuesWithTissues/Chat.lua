@@ -141,6 +141,36 @@ function Chat.Stamp(t, now)
 	return Chat.Time(t)
 end
 
+-- When the soonest time label among these lines will read differently ("just now" becoming
+-- "1 min ago", or a clock time gaining its day after midnight), so the page redraws only then.
+function Chat.NextStampChange(lines, now)
+	now = now or ns.Now()
+	local soonest
+	local relative = ns.db.settings.relativeTimes ~= false
+	local today = false
+	for i = #lines, 1, -1 do
+		local t = lines[i].t
+		if t then
+			local age = now - t
+			if age < 0 then age = 0 end
+			if relative and age < 3600 then
+				local at = t + 60 * (math.floor(age / 60) + 1)
+				if not soonest or at < soonest then soonest = at end
+			elseif date("%Y%m%d", t) == date("%Y%m%d", now) then
+				today = true
+			else
+				break -- older lines already show their day
+			end
+		end
+	end
+	if today then
+		local d = date("*t", now)
+		local midnight = now + 86400 - (d.hour * 3600 + d.min * 60 + d.sec)
+		if not soonest or midnight < soonest then soonest = midnight end
+	end
+	return soonest
+end
+
 -- The full time, for the timestamp's tooltip: "Monday 23 November 2026, 14:05:33".
 function Chat.FullTime(t)
 	local clock = ns.db.settings.clock24 ~= false and date("%H:%M:%S", t) or Chat.Time(t)
@@ -235,8 +265,8 @@ local function Pattern(fmt)
 end
 
 function Chat.SystemLine(text)
-	if ns.IsSecret(text) then return nil end
-	text = tostring(text or "")
+	text = ns.Readable(text)
+	if not text then return nil end
 	for _, fmt in ipairs({ ERR_FRIEND_ONLINE_SS or "|Hplayer:%s|h[%s]|h has come online.", ERR_FRIEND_OFFLINE_S or "%s has gone offline." }) do
 		local p = Pattern(fmt)
 		local who = p and text:match(p)

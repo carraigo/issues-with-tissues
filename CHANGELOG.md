@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.4
+
+**Performance**
+- **Cheaper roster reads:** the roster was the busiest code in the session stats (about 0.6 ms a read, 70 to 80 reads a session). It's now updated in place, with changes spotted while reading, instead of building a fresh copy of every member and comparing the two. Names are parsed once and remembered. About ten times faster in the 500-member speed test.
+- **Search waits for a pause:** search boxes (Crafting, Members, Raid, Loot notes and the other lists) filter 0.15 seconds after you stop typing, instead of on every letter. Enter still acts on everything typed at once.
+- **Fewer Chat redraws:** the Chat page used to redraw every line every 30 seconds to move "5 min ago" on. It now redraws only when a label shown would actually read differently, and never while the chat is quiet for over an hour (until midnight, when today's times gain their day).
+
+**Features**
+- **Hide online/offline lines:** a new setting, "Show \"has come online\" and \"gone offline\" in chat", leaves those lines out of the Chat page. They're still kept, so turning it back on shows them again.
+
+**Functionality**
+- **Quiet when away:** a guildmate who is AFK waits 8 seconds longer before answering a catch-up, so someone at the keyboard answers first. They still answer within the round if nobody else does.
+
+**Refactoring**
+- **One check for game text:** `ns.Readable(v)` returns text the addon may read, or nil for a secret value or anything that isn't text. Names, system lines and "joined the guild" messages go through it.
+- **Repeating jobs in `ns.TIMERS`:** the Chat label check and the Comm sweep run through `ns.Every(name, fn)`, next to every other timer.
+- **Professions split:** reading the profession window and the recipe scan moved to `ProfessionScan.lua`; `Professions.lua` keeps the recipe data. New file: restart the game rather than /reload after updating.
+
 ## 1.3.3
 
 **Fixes**

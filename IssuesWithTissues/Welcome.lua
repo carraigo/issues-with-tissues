@@ -10,6 +10,12 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.3.4", lines = {
+		"Chat can hide \"has come online\" and \"gone offline\" lines: see Settings.",
+		"Searching waits until you pause typing, so long lists don't stutter with every letter.",
+		"Lighter on the game: the guild roster is read more cheaply, and Chat redraws less often.",
+		"While you're away (AFK), guildmates at the keyboard answer catch-ups first.",
+	} },
 	{ version = "1.3.3", lines = {
 		"Fixed errors on the Chat page after a reload, from chat lines the game keeps hidden from addons.",
 	} },
