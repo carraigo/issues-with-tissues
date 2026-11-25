@@ -217,16 +217,20 @@ local function Build(panel)
 	texts.polls = Column(12, "Open polls", "Polls")
 	texts.donations = Column(216, "Donation goal", "Donations")
 	local newsArea
-	texts.news, newsArea = Column(420, "Guild news")
+	texts.news, newsArea = Column(420, "Guild news", "Guild news")
 	texts.news:SetFontObject("GameFontHighlightSmall") -- four short lines fit the card
 	texts.news:SetWordWrap(false)
-	-- Hover: the whole week.
+	-- Hover: the week in full; click: the Guild news page.
 	newsArea:SetScript("OnEnter", function(self)
-		local all = ns.News.Lines()
-		if #all <= General.NEWS_LINES then return end
+		local all = ns.News.List()
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:AddLine("Guild news this week")
-		for _, line in ipairs(all) do GameTooltip:AddLine(line, 1, 1, 1) end
+		for i, e in ipairs(all) do
+			if i > 12 then GameTooltip:AddLine("and " .. (#all - 12) .. " more", 0.6, 0.6, 0.6) break end
+			GameTooltip:AddLine(e.text, 1, 1, 1)
+		end
+		if #all == 0 then GameTooltip:AddLine("Nothing this week.", 0.6, 0.6, 0.6) end
+		GameTooltip:AddLine("Click for the last month", 0.5, 0.5, 0.5)
 		GameTooltip:Show()
 	end)
 	newsArea:SetScript("OnLeave", function() GameTooltip:Hide() end)

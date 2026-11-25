@@ -3,9 +3,14 @@
 -- quest is handed in, the bags change or the game's raid info updates, and it is sent only
 -- when something in it changed, so it costs a packet now and then.
 --
--- Record data: "<codes>;<lockouts>"
+-- Record data: "<codes>;<lockouts>[;<quests>[;<wishlist>]]"
 --   codes     attunement codes joined by "."            mc.ony.ubrs
 --   lockouts  name:resetAt:done:total joined by "/"     Molten Core:1795000000:7:10
+--   quests    (1.4.0) group quests in the log, by quest log heading: heading~ids joined by ","
+--             with the ids as base 36 gaps (Record.Gaps)   Razorfen Downs~1n9.4,Duskwood~2xk
+--   wishlist  (1.4.0) item ids the player wants, as base 36 gaps
+-- The last two are left off when empty, so most records read as before. A 1.3 client folds
+-- them into its lockouts text, where they never match a lockout (no ":"), so it reads on.
 -- resetAt is server time, rounded to 5 minutes so the same lockout always reads the same.
 
 local _, ns = ...
@@ -93,19 +98,32 @@ function Sheet.Encode(s)
 	for i, lock in ipairs(s.locks or {}) do
 		l[i] = string.format("%s:%d:%d:%d", Clean(lock.name), lock.resetAt, lock.done or 0, lock.total or 0)
 	end
-	return table.concat(codes, ".") .. ";" .. table.concat(l, "/")
+	local out = table.concat(codes, ".") .. ";" .. table.concat(l, "/")
+	local q = {}
+	for _, g in ipairs(s.quests or {}) do
+		local ids = ns.Record.Gaps(g.ids or {})
+		if ids ~= "" then q[#q + 1] = ns.Record.Clean(g.where, 30, ":/%.~,") .. "~" .. ids end
+	end
+	local wish = ns.Record.Gaps(s.wish or {})
+	if #q > 0 or wish ~= "" then out = out .. ";" .. table.concat(q, ",") end
+	if wish ~= "" then out = out .. ";" .. wish end
+	return out
 end
 
 -- { has = { code = true }, locks = { {name, resetAt, done, total} } }; lockouts that have
 -- reset are left out. Codes this version doesn't know are kept (a newer addon may add some).
 function Sheet.Decode(data, now)
-	local codes, locks = ns.Record.Fields(data, 2)
-	if not codes then
+	local parts = ns.Record.Split(data, ";")
+	local codes, locks = parts[1], parts[2]
+	if not locks then
 		codes, locks = tostring(data or ""), "" -- codes only
 		if codes:find("[^%w%.]") then return nil end
 	end
 	now = now or ns.Now()
-	local s = { has = {}, locks = {} }
+	local s = { has = {}, locks = {}, quests = {}, wish = ns.Record.Ungaps(parts[4]) }
+	for where, ids in (parts[3] or ""):gmatch("([^~,]*)~([^,]*)") do
+		s.quests[#s.quests + 1] = { where = where, ids = ns.Record.Ungaps(ids) }
+	end
 	for c in codes:gmatch("[^%.]+") do s.has[c] = true end
 	for name, at, done, total in locks:gmatch("([^:/]+):(%d+):(%d+):(%d+)") do
 		at = tonumber(at)
@@ -117,12 +135,15 @@ function Sheet.Decode(data, now)
 end
 
 ns.Record.Define("sheet", { encode = Sheet.Encode, decode = function(data) return Sheet.Decode(data, 0) end,
-	sample = { has = { mc = true, ony = true, ubrs = true }, locks = { { name = "Molten Core", resetAt = 1795000200, done = 7, total = 10 } } } })
+	sample = { has = { mc = true, ony = true, ubrs = true }, locks = { { name = "Molten Core", resetAt = 1795000200, done = 7, total = 10 } },
+		quests = { { where = "Razorfen Downs", ids = { 3525, 3636 } }, { where = "Duskwood", ids = { 228 } } }, wish = { 12640, 18832 } } })
 
 function Sheet.Read()
 	local has = {}
 	for _, a in ipairs(Sheet.ATTUNEMENTS) do has[a.code] = Sheet.Has(a) or nil end
-	return Sheet.Encode({ has = has, locks = Sheet.ReadLockouts() })
+	local quests = ns.QuestBuddies and ns.QuestBuddies.ForSheet() or nil
+	local wish = ns.Wishlist and ns.Wishlist.Mine() or nil
+	return Sheet.Encode({ has = has, locks = Sheet.ReadLockouts(), quests = quests, wish = wish })
 end
 
 -- Share this character's sheet (only when it changed).
@@ -142,6 +163,18 @@ end
 ---------------------------------------------------------------------------
 -- The guild's sheets
 ---------------------------------------------------------------------------
+-- Every guildmate's sheet, decoded once per change of the shared data (quest buddies and
+-- wishlists look things up on every tooltip). { [character] = sheet }. Don't change it.
+local decoded, decodedGen
+function Sheet.All()
+	if decoded and decodedGen == ns.Sync.gen then return decoded end
+	decoded, decodedGen = {}, ns.Sync.gen
+	for who, data in ns.Sync.Each("sheet") do
+		decoded[who] = Sheet.Decode(data, 0)
+	end
+	return decoded
+end
+
 -- One row per guildmate who shares a sheet: online first, then highest level, then by name.
 -- opts.online: only those online now.
 function Sheet.Rows(opts)
@@ -152,7 +185,7 @@ function Sheet.Rows(opts)
 		local s = m and Sheet.Decode(data, now)
 		if s and (not opts.online or m.online) then
 			rows[#rows + 1] = { full = who, name = ns.Roster.DisplayName(who), classFile = m.classFile,
-				level = m.level or 0, online = m.online, has = s.has, locks = s.locks }
+				level = m.level or 0, online = m.online, has = s.has, locks = s.locks, quests = s.quests, wish = s.wish }
 		end
 	end
 	table.sort(rows, function(a, b)
@@ -187,6 +220,8 @@ end
 
 pcall(ns.On, "UPDATE_INSTANCE_INFO", shareSoon)
 pcall(ns.On, "QUEST_TURNED_IN", shareSoon)
+pcall(ns.On, "QUEST_ACCEPTED", shareSoon)
+pcall(ns.On, "QUEST_REMOVED", shareSoon)
 pcall(ns.On, "BAG_UPDATE_DELAYED", bagsSoon)
 -- A boss kill saves the raid: look again a moment later.
 for _, ev in ipairs({ "BOSS_KILL", "ENCOUNTER_END" }) do

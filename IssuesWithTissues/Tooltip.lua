@@ -45,17 +45,28 @@ function Tip.IsCraftable(itemID, itemName)
 	return taught ~= nil and byName[taught] == true
 end
 
--- Adds the line to a tooltip showing an item, once per item shown.
+-- Adds the lines to a tooltip showing an item, once per item shown: "Guild craftable", and
+-- who in the guild has it on their wishlist (Wishlist.lua).
 function Tip.Add(tooltip)
-	if not ns.db or ns.db.settings.tooltipCraftable == false or not tooltip or not tooltip.GetItem then return end
+	if not ns.db or not tooltip or not tooltip.GetItem then return end
+	local craftable = ns.db.settings.tooltipCraftable ~= false
+	local wishes = ns.db.settings.tooltipWishlist ~= false and ns.Wishlist ~= nil
+	if not craftable and not wishes then return end
 	local name, link = tooltip:GetItem()
+	link = ns.Readable(link)
+	name = ns.Readable(name)
 	local id = link and tonumber(link:match("item:(%d+)"))
 	if not id and not name then return end
 	if tooltip.iwtShown == (link or name) then return end
-	if Tip.IsCraftable(id, name) then
-		tooltip.iwtShown = link or name
+	local added = false
+	if craftable and Tip.IsCraftable(id, name) then
 		tooltip:AddLine(Tip.TEXT, Tip.COLOR[1], Tip.COLOR[2], Tip.COLOR[3])
-		if tooltip.Show then tooltip:Show() end -- resize to fit the new line
+		added = true
+	end
+	if wishes and id and ns.Wishlist.AddTooltipLines(tooltip, id) then added = true end
+	if added then
+		tooltip.iwtShown = link or name
+		if tooltip.Show then tooltip:Show() end -- resize to fit the new lines
 	end
 end
 

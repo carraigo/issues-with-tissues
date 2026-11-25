@@ -16,6 +16,7 @@ globals = {
 -- The game's API, as far as the addon uses it.
 read_globals = {
 	"issecretvalue", "UnitIsAFK",
+	"GetQuestLogTitle", "GetNumQuestLogEntries", "GetQuestTagInfo", "GetRealZoneText", "UnitLevel", "QUESTS_DISPLAYED", "QuestLog_Update",
 	"GetBindingAction", "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
 	"ERR_GUILD_JOIN_S", "IsInInstance", "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2", "TooltipDataProcessor",
 	"CanGuildDemote", "CanGuildPromote", "CanGuildRemove", "GuildDemote", "GuildPromote",

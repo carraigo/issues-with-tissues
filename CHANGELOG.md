@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+
+**Features**
+- **Quest buddies (Home > Quest buddies):** your elite, dungeon and raid quests that guildmates are also on, with who (online first, then in your zone, then nearest your level). Click to whisper, right-click to invite everyone online. "By place" lists the dungeons and zones where online guildmates have group quests. Quests guildmates share get a green "2 guild" beside them in the quest log, and the guildmates are listed in the quest's tooltip and on quest links. Only group quests are shared, by id (names never travel), in the character sheet. Setting: "Share my group quests".
+- **Wishlists (Crafting > Wishlists):** add items you'd like by shift-clicking them into the box, or with `/iwt wish` (the same again takes one off). The page lists every wish in the guild with who wants it and who can make it; item tooltips say "Wanted by 2 guildmates: ...". Up to 30 items each, shared in the character sheet. Setting: "Guildmates' wishlists on item tooltips".
+- **Guild news page (Home > Guild news):** the last month of joins, leavers, level 60s and promotions, with filters and a name search. Home shows the three newest in short ("Bo Finch hit 60"); click them for the page.
+
+**Functionality**
+- The character sheet has two more fields (group quests and wishlist), left off when empty. 1.3 clients read the sheet as before.
+
 ## 1.3.4
 
 **Performance**

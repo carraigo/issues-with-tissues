@@ -916,7 +916,7 @@ test("roster tab shows in the window before Settings", function()
 		for j, p in ipairs(t.pages) do pages[j] = p.title end
 		order[i] = t.title .. "(" .. table.concat(pages, "|") .. ")"
 	end
-	eq(table.concat(order, ","), "Home(Home),Chat(Chat),Members(Roster|Raid|Officers),Crafting(Crafters),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
+	eq(table.concat(order, ","), "Home(Home|Quest buddies|Guild news),Chat(Chat),Members(Roster|Raid|Officers),Crafting(Crafters|Wishlists),Guild life(Polls|Donations|Loot notes)", "Guild life waits for pages")
 	c.ns.HandleSlash("roster")
 	eq(c.ns.RosterTab.panel:IsShown(), true)
 	c.ns.RosterTab.Refresh() -- draws the rows
@@ -3032,6 +3032,137 @@ test("online and offline lines can be left out of the Chat page, and come back",
 	for _, e in ipairs(Chat.View("guild")) do if Chat.Shown(e) then shown = shown + 1 end end
 	eq(shown, 3, "kept while hidden")
 	eq(#c.env.IwTDB.errors, 0)
+end)
+
+-- A quest log for a client: { { heading }, { id, title, level, suggestedGroup, tag }, ... };
+-- a heading with collapsed = true hides the quests after it.
+local function QuestLog(c, log)
+	c.questLog = log
+	c.env.GetNumQuestLogEntries = function() local n = 0 for _, e in ipairs(c.questLog) do if not e.hidden then n = n + 1 end end return n end
+	c.env.GetQuestLogTitle = function(i)
+		local n = 0
+		for _, e in ipairs(c.questLog) do
+			if not e.hidden then
+				n = n + 1
+				if n == i then
+					if e.heading then return e.heading, 0, nil, true, e.collapsed end
+					return e[2], e[3], e[4], false, false, false, 0, e[1]
+				end
+			end
+		end
+	end
+	c.env.GetQuestTagInfo = function(id)
+		for _, e in ipairs(c.questLog) do if e[1] == id and e[5] then return 1, e[5] end end
+	end
+end
+
+test("quest buddies: group quests go in the sheet, guildmates on the same ones find each other", function()
+	local g = Guild2()
+	local mem, gm = W.NewClient(base, "Mem", g), W.NewClient(base, "Gm", g)
+	QuestLog(mem, { { heading = "Duskwood" }, { 228, "Mor'Ladim", 35, 0, "Elite" }, { 57, "The Night Watch", 30, 0 },
+		{ heading = "Razorfen Downs" }, { 3525, "Bring the End", 40, 5, "Dungeon" } })
+	QuestLog(gm, { { heading = "Duskwood" }, { 228, "Mor'Ladim", 35, 0, "Elite" }, { 99, "Boars", 10, 0 } })
+	local mine = mem.ns.QuestBuddies.ReadLog()
+	eq(#mine, 2, "solo quests left out")
+	eq(mine[1].where, "Duskwood"); eq(mine[2].tag, "Dungeon")
+	assert(mem.ns.Sheet.Share()); assert(gm.ns.Sheet.Share())
+	eq(gm.ns.Sync.Get("sheet", "Mem"), ";;Duskwood~6c,Razorfen Downs~2px")
+	local Q = gm.ns.QuestBuddies
+	local rows = Q.Mine()
+	eq(#rows, 1); eq(rows[1].title, "Mor'Ladim"); eq(rows[1].buddies[1].name, "Mem")
+	eq(#mem.ns.QuestBuddies.Mine(), 1, "and the other way round")
+	-- quest tooltips and links
+	local tip = W.Frame(); tip.lines = {}
+	tip.AddLine = function(self, text) table.insert(self.lines, text) end
+	Q.AddTooltipLines(tip, 228)
+	eq(tip.lines[1], "Guildmates on this quest:"); assert(tip.lines[2]:find("Mem (30)", 1, true), tip.lines[2])
+	-- by place: online guildmates' quests
+	local places = Q.ByPlace()
+	eq(#places, 2); eq(places[1].count, 1); eq(places[1].quests, 1)
+	-- a collapsed heading keeps what was under it
+	mem.questLog[1].collapsed = true; mem.questLog[2].hidden = true; mem.questLog[3].hidden = true
+	eq(#mem.ns.QuestBuddies.ReadLog(), 2)
+	-- sharing off: the quests leave the sheet
+	mem.ns.Settings.Set("shareQuests", false)
+	eq(gm.ns.Sync.Get("sheet", "Mem"), ";")
+	eq(#Q.Mine(), 0)
+	-- the page opens in both views
+	gm.ns.UI.Open("Quest buddies")
+	gm.ns.QuestBuddies.list.state.filter = "place"; gm.ns.QuestBuddies.Refresh()
+	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("character sheet: quests and wishlist fields round-trip, and a 1.3 client still reads the rest", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local S = c.ns.Sheet
+	local data = S.Encode({ has = { mc = true }, locks = { { name = "Molten Core", resetAt = 1795000200, done = 7, total = 10 } },
+		quests = { { where = "Razorfen: Downs", ids = { 3636, 3525 } } }, wish = { 18832, 12640 } })
+	eq(data, "mc;Molten Core:1795000200:7:10;Razorfen Downs~2px.33;9r4.4s0")
+	local s = S.Decode(data, 0)
+	eq(s.quests[1].where, "Razorfen Downs"); eq(s.quests[1].ids[2], 3636); eq(s.wish[1], 12640); eq(s.wish[2], 18832)
+	eq(S.Encode({ has = {}, locks = {}, wish = { 5 } }), ";;;5", "a wishlist without quests")
+	-- how 1.3.x decoded a sheet: the extra fields fold into the lockouts, where nothing matches
+	local codes, locks = c.ns.Record.Fields(data, 2)
+	local n = 0
+	for name in locks:gmatch("([^:/]+):(%d+):(%d+):(%d+)") do n = n + 1; eq(name, "Molten Core") end
+	eq(codes, "mc"); eq(n, 1)
+end)
+
+test("wishlists: add by link, shared in the sheet, shown to crafters and on tooltips", function()
+	local g = Guild2()
+	local mem, gm = W.NewClient(base, "Mem", g), W.NewClient(base, "Gm", g)
+	W.itemNames[12640] = "Lionheart Helm"
+	local Wl = mem.ns.Wishlist
+	assert(Wl.Add("|cffa335ee|Hitem:12640::::::::60:::::|h[Lionheart Helm]|h|r"))
+	eq(select(2, Wl.Add(12640)), "Already on your wishlist.")
+	eq(Wl.Add("not an item"), false)
+	assert(mem.ns.Sheet.Share())
+	eq(gm.ns.Sheet.Of("Mem").wish[1], 12640)
+	-- Gm can make it
+	gm.ns.Sync.Set("recipes", "Gm#Blacksmithing", gm.ns.Professions.EncodeRecipes({ { item = 12640, spell = 0, name = "Lionheart Helm" } }))
+	local G = gm.ns.Wishlist
+	eq(G.WantedBy(12640)[1], "Mem")
+	eq(G.Crafters(12640)[1], "Gm")
+	local rows = G.Rows()
+	eq(#rows, 1); eq(rows[1].name, "Lionheart Helm"); eq(rows[1].craftable, true); eq(rows[1].mine, false)
+	-- the item tooltip
+	local tip = W.Frame(); tip.lines = {}
+	tip.AddLine = function(self, text) table.insert(self.lines, text) end
+	tip.GetItem = function() return "Lionheart Helm", "|Hitem:12640|h[Lionheart Helm]|h" end
+	gm.ns.Tooltip.Add(tip)
+	eq(tip.lines[1], "Guild craftable"); eq(tip.lines[2], "Wanted by 1 guildmate: Mem")
+	-- the page, and the command
+	gm.ns.UI.Open("Wishlists")
+	mem.env.SlashCmdList.ISSUESWITHTISSUES("wish 12640")
+	eq(Wl.Has(12640), false, "the command takes it off again")
+	gm.ns.Sync.gen = gm.ns.Sync.gen + 1
+	mem.ns.Sheet.Share()
+	eq(#gm.ns.Wishlist.WantedBy(12640), 0)
+	for i = 1, Wl.MAX do Wl.Add(1000 + i) end
+	eq(Wl.Add(5000), false, "full")
+	eq(#mem.env.IwTDB.errors, 0); eq(#gm.env.IwTDB.errors, 0)
+end)
+
+test("guild news: short lines on Home, a month on the Guild news page", function()
+	local g = Guild2()
+	local gm = W.NewClient(base, "Gm", g)
+	local N = gm.ns.News
+	table.insert(g.members, { "Newbie", 4, true, 0, 5 })
+	g.members[4][5] = 60
+	gm.env.__fire("GUILD_ROSTER_UPDATE")
+	local lines = N.Lines()
+	table.sort(lines)
+	eq(table.concat(lines, "|"), "Mem hit 60|Newbie joined")
+	gm.ns.UI.Open("Guild news")
+	N.Refresh()
+	eq(#N.list.all, 2)
+	W.now = W.now + 10 * 86400
+	eq(#N.List(), 0, "Home: this week only")
+	eq(#N.List(N.KEEP), 2, "the page: a month")
+	N.Refresh()
+	eq(#N.list.all, 2)
+	assert(N.When(W.now - 3600, W.now):find("Today", 1, true) or N.When(W.now - 3600, W.now):find("Yesterday", 1, true))
+	eq(#gm.env.IwTDB.errors, 0)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

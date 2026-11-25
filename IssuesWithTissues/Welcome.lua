@@ -10,6 +10,11 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.4.0", lines = {
+		"Quest buddies (Home): see which guildmates are on the same elite and dungeon quests as you, and invite them in a click.",
+		"Wishlists (Crafting): shift-click items you'd like. Crafters see who wants what, and item tooltips show it too.",
+		"Guild news has its own page under Home, with the last month and filters.",
+	} },
 	{ version = "1.3.4", lines = {
 		"Chat can hide \"has come online\" and \"gone offline\" lines: see Settings.",
 		"Searching waits until you pause typing, so long lists don't stutter with every letter.",
