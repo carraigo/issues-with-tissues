@@ -13,6 +13,7 @@ local MEMBERS, CRAFTERS, RECIPES = 500, 200, 60
 local LIMITS = { -- ms per run, on LuaJIT (about 4 times what a GitHub runner takes; the game's Lua is slower)
 	["roster rows (500 members)"] = 20,
 	["roster redraw"] = 25,
+	["roster scan (500 members)"] = 10,
 	["crafters search"] = 40,
 	["crafters by profession"] = 20,
 	["chat view (300 + 300 lines)"] = 10,
@@ -77,6 +78,7 @@ local results = {}
 gm.ns.UI.Open("Raid")
 results["raid page (500 sheets)"] = Time(20, function() gm.ns.RaidTab.Refresh() end)
 results["sheet read and compare"] = Time(200, function() gm.ns.Sheet.Share() end)
+results["roster scan (500 members)"] = Time(50, function() gm.ns.Roster.Scan() end)
 results["roster rows (500 members)"] = Time(20, function() gm.ns.RosterTab.Rows() end)
 gm.ns.UI.Open("Roster")
 results["roster redraw"] = Time(20, function() gm.ns.RosterTab.Refresh(true) end)

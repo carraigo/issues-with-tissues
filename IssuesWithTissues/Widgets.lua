@@ -198,12 +198,32 @@ function UI.CreateInput(panel, width, hint)
 	end
 	box:SetScript("OnEditFocusGained", Update)
 	box:SetScript("OnEditFocusLost", Update)
+	-- A search box (box.searchDelay, set by UI.SetSearch) filters once typing pauses, not on
+	-- every letter: a long list is searched once per word instead of once per keystroke.
+	box.typing, box.searchDelay = false, false
+	local function Changed(self, user)
+		self.typing = false
+		if self.onChange then self.onChange(self:GetText() or "", user) end
+	end
+	box.FlushTyping = function(self) if self.typing then Changed(self, true) end end
 	box:SetScript("OnTextChanged", function(self, user)
 		Update()
-		if self.onChange then self.onChange(self:GetText() or "", user) end
+		if not self.onChange then return end
+		if user and self.searchDelay and C_Timer and C_Timer.After then
+			local n = (self.typing or 0) + 1
+			self.typing = n
+			C_Timer.After(self.searchDelay, function()
+				if self.typing ~= n then return end
+				local ok, err = pcall(Changed, self, true)
+				if not ok and ns.ReportError then ns.ReportError(err) end
+			end)
+			return
+		end
+		Changed(self, user)
 	end)
 	box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 	box:SetScript("OnEnterPressed", function(self)
+		self:FlushTyping() -- Enter acts on everything typed, even within the pause
 		self:ClearFocus()
 		if self.onEnter then self.onEnter(self:GetText() or "") end
 	end)

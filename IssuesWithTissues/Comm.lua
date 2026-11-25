@@ -289,7 +289,7 @@ function Comm:OnLoad()
 	elseif RegisterAddonMessagePrefix then
 		RegisterAddonMessagePrefix(Comm.PREFIX)
 	end
-	if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(60, Comm.Sweep) end
+	ns.Every("commSweep", Comm.Sweep)
 end
 
 ns.On("CHAT_MSG_ADDON", function(_, prefix, packet, distribution, sender, ...)

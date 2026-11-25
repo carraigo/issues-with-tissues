@@ -141,14 +141,20 @@ end
 -- seconds, so usually one guildmate answers. Having answered in the last ANSWER_RECENT seconds
 -- adds ANSWER_BACKOFF, so someone who hasn't answered lately (and whose answer takes a moment to
 -- arrive) gets there first and the work is shared out. We still answer if nobody with our
--- records does.
+-- records does. Being away (AFK) adds ANSWER_IDLE on top: a guildmate at the keyboard is
+-- playing anyway, so their game does the work and ours stays quiet.
 Sync.ANSWER_RECENT = 300
 Sync.ANSWER_BACKOFF = 5
+Sync.ANSWER_IDLE = 8
+function Sync.IsIdle()
+	return UnitIsAFK ~= nil and UnitIsAFK("player") and true or false
+end
 function Sync.AnswerDelay()
 	local wait = math.random() * Sync.ANSWER_DELAY_MAX
 	if Sync.lastAnswered and ns.Now() - Sync.lastAnswered < Sync.ANSWER_RECENT then
 		wait = wait + Sync.ANSWER_BACKOFF
 	end
+	if Sync.IsIdle() then wait = wait + Sync.ANSWER_IDLE end
 	return wait
 end
 

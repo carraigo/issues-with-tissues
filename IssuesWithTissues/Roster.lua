@@ -24,8 +24,10 @@ end
 
 -- Spelling only, no roster: "First Surname-Realm", "First-Surname", "First-Surname-Realm",
 -- "First-Realm", "First Surname", "First" -> "First Surname" / "First"
-function Roster.ParseName(raw)
-	if type(raw) ~= "string" or ns.IsSecret(raw) then return nil end
+-- Every roster scan and every addon message parses names, so results are remembered (names
+-- are few: the guild and whoever sends to it).
+local parsed, parsedCount = {}, 0
+local function Parse(raw)
 	raw = raw:match("^%s*(.-)%s*$")
 	if raw == "" then return nil end
 	local base, suffix = raw:match("^(.-)%-(.+)$")
@@ -34,6 +36,17 @@ function Roster.ParseName(raw)
 	local surname = suffix:match("^([^%-]+)%-") or suffix
 	if IsRealm(surname) then return base end
 	return base .. " " .. surname
+end
+function Roster.ParseName(raw)
+	raw = ns.Readable(raw)
+	if not raw then return nil end
+	local key = parsed[raw]
+	if key == nil then
+		if parsedCount >= 2000 then wipe(parsed) parsedCount = 0 end
+		key = Parse(raw) or false
+		parsed[raw], parsedCount = key, parsedCount + 1
+	end
+	return key or nil
 end
 
 function Roster.FirstName(name)
@@ -60,11 +73,10 @@ function ns.PlayerName()
 	return ns.FullName(UnitName("player"))
 end
 
-local function FindMe(guids)
+local function FindMe(byGuid)
 	local first = UnitName and UnitName("player")
 	if not first then return end
-	local guid = UnitGUID and UnitGUID("player")
-	if guid and guids[guid] then return guids[guid], "guid" end
+	if byGuid then return byGuid, "guid" end
 	if UnitFullName then
 		local f, second = UnitFullName("player")
 		if f == first and type(second) == "string" and second ~= "" and not IsRealm(second) then
@@ -86,71 +98,88 @@ function Roster.OfflineDays(i, isOnline)
 	return (y or 0) * 365 + (m or 0) * 30 + (d or 0)
 end
 
+-- The game sends roster updates often (every few seconds while the guild window is open),
+-- usually with nothing new, so a scan is the addon's busiest job. It updates the member tables
+-- in place and spots changes while reading, instead of building a fresh copy and comparing.
+-- Pages hear only about what changed: ROSTER_UPDATED for who is in the guild, online, rank,
+-- level or last seen; ROSTER_DETAILS for zones and notes only.
+local scanId, seenIn = 0, {}
 function Roster.Scan()
 	if not IsInGuild or not IsInGuild() then
 		wipe(Roster.members)
+		wipe(seenIn)
 		Roster.count, Roster.online = 0, 0
 		return
 	end
 	local n = GetNumGuildMembers() or 0
 	if n == 0 then return end -- roster not loaded yet; keep the old copy
-	local fresh, online, byFirst, guids = {}, 0, {}, {}
+	scanId = scanId + 1
+	local members, what, online, seen, known = Roster.members, nil, 0, 0, 0
+	local myGuid, byGuid = UnitGUID and UnitGUID("player"), nil
+	for _ in pairs(members) do known = known + 1 end
 	for i = 1, n do
 		local name, rank, rankIndex, level, classLocal, zone, note, officerNote, isOnline, _, classFile,
 			_, _, _, _, _, guid = GetGuildRosterInfo(i)
 		local full = Roster.ParseName(name)
-		if full then
-			local first = full:match("^(%S+)")
-			byFirst[first] = byFirst[first] or {}
-			table.insert(byFirst[first], full)
-			if guid then guids[guid] = full end
-			fresh[full] = {
-				rankIndex = rankIndex, rank = rank, level = level, class = classLocal, classFile = classFile,
-				zone = zone, online = isOnline and true or false, note = note,
-				officerNote = officerNote, -- empty unless this rank may see officer notes
-				offlineDays = Roster.OfflineDays(i, isOnline), rosterName = name,
-			}
+		if full and seenIn[full] ~= scanId then
+			seenIn[full] = scanId
+			isOnline = isOnline and true or false
+			local days = Roster.OfflineDays(i, isOnline)
+			local m = members[full]
+			if not m then
+				m = {}
+				members[full] = m
+				what = "members"
+			else
+				seen = seen + 1
+				if what ~= "members" then
+					if m.rankIndex ~= rankIndex or m.rank ~= rank or m.level ~= level or m.classFile ~= classFile
+						or m.online ~= isOnline or m.offlineDays ~= days then
+						what = "members"
+					elseif not what and (m.zone ~= zone or m.note ~= note or m.officerNote ~= officerNote) then
+						what = "details"
+					end
+				end
+			end
+			m.rankIndex, m.rank, m.level, m.class, m.classFile = rankIndex, rank, level, classLocal, classFile
+			m.zone, m.online, m.note, m.rosterName = zone, isOnline, note, name
+			m.officerNote = officerNote -- empty unless this rank may see officer notes
+			m.offlineDays = days
+			if guid and guid == myGuid then byGuid = full end
 			if isOnline then online = online + 1 end
+		end
+	end
+	if seen < known then -- someone left
+		what = "members"
+		for key in pairs(members) do
+			if seenIn[key] ~= scanId then members[key], seenIn[key] = nil, nil end
 		end
 	end
 	if n ~= Roster.count or online ~= Roster.online then
 		ns.Trace("roster", "Roster: %d members, %d online", n, online)
 	end
-	local what = Roster.Changes(Roster.members, fresh)
-	Roster.members, Roster.count, Roster.online, Roster.byFirst = fresh, n, online, byFirst
-	local me, how = FindMe(guids)
+	Roster.count, Roster.online = n, online
+	if what == "members" then -- names only change when members do
+		local byFirst = {}
+		for key in pairs(members) do
+			local first = key:match("^(%S+)")
+			local list = byFirst[first]
+			if not list then list = {} byFirst[first] = list end
+			list[#list + 1] = key
+		end
+		for _, list in pairs(byFirst) do table.sort(list) end
+		Roster.byFirst = byFirst
+	end
+	local me, how = FindMe(byGuid)
 	local meChanged = me ~= Roster.me
 	Roster.me, Roster.meHow = me, how
 	if me and ns.char then ns.char.me = me end
 	Roster.updated = ns.Now()
-	-- The game sends roster updates often (every few seconds while the guild window is open),
-	-- usually with nothing new. Pages hear only about what changed: ROSTER_UPDATED for who is
-	-- in the guild, online, rank, level or last seen; ROSTER_DETAILS for zones and notes only.
 	if what == "members" or meChanged then
 		ns.Send("ROSTER_UPDATED")
 	elseif what == "details" then
 		ns.Send("ROSTER_DETAILS")
 	end
-end
-
--- "members" when anyone joined, left, or changed something pages list (online, rank, level,
--- class, last seen); "details" when only zones or notes changed; nil when nothing did.
-local CORE = { "rankIndex", "rank", "level", "classFile", "online", "offlineDays" }
-local DETAILS = { "zone", "note", "officerNote" }
-function Roster.Changes(old, fresh)
-	local seen, details = 0, false
-	for key, m in pairs(fresh) do
-		local o = old[key]
-		if not o then return "members" end
-		seen = seen + 1
-		for _, f in ipairs(CORE) do if o[f] ~= m[f] then return "members" end end
-		if not details then
-			for _, f in ipairs(DETAILS) do if o[f] ~= m[f] then details = true break end end
-		end
-	end
-	for _ in pairs(old) do seen = seen - 1 end
-	if seen ~= 0 then return "members" end -- someone left
-	return details and "details" or nil
 end
 
 -- A copy of the roster in the saved data, written on logout and /reload, for tools outside

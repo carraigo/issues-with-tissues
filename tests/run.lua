@@ -458,13 +458,22 @@ test("roster: pages hear only real changes", function()
 	g.members[6] = nil -- Gone leaves
 	c.env.__fire("GUILD_ROSTER_UPDATE")
 	eq(updates, 2)
-	local R = c.ns.Roster
-	local a = { X = { level = 60, online = true, zone = "Orgrimmar" } }
-	eq(R.Changes(a, { X = { level = 60, online = true, zone = "Orgrimmar" } }), nil)
-	eq(R.Changes(a, { X = { level = 60, online = true, zone = "Ironforge" } }), "details")
-	eq(R.Changes(a, { X = { level = 60, online = false, zone = "Ironforge" } }), "members")
-	eq(R.Changes(a, {}), "members")
-	eq(R.Changes({}, a), "members")
+	eq(c.ns.Roster.Get("Gone"), nil, "the leaver is gone")
+	-- a note changing is a detail, not a member change
+	local offi = c.ns.Roster.Get("Offi")
+	g.members[2][6] = "tank"
+	c.env.__fire("GUILD_ROSTER_UPDATE")
+	eq(updates, 2); eq(details, 1)
+	eq(c.ns.Roster.Get("Offi"), offi, "updated in place, not rebuilt")
+	eq(offi.note, "tank")
+	-- someone leaves while someone else joins: the count stays the same, both are seen
+	g.members[5] = { "Fresh", 4, true }
+	c.env.__fire("GUILD_ROSTER_UPDATE")
+	eq(updates, 3)
+	eq(c.ns.Roster.Get("Memalt"), nil); assert(c.ns.Roster.Get("Fresh"))
+	eq(c.ns.Roster.count, 5)
+	eq(c.ns.Roster.SameFirstName("Fresh")[1], "Fresh")
+	eq(c.ns.PlayerName(), "Mem")
 end)
 
 -- Timing tests: messages go through the paced queue and timers run in order (W.Run).
@@ -2945,6 +2954,84 @@ test("logout saves this session's stats for the site's performance page: numbers
 	-- no names anywhere in it
 	local text = late.ns.Report.Json(st)
 	assert(not text:find("Mem") and not text:find("Offi"), text)
+end)
+
+test("search boxes filter once typing pauses; Enter acts on all of it at once", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	c.ns.UI.Open("Crafting")
+	local box = c.ns.CraftersTab.searchBox
+	assert(box.searchDelay, "a search box")
+	local seen = {}
+	box.onChange = function(text) seen[#seen + 1] = text end
+	box.GetText = function(self) return self.text end
+	c.timers = {}
+	local typed = box.scripts.OnTextChanged
+	for _, t in ipairs({ "l", "li", "lin" }) do box.text = t; typed(box, true) end
+	eq(#seen, 0, "nothing while typing")
+	W.Run(1, { c })
+	eq(#seen, 1, "once after the pause"); eq(seen[1], "lin")
+	box.text = "linen"; typed(box, true)
+	box.scripts.OnEnterPressed(box)
+	eq(seen[2], "linen", "Enter doesn't wait")
+	W.Run(1, { c })
+	eq(#seen, 2, "and the pending one doesn't run again")
+	box.text = ""; typed(box, false) -- set by code, not typed: at once
+	eq(seen[3], "")
+end)
+
+test("chat redraws for its time labels only when one would change", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local Chat = c.ns.Chat
+	local now = W.now
+	eq(Chat.NextStampChange({}, now), nil, "no lines, nothing to redraw")
+	eq(Chat.NextStampChange({ { t = now - 10 } }, now), now + 50, "just now -> 1 min ago")
+	eq(Chat.NextStampChange({ { t = now - 130 }, { t = now - 10 } }, now), now + 50)
+	eq(Chat.NextStampChange({ { t = now - 179 } }, now), now + 1)
+	c.env.IwTDB.settings.relativeTimes = false
+	local soon = Chat.NextStampChange({ { t = now - 10 } }, now)
+	assert(soon and soon > now and soon <= now + 86400, "only at midnight, with clock times")
+	c.env.IwTDB.settings.relativeTimes = true
+	c.ns.UI.Open("Chat")
+	c.env.__fire("CHAT_MSG_GUILD", "hello", "Gm-Realm")
+	Chat.Redraw()
+	eq(Chat.stampsChangeAt, W.now + 60)
+end)
+
+test("an away (AFK) guildmate answers catch-ups later, and strings are read safely", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local S = c.ns.Sync
+	eq(S.IsIdle(), false)
+	assert(S.AnswerDelay() < S.ANSWER_DELAY_MAX)
+	c.env.UnitIsAFK = function(unit) return unit == "player" end
+	eq(S.IsIdle(), true)
+	assert(S.AnswerDelay() >= S.ANSWER_IDLE)
+	assert(S.ANSWER_DELAY_MAX + S.ANSWER_BACKOFF + S.ANSWER_IDLE < S.ROUND_WAIT, "still answers within a round")
+	eq(c.ns.Readable("x"), "x"); eq(c.ns.Readable(5), nil); eq(c.ns.Readable(nil), nil)
+	eq(c.ns.Roster.ParseName("Sara-Exe-Realm"), "Sara Exe")
+	eq(c.ns.Roster.ParseName("Sara-Exe-Realm"), "Sara Exe", "remembered")
+	eq(c.ns.Roster.ParseName("  "), nil); eq(c.ns.Roster.ParseName("  "), nil)
+end)
+
+test("online and offline lines can be left out of the Chat page, and come back", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local Chat = c.ns.Chat
+	c.ns.UI.Open("Chat")
+	c.env.__fire("CHAT_MSG_SYSTEM", "|Hplayer:Vet-Realm|h[Vet-Realm]|h has come online.")
+	c.env.__fire("CHAT_MSG_GUILD", "hello", "Gm-Realm")
+	local shown = 0
+	for _, e in ipairs(Chat.View("guild")) do if Chat.Shown(e) then shown = shown + 1 end end
+	eq(shown, 2)
+	c.ns.Settings.Set("chatOnlineLines", false)
+	shown = 0
+	for _, e in ipairs(Chat.View("guild")) do if Chat.Shown(e) then shown = shown + 1 end end
+	eq(shown, 1, "only what was said")
+	Chat.Redraw()
+	c.env.__fire("CHAT_MSG_SYSTEM", "Vet has gone offline.")
+	c.ns.Settings.Set("chatOnlineLines", true)
+	shown = 0
+	for _, e in ipairs(Chat.View("guild")) do if Chat.Shown(e) then shown = shown + 1 end end
+	eq(shown, 3, "kept while hidden")
+	eq(#c.env.IwTDB.errors, 0)
 end)
 
 print(string.format("%d passed, %d failed", passed, failed))

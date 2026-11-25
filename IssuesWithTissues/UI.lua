@@ -291,7 +291,10 @@ ns.On("PLAYER_REGEN_DISABLED", function() UI.OnCombat(true) end)
 ns.On("PLAYER_REGEN_ENABLED", function() UI.OnCombat(false) end)
 
 -- A page with a search box says so (UI.SetSearch(panel, box)): Ctrl+F jumps to it.
-function UI.SetSearch(panel, box) panel.searchBox = box end
+function UI.SetSearch(panel, box)
+	panel.searchBox = box
+	box.searchDelay = ns.TIMERS.search
+end
 
 function UI.FocusSearch()
 	local g = UI.tabs[UI.current or 0]
