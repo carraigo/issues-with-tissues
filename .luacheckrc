@@ -16,6 +16,7 @@ globals = {
 -- The game's API, as far as the addon uses it.
 read_globals = {
 	"issecretvalue", "UnitIsAFK",
+	"GetQuestLogTitle", "GetNumQuestLogEntries", "GetQuestTagInfo", "GetRealZoneText", "UnitLevel", "QUESTS_DISPLAYED", "QuestLog_Update",
 	"GetBindingAction", "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
 	"ERR_GUILD_JOIN_S", "IsInInstance", "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2", "TooltipDataProcessor",
 	"CanGuildDemote", "CanGuildPromote", "CanGuildRemove", "GuildDemote", "GuildPromote",
@@ -26,7 +27,7 @@ read_globals = {
 	"GetCraftItemLink", "GetCursorPosition", "GetGuildBankMoney", "GetGuildInfo", "GetGuildRosterInfo",
 	"GetGuildRosterLastOnline", "GetGuildRosterMOTD", "GetItemInfo", "GetLocale", "GetMinimapShape",
 	"GetNormalizedRealmName", "GetNumCrafts", "GetNumGuildMembers", "GetNumSkillLines", "GetNumTradeSkills",
-	"GetPVPLifetimeStats", "GetPlayerInfoByGUID", "GetProfessionInfo", "GetProfessions", "GetServerTime",
+	"GetPVPLifetimeStats", "GetPVPThisWeekStats", "C_DateAndTime", "IsAltKeyDown", "HandleModifiedItemClick", "GetPlayerInfoByGUID", "GetProfessionInfo", "GetProfessions", "GetServerTime",
 	"GetSkillLineInfo", "GetStatistic", "GetTime", "GetTradeSkillInfo", "GetTradeSkillItemLink", "GetTradeSkillLine",
 	"GuildControlGetNumRanks", "GuildControlGetRankName", "GuildRoster", "HideUIPanel", "ITEM_QUALITY_COLORS",
 	"InCombatLockdown", "InterfaceOptions_AddCategory", "InviteUnit", "IsControlKeyDown", "IsInGuild",

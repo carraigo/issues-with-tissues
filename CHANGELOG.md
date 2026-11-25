@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.4.0
+
+**Features**
+- **Quest buddies (new Quests tab):** your elite, dungeon and raid quests that guildmates are also on, with who (online first, then in your zone, then nearest your level). Click to whisper, right-click to invite everyone online. "By place" lists the dungeons and zones where online guildmates have group quests. Quests guildmates share get a green "2 guild" beside them in the quest log, and the guildmates are listed in the quest's tooltip and on quest links. Only group quests are shared, by id (names never travel), in the character sheet. Setting: "Share my group quests".
+- **Wishlists (Crafting > Wishlists):** alt-click any item (bags, chat links, loot) to wish for it, and again to take it off, or shift-click it into the page's box, or use `/iwt wish`. The page lists every wish in the guild with who wants it and who can make it; item tooltips say "Wanted by 2 guildmates: ...". When a wished item reaches your bags it comes off the list by itself, and the guild news says so ("Mem got Lionheart Helm!"). Up to 30 items each, shared in the character sheet. Settings: "Alt-click an item to wish for it", "Guildmates' wishlists on item tooltips".
+- **Tissue Issuer of the Week:** a weekly race for the most honorable kills, from one weekly reset to the next. Home shows this week's leader under Elite Soldier, and when the week ends the guild news says who won ("Bo Finch won the week with 212 kills"). Counted by the game where it can, else from your total at your first login of the week.
+- **Guild news page (Home > Guild news):** the last month of joins, leavers, level 60s, promotions, weekly winners and wishes that came true, with filters and a name search. Home shows the three newest in short ("Bo Finch hit 60"); click them for the page.
+
+**Performance**
+- **Smaller saved chat:** the game's server already keeps recent guild and officer chat, so messages are no longer saved between sessions when it has them. Only the last 100 online/offline and message of the day lines are kept. Saved chat was the biggest thing in the saved data. When the server gives no history for a channel, everything is saved as before.
+
+**UX**
+- **Home fits the window:** Home's cards stack themselves one under another, and the page scrolls if they ever run longer than the window.
+
+**Refactoring**
+- **`UI.Stack` and `UI.ScrollPage`:** a column of cards that places each row under the last, and a page that scrolls with the mouse wheel. Home is built with them, so a taller card no longer needs every card below it moved by hand.
+- **Character sheet:** three more fields (group quests, wishlist, and wishes that came true in the last week), left off when empty. 1.3 clients read the sheet as before.
+- **Kills data version 2:** the kills record gains the week and this week's kills (`hk;mobs;s;week;gain`). 1.3 clients keep the last version 1 copy they had; 1.4 upgrades version 1 records as they arrive.
+
 ## 1.3.4
 
 **Performance**

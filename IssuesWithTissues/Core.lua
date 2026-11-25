@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.3.4"
+ns.VERSION = "1.4.0"
 
 -- Every setting, declared once: its default and how the Settings page shows it. The page builds
 -- itself from this list (Settings.lua); a feature reacts to a change with
@@ -22,6 +22,9 @@ ns.SETTINGS = {
 	{ key = "windowSounds", default = true, kind = "toggle", label = "Sounds when the window opens and closes" },
 	{ key = "hideInCombat", default = false, kind = "toggle", label = "Hide the window in combat (back after)" },
 	{ key = "tooltipCraftable", default = true, kind = "toggle", label = "\"Guild craftable\" on item tooltips" },
+	{ key = "tooltipWishlist", default = true, kind = "toggle", label = "Guildmates' wishlists on item tooltips" },
+	{ key = "altClickWish", default = true, kind = "toggle", label = "Alt-click an item to wish for it" },
+	{ key = "shareQuests", default = true, kind = "toggle", label = "Share my group quests (quest buddies)" },
 	{ key = "chatHistory", default = true, kind = "toggle", label = "Keep guild chat between sessions (this PC)" },
 	{ key = "clock24", default = true, kind = "toggle", label = "24-hour times in chat (off: 2:05pm)" },
 	{ key = "relativeTimes", default = true, kind = "toggle", label = "\"5 min ago\" times in chat for the last hour" },

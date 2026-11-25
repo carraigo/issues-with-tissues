@@ -44,6 +44,48 @@ end
 
 -- A card: a slightly lighter box to group things on a page. Drawn with the page's own
 -- background textures, so the page's text stays on top (a child frame would cover it).
+-- Cards stacked down a page: each Row is a line of cards (one frame per card, the card drawn on
+-- it), placed under the row before with `gap` between. Children go on the card frames, so a
+-- card's contents move with it. The parent's height follows, for UI.ScrollPage.
+--   local stack = UI.Stack(content, 616, 8)
+--   local left, right = stack:Row(150, { 300, 308 })
+function UI.Stack(parent, width, gap)
+	local s = { y = 0, width = width, gap = gap or 8 }
+	function s:Row(height, widths)
+		local frames, x = {}, 0
+		for i, w in ipairs(widths or { self.width }) do
+			local f = CreateFrame("Frame", nil, parent)
+			f:SetPoint("TOPLEFT", x, -self.y)
+			f:SetSize(w, height)
+			UI.Card(f, 0, 0, w, height)
+			frames[i] = f
+			x = x + w + self.gap
+		end
+		self.y = self.y + height + self.gap
+		if parent.SetHeight then parent:SetHeight(self.y) end
+		return unpack(frames)
+	end
+	return s
+end
+
+-- A page whose contents may be taller than the window: they scroll with the mouse wheel.
+-- Returns the frame to build on (616 wide; its height is set by what goes in it).
+function UI.ScrollPage(panel)
+	local scroll = CreateFrame("ScrollFrame", nil, panel)
+	scroll:SetAllPoints()
+	local content = CreateFrame("Frame", nil, scroll)
+	content:SetSize(616, 1)
+	if scroll.SetScrollChild then scroll:SetScrollChild(content) end
+	scroll:EnableMouseWheel(true)
+	scroll:SetScript("OnMouseWheel", function(self, delta)
+		local room = (tonumber(content:GetHeight()) or 0) - (tonumber(self:GetHeight()) or 0)
+		if room <= 0 then return end
+		local at = (tonumber(self:GetVerticalScroll()) or 0) - delta * 40
+		self:SetVerticalScroll(math.max(0, math.min(room, at)))
+	end)
+	return content, scroll
+end
+
 function UI.Card(parent, x, y, w, h)
 	local bg = UI.Fill(parent:CreateTexture(nil, "BACKGROUND"), C.card)
 	bg:SetPoint("TOPLEFT", x, y)

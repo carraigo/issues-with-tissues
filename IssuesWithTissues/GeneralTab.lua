@@ -62,6 +62,7 @@ function General.Facts()
 	f.guildCrafters, f.guildRecipes = c, recipes
 	f.kills = ns.Kills.Totals()
 	f.elite = ns.Kills.EliteSoldier()
+	f.weekLeader = ns.Kills.WeekLeader()
 	-- What's on (Guild life)
 	f.openPolls, f.firstPoll = ns.Polls.OpenCount()
 	f.donations = ns.Donations.Progress()
@@ -123,6 +124,8 @@ function General.Refresh()
 		string.format("|cff999999(added up from %d characters using the addon)|r", f.kills.chars),
 		f.elite and string.format("|cffffd100Elite Soldier: %s|r |cff999999(%s)|r", ns.Roster.DisplayName(f.elite.who), ns.Kills.Format(f.elite.hk))
 			or "|cffffd100Elite Soldier:|r |cff999999nobody yet|r",
+		f.weekLeader and string.format("|cffffd100Tissue Issuer of the Week: %s|r |cff999999(%s)|r", ns.Roster.DisplayName(f.weekLeader.who), ns.Kills.Format(f.weekLeader.gain))
+			or "|cffffd100Tissue Issuer of the Week:|r |cff999999nobody yet|r",
 	}, "\n"))
 
 	local lines = { f.me .. (f.rank and ("  |cff999999" .. f.rank .. "|r") or "") }
@@ -170,44 +173,46 @@ end
 
 local function Build(panel)
 	General.panel = panel
-	-- Three cards, as in the layout mock-up.
-	ns.UI.Card(panel, 0, 0, 300, 146)
-	ns.UI.Card(panel, 308, 0, 308, 146)
-	ns.UI.Card(panel, 0, -156, 616, 170)
+	-- The cards stack down the page (UI.Stack) inside a scroll frame: a page taller than the
+	-- window scrolls instead of running under the tab bar.
+	local content = ns.UI.ScrollPage(panel)
+	local stack = ns.UI.Stack(content, 616, 8)
+	local guildCard, meCard = stack:Row(172, { 300, 308 })
+	local profCard = stack:Row(122, { 616 })
+	local onCard = stack:Row(100, { 616 })
 
-	texts.guildTitle = Section(panel, 12, -10, "Issues with Tissues")
-	texts.guild = Body(panel, 12, -30, 280)
+	texts.guildTitle = Section(guildCard, 12, -10, "Issues with Tissues")
+	texts.guild = Body(guildCard, 12, -30, 280)
 
-	Section(panel, 320, -10, "This character")
-	texts.me = Body(panel, 320, -30, 284)
-	mainButton = ns.UI.Button(panel)
+	Section(meCard, 12, -10, "This character")
+	texts.me = Body(meCard, 12, -30, 284)
+	mainButton = ns.UI.Button(meCard)
 	mainButton:SetSize(140, 24)
-	mainButton:SetPoint("TOPLEFT", 320, -108)
+	mainButton:SetPoint("TOPLEFT", 12, -108)
 	mainButton:SetScript("OnClick", function() ns.Alts.SetMain(); General.Refresh() end)
 
-	Section(panel, 12, -166, "Your professions")
-	texts.profs = Body(panel, 12, -186, 390)
-	scanButton = ns.UI.Button(panel, nil, nil, nil, "primary")
+	Section(profCard, 12, -10, "Your professions")
+	texts.profs = Body(profCard, 12, -30, 390)
+	scanButton = ns.UI.Button(profCard, nil, nil, nil, "primary")
 	scanButton:SetSize(180, 26)
-	scanButton:SetPoint("TOPLEFT", 420, -166)
+	scanButton:SetPoint("TOPLEFT", 420, -10)
 	scanButton:SetScript("OnClick", function() ns.Professions.Scan(); General.Refresh() end)
-	scanHint = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	scanHint:SetPoint("TOPLEFT", 420, -200)
+	scanHint = profCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	scanHint:SetPoint("TOPLEFT", 420, -44)
 	scanHint:SetWidth(184)
 	scanHint:SetJustifyH("LEFT")
 	scanHint:SetText(HINT)
 
 	-- What's on: open polls, the donation goal (Guild life tab) and this week's guild news.
-	ns.UI.Card(panel, 0, -334, 616, 100)
-	Section(panel, 12, -342, "What's on")
+	Section(onCard, 12, -8, "What's on")
 	local function Column(x, title, page)
-		local t = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		t:SetPoint("TOPLEFT", x, -362)
+		local t = onCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		t:SetPoint("TOPLEFT", x, -28)
 		t:SetText(title)
 		t:SetTextColor(0.65, 0.61, 0.54)
-		local body = Body(panel, x, -376, 188)
-		local open = CreateFrame("Button", nil, panel)
-		open:SetPoint("TOPLEFT", x - 4, -358)
+		local body = Body(onCard, x, -42, 188)
+		local open = CreateFrame("Button", nil, onCard)
+		open:SetPoint("TOPLEFT", x - 4, -24)
 		open:SetSize(198, 70)
 		if page then open:SetScript("OnClick", function() ns.UI.Open(page) end) end
 		local hl = ns.UI.Fill(open:CreateTexture(nil, "HIGHLIGHT"), ns.UI.COLORS.hover)
@@ -217,16 +222,20 @@ local function Build(panel)
 	texts.polls = Column(12, "Open polls", "Polls")
 	texts.donations = Column(216, "Donation goal", "Donations")
 	local newsArea
-	texts.news, newsArea = Column(420, "Guild news")
+	texts.news, newsArea = Column(420, "Guild news", "Guild news")
 	texts.news:SetFontObject("GameFontHighlightSmall") -- four short lines fit the card
 	texts.news:SetWordWrap(false)
-	-- Hover: the whole week.
+	-- Hover: the week in full; click: the Guild news page.
 	newsArea:SetScript("OnEnter", function(self)
-		local all = ns.News.Lines()
-		if #all <= General.NEWS_LINES then return end
+		local all = ns.News.List()
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:AddLine("Guild news this week")
-		for _, line in ipairs(all) do GameTooltip:AddLine(line, 1, 1, 1) end
+		for i, e in ipairs(all) do
+			if i > 12 then GameTooltip:AddLine("and " .. (#all - 12) .. " more", 0.6, 0.6, 0.6) break end
+			GameTooltip:AddLine(ns.News.Text(e), 1, 1, 1)
+		end
+		if #all == 0 then GameTooltip:AddLine("Nothing this week.", 0.6, 0.6, 0.6) end
+		GameTooltip:AddLine("Click for the last month", 0.5, 0.5, 0.5)
 		GameTooltip:Show()
 	end)
 	newsArea:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -234,7 +243,6 @@ local function Build(panel)
 	panel:SetScript("OnShow", General.Refresh)
 	General.Refresh()
 end
-
 ns.UI.AddPage("Home", "Home", Build)
 
 local Soon = ns.Coalesce(function() General.Refresh() end)

@@ -21,6 +21,9 @@ local LIMITS = { -- ms per run, on LuaJIT (about 4 times what a GitHub runner ta
 	["sync catch-up (whole guild)"] = 1000,
 	["raid page (500 sheets)"] = 20,
 	["sheet read and compare"] = 1,
+	["quest buddies (500 sheets)"] = 20,
+	["wishlist page (500 sheets)"] = 40,
+	["item tooltip (craftable + wishlist)"] = 0.5,
 }
 
 local clock = os.clock
@@ -53,7 +56,10 @@ for i = 2, MEMBERS do
 	local who = g.members[i][1]
 	local a, b = PROFS[i % 7 + 1], PROFS[(i + 3) % 7 + 1]
 	store.sheet.records[who] = { rev = now - i, by = who,
-		data = (i % 3 == 0 and "mc.ony.bwl.ubrs" or "mc") .. ";Molten Core:" .. (now + 86400) .. ":" .. (i % 10) .. ":10" }
+		data = (i % 3 == 0 and "mc.ony.bwl.ubrs" or "mc") .. ";Molten Core:" .. (now + 86400) .. ":" .. (i % 10) .. ":10"
+			-- a full quest log of group quests and a wishlist each
+			.. ";Razorfen Downs~" .. gm.ns.Record.Gaps({ 3500 + i % 40, 3600 + i % 30, 3700 }) .. ",Duskwood~" .. gm.ns.Record.Gaps({ 200 + i % 50, 228 })
+			.. ";" .. gm.ns.Record.Gaps({ 2000 + i % 60, 12640, 18000 + i % 200, 19000 + i % 100 }) }
 	store.profs.records[who] = { rev = now - i, by = who, data = a .. ":" .. (i % 300) .. ":300," .. b .. ":75:150" }
 	if i <= CRAFTERS + 1 then
 		local list = {}
@@ -77,6 +83,12 @@ Chat.server.guild = server
 local results = {}
 gm.ns.UI.Open("Raid")
 results["raid page (500 sheets)"] = Time(20, function() gm.ns.RaidTab.Refresh() end)
+results["quest buddies (500 sheets)"] = Time(20, function() gm.ns.Sync.gen = gm.ns.Sync.gen + 1; gm.ns.QuestBuddies.ByPlace(); gm.ns.QuestBuddies.On(228) end)
+results["wishlist page (500 sheets)"] = Time(10, function() gm.ns.Sync.gen = gm.ns.Sync.gen + 1; gm.ns.Wishlist.Rows() end)
+gm.ns.Wishlist.Rows()
+local tip = W.Frame()
+tip.GetItem = function() return "x", "|Hitem:12640|h" end
+results["item tooltip (craftable + wishlist)"] = Time(500, function() tip.iwtShown = nil; gm.ns.Tooltip.Add(tip) end)
 results["sheet read and compare"] = Time(200, function() gm.ns.Sheet.Share() end)
 results["roster scan (500 members)"] = Time(50, function() gm.ns.Roster.Scan() end)
 results["roster rows (500 members)"] = Time(20, function() gm.ns.RosterTab.Rows() end)
