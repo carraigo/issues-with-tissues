@@ -10,7 +10,8 @@
 --   "officer" the sender's rank in OUR roster is GM or Officer (ns.Roster.IsOfficer)
 --   "any"     anyone (whispers from outside the guild, e.g. a version check)
 -- Outgoing packets are queued and paced by size (Comm.rate bytes a second). When the game
--- refuses one for speed, the pace halves and then creeps back up while sends go through. In
+-- refuses one for speed, the pace halves and then creeps back up while sends go through, to the
+-- pace this PC has found it can keep (Comm.ceiling). In
 -- combat they wait until it ends; in a raid or dungeon they go out slowly (one a second), so the addon
 -- never competes with the fight.
 
@@ -27,7 +28,12 @@ Comm.SEND_INTERVAL = 0.1       -- seconds between queued packets, at the full pa
 Comm.RATE_MAX = 2500
 Comm.RATE_MIN = 400
 Comm.RATE_RECOVER = 10
-Comm.rate = Comm.RATE_MAX
+-- The pace this PC can keep (1.4.2): a refusal sets it a fifth under the pace that was refused,
+-- and speeding up stops there. It's saved (IwTDB.commCeiling) and tried a tenth higher at the
+-- next login, so a PC finds its pace instead of being refused again every session.
+Comm.CEILING_START = 2000
+Comm.ceiling = Comm.CEILING_START
+Comm.rate = Comm.CEILING_START
 Comm.RAID_INTERVAL = 1         -- in a raid or a dungeon
 Comm.HOLD_CHECK = 2            -- in combat: how often to look again
 Comm.THROTTLE_WAIT = 1.5       -- the game said "too fast": wait this long, then send it again
@@ -149,6 +155,12 @@ end
 -- The game refused a packet for speed: halve the pace.
 function Comm.SlowDown()
 	local was = Comm.rate
+	-- Only a refusal at (or near) the ceiling moves it: one while already slowed down is the
+	-- backlog of the first, not a sign the pace is still too fast.
+	if was >= Comm.ceiling * 0.9 then
+		Comm.ceiling = math.max(Comm.RATE_MIN * 2, math.floor(was * 0.8))
+		if ns.db then ns.db.commCeiling = Comm.ceiling end
+	end
 	Comm.rate = math.max(Comm.RATE_MIN, math.floor(Comm.rate / 2))
 	Comm.rateAt = ns.Now()
 	Comm.slowest = math.min(Comm.slowest or Comm.RATE_MAX, Comm.rate)
@@ -158,10 +170,10 @@ end
 -- A quarter faster for every RATE_RECOVER seconds since the last change without a refusal
 -- (sending or not), up to the full pace.
 function Comm.SpeedUp()
-	if Comm.rate >= Comm.RATE_MAX then return end
+	if Comm.rate >= Comm.ceiling then return end
 	local steps = math.floor((ns.Now() - (Comm.rateAt or 0)) / Comm.RATE_RECOVER)
 	if steps < 1 then return end
-	Comm.rate = math.min(Comm.RATE_MAX, math.floor(Comm.rate * 1.25 ^ steps))
+	Comm.rate = math.min(Comm.ceiling, math.floor(Comm.rate * 1.25 ^ steps))
 	Comm.rateAt = ns.Now()
 	ns.Trace("comm", "Speeding up to %d bytes a second", Comm.rate)
 end
@@ -284,6 +296,9 @@ function Comm.Sweep()
 end
 
 function Comm:OnLoad()
+	local saved = tonumber(ns.db.commCeiling)
+	Comm.ceiling = saved and math.min(Comm.RATE_MAX, math.max(Comm.RATE_MIN * 2, math.floor(saved * 1.1))) or Comm.CEILING_START
+	Comm.rate = Comm.ceiling
 	if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
 		C_ChatInfo.RegisterAddonMessagePrefix(Comm.PREFIX)
 	elseif RegisterAddonMessagePrefix then

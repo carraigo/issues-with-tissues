@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.2
+
+**Fixes**
+- **Message of the day blocked:** opening Chat could make the game block the addon reading the message of the day ("ADDON_ACTION_BLOCKED: UNKNOWN()"), most likely in combat. It's now read out of combat only and remembered, and the game's MOTD event keeps the copy fresh.
+- **Characters outside the guild:** they no longer try to share kills or catch up with a guild they aren't in, which logged "may not write kills" at every login.
+
+**Performance**
+- **A sending pace that fits:** the game refused 5 to 13 messages in some sessions, all while answering big catch-ups. The addon now starts a little gentler (2,000 bytes a second), and a refusal sets the pace this PC keeps to a fifth under the one refused. It's remembered and tried a tenth higher at the next login.
+- **Less saved chat:** with online/offline lines hidden in Settings, they're no longer saved either (they were 11 to 14 KB).
+
+**Refactoring**
+- **How catch-up ended:** session stats record how the first catch-up of a session finished (caught up, nobody answered, or out of rounds) and when, so sessions without a "caught up" time say why.
+- **Home only reads:** the week's leader is remembered when kills records change (`Kills.TrackWeek`), not while Home draws.
+- **Old saved settings tidied:** leftovers of removed features (`chatcheck`, `lfgAlerts`) are cleared at load.
+
+**UX**
+- **Guild news filters:** "Kills" and "Wish" are now "Top issuer" and "Wishes".
+
 ## 1.4.1
 
 **Fixes**

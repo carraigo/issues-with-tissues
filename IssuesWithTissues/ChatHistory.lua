@@ -195,20 +195,27 @@ end
 -- The server keeps the guild's recent messages, so saved messages mostly repeated them (and were
 -- the biggest thing in the saved data). At logout, a channel the server gave history for keeps
 -- only its newest online/offline and message of the day lines; one it gave none for keeps all.
+-- With online/offline lines hidden (setting chatOnlineLines), those aren't saved at all (1.4.2).
 Chat.KEEP_SYS = 100
 
 function Chat.TrimForSave()
 	local saved = ns.char and ns.char.chat
 	if not saved then return 0 end
+	local noSys = ns.db.settings.chatOnlineLines == false
 	local dropped = 0
 	for _, ch in ipairs(Chat.CHANNELS) do
 		if #(Chat.server[ch] or {}) == 0 then pcall(Chat.ReadServer) end
 		local lines = saved[ch]
-		if lines and #(Chat.server[ch] or {}) > 0 then
-			local keep = {}
+		local fromServer = #(Chat.server[ch] or {}) > 0
+		if lines and (fromServer or noSys) then
+			local keep, sys = {}, 0
 			for i = #lines, 1, -1 do
 				local e = lines[i]
-				if e.k ~= "msg" and type(e.m) == "string" and #keep < Chat.KEEP_SYS then table.insert(keep, 1, e) end
+				local ok = type(e.m) == "string"
+				if e.k == "msg" then ok = ok and not fromServer
+				elseif e.k == "sys" then ok = ok and not noSys and sys < Chat.KEEP_SYS; if ok then sys = sys + 1 end
+				end
+				if ok then table.insert(keep, 1, e) end
 			end
 			dropped = dropped + #lines - #keep
 			saved[ch] = keep

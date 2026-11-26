@@ -113,6 +113,11 @@ local function Total()
 end
 
 function Sync.Ask()
+	-- Outside a guild there's nobody to ask.
+	if not ns.InGuild() then
+		Sync.catching, Sync.round = false, nil
+		return
+	end
 	-- A catch-up can bring hundreds of records: not during a fight, a raid or a dungeon.
 	if Comm.Held() then
 		ns.Trace("sync", "Catch-up waits: in combat, a raid or a dungeon (again in 30s)")
@@ -227,6 +232,13 @@ function Sync.CheckRound(round)
 	end
 	if not Sync.catching and (r.lastHeard or Sync.upToDate) and not st.caughtUpAfter and ns.loginAt then
 		st.caughtUpAfter = ns.Now() - ns.loginAt -- seconds from login to caught up
+	end
+	-- How the first catch-up of the session ended (1.4.2), for the perf page: sessions without a
+	-- "caught up" time used to say nothing about why.
+	if not Sync.catching and not st.firstResult and ns.loginAt then
+		st.firstEndedAfter = ns.Now() - ns.loginAt
+		st.firstResult = (r.lastHeard and r.new > 0 and Sync.rounds >= Sync.MAX_ROUNDS and "max rounds")
+			or ((r.lastHeard or Sync.upToDate) and "caught up") or "nobody answered"
 	end
 	ns.Send("SYNC_PROGRESS")
 end

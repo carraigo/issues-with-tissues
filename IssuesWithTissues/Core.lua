@@ -5,7 +5,7 @@
 local ADDON, ns = ...
 ns = ns or {}
 ns.ADDON = ADDON or "IssuesWithTissues"
-ns.VERSION = "1.4.1"
+ns.VERSION = "1.4.2"
 
 -- Every setting, declared once: its default and how the Settings page shows it. The page builds
 -- itself from this list (Settings.lua); a feature reacts to a change with
@@ -297,12 +297,18 @@ function ns.MemoryKB()
 end
 ns.EachModule = EachModule
 
+-- In a guild now? Characters outside one share nothing and ask nothing.
+function ns.InGuild()
+	return IsInGuild ~= nil and IsInGuild() and true or false
+end
+
 ns.On("ADDON_LOADED", function(_, name)
 	if name ~= ns.ADDON then return end
 	IwTDB = CopyDefaults(type(IwTDB) == "table" and IwTDB or {}, ns.DEFAULTS)
 	IwTCharDB = CopyDefaults(type(IwTCharDB) == "table" and IwTCharDB or {}, ns.CHAR_DEFAULTS)
 	ns.db, ns.char = IwTDB, IwTCharDB
-	IwTDB.settings.hopRequests = nil -- layer hopping was removed in 0.9.0
+	-- Left behind by removed features: layer hopping (0.9.0), the LFG board, the chat check (0.8.0).
+	IwTDB.settings.hopRequests, IwTDB.settings.lfgAlerts, IwTDB.chatcheck = nil, nil, nil
 	EachModule("OnLoad")
 end)
 
