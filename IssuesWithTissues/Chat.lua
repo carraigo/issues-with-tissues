@@ -295,13 +295,19 @@ ns.On("CHAT_MSG_SYSTEM", function(_, text)
 	ns.Roster.Request()
 end)
 
+-- The game sometimes blocks reading it (ADDON_ACTION_BLOCKED, 1.4.1, opening Chat in combat), so
+-- it's read only out of combat and remembered; the GUILD_MOTD event keeps the copy fresh.
 function Chat.MOTD()
-	local motd = GetGuildRosterMOTD and GetGuildRosterMOTD()
-	if ns.IsSecret(motd) then return motd end
-	if type(motd) == "string" and motd ~= "" then return motd end
+	if not (InCombatLockdown and InCombatLockdown()) and GetGuildRosterMOTD then
+		local motd = GetGuildRosterMOTD()
+		if ns.IsSecret(motd) or (type(motd) == "string" and motd ~= "") then Chat.motd = motd
+		elseif motd == "" then Chat.motd = nil end
+	end
+	return Chat.motd
 end
 
 -- The message of the day is shown at the top of the Guild channel; a new one is added as a line.
 pcall(ns.On, "GUILD_MOTD", function(_, motd)
+	if ns.IsSecret(motd) or (type(motd) == "string" and motd ~= "") then Chat.motd = motd end
 	if ns.IsSecret(motd) or (type(motd) == "string" and motd ~= "") then Chat.Add("guild", "motd", nil, motd) end
 end)

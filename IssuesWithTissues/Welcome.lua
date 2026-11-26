@@ -10,6 +10,11 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.4.2", lines = {
+		"Fixed a blocked-action error when opening Chat (the message of the day).",
+		"Smoother sending: the addon finds a pace the game is happy with and remembers it.",
+		"Characters outside the guild stay quiet, and hidden online/offline lines aren't saved.",
+	} },
 	{ version = "1.4.1", lines = {
 		"Promote, Demote and Remove on the roster's right-click menu work again: click, then click again to confirm.",
 		"Tidier Guild news filters and Settings labels.",

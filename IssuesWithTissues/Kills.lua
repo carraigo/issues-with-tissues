@@ -143,8 +143,8 @@ function Kills.Format(n)
 	return (out:gsub("^,", ""))
 end
 
--- This week's leader: { who, gain }, or nil before anyone has a kill this week. The best seen
--- is remembered, so the week's winner can go in the guild news once the week is over.
+-- This week's leader: { who, gain }, or nil before anyone has a kill this week. Only reads
+-- (Home draws with it); Kills.TrackWeek remembers the best.
 function Kills.WeekLeader(week)
 	week = week or Kills.Week()
 	local best
@@ -154,7 +154,14 @@ function Kills.WeekLeader(week)
 			best = { who = who, gain = k.gain }
 		end
 	end
-	local db = ns.db
+	return best
+end
+
+-- The best seen this week (or `week`) is remembered, so the winner can go in the guild news
+-- once the week is over. Run when kills records change and at login.
+function Kills.TrackWeek(week)
+	week = week or Kills.Week()
+	local best, db = Kills.WeekLeader(week), ns.db
 	if best and (not db.weekBest or db.weekBest.week ~= week or best.gain >= db.weekBest.gain) then
 		db.weekBest = { week = week, who = best.who, gain = best.gain }
 	end
@@ -182,10 +189,11 @@ pcall(ns.On, "PLAYER_PVP_KILLS_CHANGED", Soon)
 
 function Kills:OnLogin()
 	ns.Later("kills", function()
-		Kills.WeekLeader(Kills.Week() - 1) -- last week's records still in, before they move on
+		Kills.TrackWeek(Kills.Week() - 1) -- last week's records still in, before they move on
+		Kills.TrackWeek()
 		Kills.CloseWeek()
 		Kills.Share()
 	end)
 end
-local WeekSoon = ns.Coalesce(function() Kills.WeekLeader(); Kills.CloseWeek() end, 2)
+local WeekSoon = ns.Coalesce(function() Kills.TrackWeek(); Kills.CloseWeek() end, 2)
 ns.Listen("SYNC_CHANGED", function(set) if set == "kills" then WeekSoon() end end)

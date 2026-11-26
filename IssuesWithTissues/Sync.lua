@@ -154,6 +154,7 @@ end
 
 local function Write(name, key, data, deleted, minRev)
 	local me = ns.PlayerName()
+	if not ns.InGuild() then return false, "not in a guild" end -- nothing to share with (no log line)
 	if not Sync.CanWrite(name, key, me) then
 		ns.Log("sync: %s may not write %s/%s (in roster: %s, officer: %s)", tostring(me), name, tostring(key),
 			tostring(ns.Roster.IsMember(me)), tostring(ns.Roster.IsOfficer(me)))

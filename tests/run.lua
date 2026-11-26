@@ -515,6 +515,7 @@ test("timed: nobody answers but guildmates' addons are online: already up to dat
 	eq(mem.ns.Sync.catching, false)
 	eq(mem.ns.Sync.stats.asks, 2, "no retries")
 	assert(mem.ns.Sync.stats.caughtUpAfter and mem.ns.Sync.stats.caughtUpAfter <= 25, "counted as caught up")
+	eq(mem.ns.Sync.stats.firstResult, "caught up")
 	-- with no addon heard at all, a quiet round is asked again a minute later
 	local alone = W.NewClient(base, "Vet", Guild())
 	DefineSets(alone)
@@ -526,6 +527,37 @@ test("timed: nobody answers but guildmates' addons are online: already up to dat
 	W.Run(200, { alone })
 	eq(alone.ns.Sync.stats.asks, 1 + alone.ns.Sync.NOBODY_RETRIES)
 	eq(alone.ns.Sync.catching, false, "gives up after the retries")
+	eq(alone.ns.Sync.stats.firstResult, "nobody answered"); assert(alone.ns.Sync.stats.firstEndedAfter)
+end)
+
+test("chat: the message of the day isn't read in combat (the game blocks it), a copy is used", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local combat, reads = false, 0
+	c.env.InCombatLockdown = function() return combat end
+	c.env.GetGuildRosterMOTD = function() reads = reads + 1; return "Raid at 8" end
+	eq(c.ns.Chat.MOTD(), "Raid at 8")
+	combat = true
+	local before = reads
+	eq(c.ns.Chat.MOTD(), "Raid at 8"); eq(reads, before, "not read in combat")
+	c.env.__fire("GUILD_MOTD", "Raid at 9")
+	eq(c.ns.Chat.MOTD(), "Raid at 9")
+end)
+
+test("outside a guild: nothing shared, nothing asked, nothing logged", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	c.env.IsInGuild = function() return false end
+	local logs = #c.env.IwTDB.log
+	c.env.GetPVPLifetimeStats = function() return 5, 0 end
+	eq(c.ns.Kills.Share(), false)
+	eq(c.ns.Sync.Set("kills", "Mem", "1;1;c"), false)
+	local asks = c.ns.Sync.stats.asks
+	c.ns.Sync.StartCatchUp()
+	eq(c.ns.Sync.stats.asks, asks, "no catch-up")
+	eq(#c.env.IwTDB.log, logs, "no 'may not write' lines")
+	-- leftovers of removed features go at load
+	c.env.IwTDB.chatcheck, c.env.IwTDB.settings.lfgAlerts = { 1 }, true
+	c.env.__fire("ADDON_LOADED", "IssuesWithTissues")
+	eq(c.env.IwTDB.chatcheck, nil); eq(c.env.IwTDB.settings.lfgAlerts, nil)
 end)
 
 test("timed: refused packets slow the pace, which recovers, and nothing is lost", function()
@@ -536,8 +568,11 @@ test("timed: refused packets slow the pace, which recovers, and nothing is lost"
 	C.sendHook = function(_, packet) calls = calls + 1; if calls == 3 or calls == 5 then return 3 end; sent[#sent + 1] = packet; return 0 end
 	for i = 1, 30 do C.Send("T" .. i, string.rep("x", 200)) end
 	W.Run(5, { c })
-	assert(C.rate < C.RATE_MAX, "slowed down")
-	eq(C.slowest, C.RATE_MAX / 4, "halved twice")
+	eq(C.CEILING_START, 2000)
+	assert(C.rate < C.CEILING_START, "slowed down")
+	eq(C.slowest, 500, "halved twice")
+	eq(C.ceiling, 1600, "a fifth under the refused pace; the second refusal (already slowed) leaves it")
+	eq(c.env.IwTDB.commCeiling, 1600, "remembered")
 	W.Run(120, { c })
 	eq(#sent, 30); eq(C.Queued(), 0)
 	for i = 1, 30 do assert(sent[i]:find("\tT" .. i .. "\t", 1, true), "in order") end
@@ -545,8 +580,14 @@ test("timed: refused packets slow the pace, which recovers, and nothing is lost"
 	-- recovery: a minute without refusals and the next send goes at full pace again
 	C.Send("U", "y")
 	W.Run(5, { c })
-	eq(C.rate, C.RATE_MAX, "back to full pace")
+	eq(C.rate, 1600, "back to the pace this PC keeps")
 	C.sendHook = nil
+	-- next session: a tenth higher, never past the maximum
+	c.env.__fire("ADDON_LOADED", "IssuesWithTissues")
+	eq(C.ceiling, 1760); eq(C.rate, 1760)
+	c.env.IwTDB.commCeiling = 9999
+	c.env.__fire("ADDON_LOADED", "IssuesWithTissues")
+	eq(C.ceiling, C.RATE_MAX)
 end)
 
 test("timed: a guildmate who answered recently lets someone else answer", function()
@@ -3193,6 +3234,9 @@ test("Tissue Issuer of the Week: the most honorable kills since the reset, then 
 	local lead = K.WeekLeader()
 	eq(lead.who, "Mem"); eq(lead.gain, 8)
 	eq(mem.ns.GeneralTab.Facts().weekLeader.gain, 8)
+	eq(gm.env.IwTDB.weekBest, nil, "Home only reads")
+	K.TrackWeek()
+	eq(gm.env.IwTDB.weekBest.who, "Mem")
 	-- a 1.3 record reads as no kills this week
 	local old = K.Decode("12;1500;s")
 	eq(old.hk, 12); eq(old.week, 0); eq(old.gain, 0)
@@ -3265,7 +3309,14 @@ test("chat: with the server's history, only online/offline and MOTD lines are sa
 	eq(#c.env.IwTCharDB.chat.officer, 1, "officer chat had no server history")
 	Chat.KEEP_SYS = 2
 	Chat.TrimForSave()
-	eq(#c.env.IwTCharDB.chat.guild, 2, "the newest few")
+	eq(#c.env.IwTCharDB.chat.guild, 3, "the newest few online lines, and the MOTD")
+	-- online/offline lines hidden: none saved, even without the server's history
+	c.env.IwTDB.settings.chatOnlineLines = false
+	Chat.Add("officer", "sys", nil, "Gm has gone offline.")
+	Chat.TrimForSave()
+	eq(#c.env.IwTCharDB.chat.guild, 1); eq(c.env.IwTCharDB.chat.guild[1].k, "motd")
+	eq(#c.env.IwTCharDB.chat.officer, 1, "officer: its message kept (no server history), the online line not")
+	eq(c.env.IwTCharDB.chat.officer[1].k, "msg")
 end)
 
 test("guild news: short lines on Home, a month on the Guild news page", function()

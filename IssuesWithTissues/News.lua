@@ -162,7 +162,7 @@ end
 ---------------------------------------------------------------------------
 -- Home > Guild news: the last month, newest first.
 ---------------------------------------------------------------------------
-News.KINDS = { join = "Joined", leave = "Left", ["60"] = "Level 60", promote = "Promoted", week = "Kills", got = "Wish" }
+News.KINDS = { join = "Joined", leave = "Left", ["60"] = "Level 60", promote = "Promoted", week = "Top issuer", got = "Wishes" }
 News.KIND_COLOR = { join = { 0.25, 1, 0.25 }, leave = { 1, 0.45, 0.35 }, ["60"] = { 1, 0.82, 0 }, promote = { 0.45, 0.7, 1 },
 	week = { 1, 0.56, 0.31 }, got = { 0.9, 0.6, 1 } }
 News.FILTERS = { { key = "all", label = "All" } }
