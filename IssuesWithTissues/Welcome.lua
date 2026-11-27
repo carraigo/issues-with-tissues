@@ -10,6 +10,9 @@ local Welcome = ns.RegisterModule("Welcome", {})
 ns.Welcome = Welcome
 
 Welcome.NOTES = {
+	{ version = "1.4.3", lines = {
+		"No more \"new version\" nags for builds that aren't out yet. /iwt update now points to CurseForge.",
+	} },
 	{ version = "1.4.2", lines = {
 		"Fixed a blocked-action error when opening Chat (the message of the day).",
 		"Smoother sending: the addon finds a pace the game is happy with and remembers it.",
