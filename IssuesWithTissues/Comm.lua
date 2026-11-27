@@ -32,6 +32,17 @@ Comm.RATE_RECOVER = 10
 -- and speeding up stops there. It's saved (IwTDB.commCeiling) and tried a tenth higher at the
 -- next login, so a PC finds its pace instead of being refused again every session.
 Comm.CEILING_START = 2000
+-- The game's own limit (1.4.3 perf logs: refusals came with queues of 50 to 60 packets, at any
+-- byte pace): a burst of about 10 addon messages, then about one a second. Packets are counted
+-- out of a bucket of BURST that refills REFILL a second, so a big answer goes out steadily
+-- instead of being refused and resent.
+Comm.BURST = 10
+Comm.REFILL = 1
+local function Clock() return (GetTime and GetTime()) or ns.Now() end
+-- Packets sent just before a /reload can come back after it, when the record
+-- of what we sent is gone. In this window they are our own echoes, not forgeries.
+Comm.ECHO_GRACE = 20
+Comm.loadedAt = Clock()
 Comm.ceiling = Comm.CEILING_START
 Comm.rate = Comm.CEILING_START
 Comm.RAID_INTERVAL = 1         -- in a raid or a dungeon
@@ -128,7 +139,15 @@ function Comm.Pump()
 		return
 	end
 	Comm.SpeedUp()
+	local now = Clock()
+	Comm.tokens = math.min(Comm.BURST, (Comm.tokens or Comm.BURST) + (now - (Comm.tokensAt or now)) * Comm.REFILL)
+	Comm.tokensAt = now
+	if Comm.tokens < 1 and Comm.Queued() > 0 then
+		ns.After((1 - Comm.tokens) / Comm.REFILL, Comm.Pump)
+		return
+	end
 	local item = Pop()
+	if item then Comm.tokens = Comm.tokens - 1 end
 	local wait = held == "raid" and Comm.RAID_INTERVAL or Comm.SEND_INTERVAL
 	if item then wait = math.max(wait, #item.packet / Comm.rate) end
 	local refused = item and Comm.Refused(RawSend(item.packet, item.distribution, item.target))
@@ -242,7 +261,8 @@ local function Dispatch(rawSender, body, distribution)
 		if Comm.sent[body] and not Comm.hearSelf then return end -- our own message coming back
 		if not Comm.sent[body] then
 			forged = true
-			ns.ReportError(string.format("comm: a %s message arrived in your name that this addon did not send", msgType))
+			-- just after a /reload it is most likely our own echo: still handled, not reported
+			if Clock() - Comm.loadedAt >= Comm.ECHO_GRACE then ns.ReportError(string.format("comm: a %s message arrived in your name that this addon did not send", msgType)) end
 		end
 	end
 	local h = Comm.handlers[msgType]

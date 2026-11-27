@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.3
+
+**Fixes**
+- **"Version X is out" too early:** guildmates were told to update as soon as one person ran a newer build, even one not released yet. A version now counts as out once two different players run it (a player's alts count once). The message and `/iwt update` now point to CurseForge instead of GitHub.
+- **"Arrived in your name" after a /reload:** messages sent just before a /reload can come back just after it, when the addon no longer remembers sending them. For the first 20 seconds these aren't reported as someone posing as you.
+
+**Performance**
+- **Fewer refused messages:** the game still refused up to 18 messages in a session, even at a gentle pace. It limits how many messages go out, not just how big they are: about 10 at once, then roughly one a second. The addon now keeps to that, so big catch-ups take a little longer but nothing gets refused.
+
 ## 1.4.2
 
 **Fixes**

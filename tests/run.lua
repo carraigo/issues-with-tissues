@@ -382,6 +382,7 @@ test("comm: a packet the game refuses for speed is sent again, in order", functi
 	calls = 0
 	C.sendHook = function(_, packet) calls = calls + 1; if calls == 3 then return 3 end; sent[#sent + 1] = packet; return 0 end
 	C.pumping = true -- queue without sending yet
+	C.BURST, C.tokens = 1e9, nil -- the order only: no game-paced bucket here
 	for i = 1, 500 do C.Send("T" .. i, "x") end
 	eq(C.Queued(), 500)
 	for _ = 1, 501 do C.Pump() end
@@ -389,6 +390,22 @@ test("comm: a packet the game refuses for speed is sent again, in order", functi
 	for i = 1, 500 do assert(sent[i]:find("\tT" .. i .. "\t", 1, true), "packet " .. i .. " in order") end
 	C.pumping = false
 	C.immediate, C.sendHook = true, nil
+end)
+
+test("comm: our own packet coming back after a /reload is not called a forgery", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local C = c.ns.Comm
+	local packet
+	C.sendHook = function(prefix, p) packet = p; return 0 end
+	C.Send("ZZ", "hello")
+	C.sendHook = nil
+	assert(packet, "a packet was sent")
+	C.sent = {} -- as after a /reload: the record of what we sent is gone
+	c.env.__fire("CHAT_MSG_ADDON", C.PREFIX, packet, "GUILD", c.fullName)
+	eq(#c.env.IwTDB.errors, 0, "inside the grace window it is an echo")
+	C.loadedAt = C.loadedAt - C.ECHO_GRACE - 1
+	c.env.__fire("CHAT_MSG_ADDON", C.PREFIX, packet, "GUILD", c.fullName)
+	eq(#c.env.IwTDB.errors, 1, "later it is reported")
 end)
 
 test("bug report lists errors once with a count", function()
@@ -543,6 +560,21 @@ test("chat: the message of the day isn't read in combat (the game blocks it), a 
 	eq(c.ns.Chat.MOTD(), "Raid at 9")
 end)
 
+test("updates: a newer version counts once two players run it (alts count once)", function()
+	local g = Guild2()
+	local mem = W.NewClient(base, "Mem", g)
+	local U = mem.ns.Updates
+	local next = "9.9.9"
+	-- Gm's unreleased build: Gm and Gm's alt Offi (linked) are one player
+	mem.ns.Sync.Accept("alts", "Offi", { rev = W.now, by = "Offi", data = "Gm" })
+	eq(U.Consider("Gm", next), false, "one player")
+	eq(U.Consider("Offi", next), false, "an alt of the same player")
+	eq(mem.env.IwTDB.updateNotified, nil)
+	eq(U.Consider("Vet", next), true, "a second player: it's out")
+	eq(mem.env.IwTDB.updateNotified, next)
+	assert(mem.printed[#mem.printed]:find("CurseForge", 1, true))
+end)
+
 test("outside a guild: nothing shared, nothing asked, nothing logged", function()
 	local c = W.NewClient(base, "Mem", Guild())
 	c.env.IsInGuild = function() return false end
@@ -558,6 +590,20 @@ test("outside a guild: nothing shared, nothing asked, nothing logged", function(
 	c.env.IwTDB.chatcheck, c.env.IwTDB.settings.lfgAlerts = { 1 }, true
 	c.env.__fire("ADDON_LOADED", "IssuesWithTissues")
 	eq(c.env.IwTDB.chatcheck, nil); eq(c.env.IwTDB.settings.lfgAlerts, nil)
+end)
+
+test("timed: packets go out in a burst of 10, then about one a second (the game's limit)", function()
+	local c = W.NewClient(base, "Mem", Guild())
+	local C = c.ns.Comm
+	Timed(c)
+	local sent = 0
+	C.sendHook = function() sent = sent + 1; return 0 end
+	for i = 1, 30 do C.Send("T" .. i, "x") end
+	W.Run(5, { c })
+	assert(sent >= 10 and sent <= 16, "a burst, then one a second: " .. sent)
+	W.Run(30, { c })
+	eq(sent, 30); eq(C.Queued(), 0); eq(C.throttled, nil)
+	C.sendHook = nil
 end)
 
 test("timed: refused packets slow the pace, which recovers, and nothing is lost", function()
@@ -1285,6 +1331,7 @@ test("same first name: a record forged in your name is put right by you", functi
 	-- Sara Best sends a change claiming to be Sara Exe; the game stamps "Sara" either way
 	local P = best.ns.Comm
 	local body = "Sara Exe\tSU\t" .. P.Pack("profs", "Sara Exe", W.now, "Sara Exe", "", "Fishing:1:75")
+	exe.ns.Comm.loadedAt = exe.ns.Comm.loadedAt - 60 -- well after login
 	W.Deliver(best, "IWT", "S" .. body, "GUILD")
 	W.now = W.now + 10
 	eq(gm.ns.Professions.Of("Sara Exe")[1].name, "Tailoring", "Sara Exe sent her own version straight back")
@@ -2391,9 +2438,10 @@ test("updates: told once when a guildmate has a newer release; betas ignored", f
 	c.ns.VERSION = "1.0.0" -- someone on a release (the build under test may be a beta)
 	eq(U.Consider("Gm", "9.0.0-beta.1"), false, "a beta doesn't nag people on a release")
 	eq(U.Consider("Gm", c.ns.VERSION), false)
-	eq(U.Consider("Gm", "9.0.0"), true)
+	eq(U.Consider("Gm", "9.0.0"), false, "one player so far")
+	eq(U.Consider("Vet", "9.0.0"), true)
 	eq(#printed, 1); assert(printed[1]:find("9.0.0", 1, true) and printed[1]:find("/iwt update", 1, true), printed[1])
-	U.Consider("Vet", "9.0.0")
+	U.Consider("Mem", "9.0.0")
 	eq(#printed, 1, "once per version")
 	c.ns.HandleSlash("update")
 	eq(#c.env.IwTDB.errors, 0)
